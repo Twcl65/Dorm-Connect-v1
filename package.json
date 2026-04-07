@@ -1,0 +1,46 @@
+{
+  "name": "dormconnect-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:migrate:users": "node scripts/migrate-boarding-users.cjs",
+    "db:migrate:landlord": "node scripts/apply-sql-migration.cjs db/migrations/003_landlord_tables.sql",
+    "db:migrate:student": "node scripts/apply-sql-migration.cjs db/migrations/004_student_tables.sql",
+    "db:migrate:system": "node scripts/apply-sql-migration.cjs db/migrations/005_system_alignment.sql",
+    "db:migrate:listing-images": "node scripts/apply-sql-migration.cjs db/migrations/006_listing_images.sql",
+    "db:migrate:tenant-lease-link": "node scripts/apply-sql-migration.cjs db/migrations/007_tenant_lease_student_reservation.sql",
+    "db:probe-pooler": "node scripts/probe-pooler-region.cjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.0.2",
+    "bcryptjs": "^2.4.3",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.5",
+    "jose": "^6.2.2",
+    "lucide-react": "^0.441.0",
+    "next": "^14.2.35",
+    "next-themes": "^0.3.0",
+    "pg": "^8.13.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tailwind-merge": "^2.2.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "20.11.28",
+    "@types/pg": "^8.11.10",
+    "@types/react": "18.2.66",
+    "@types/react-dom": "18.2.22",
+    "autoprefixer": "10.4.19",
+    "eslint": "8.57.0",
+    "eslint-config-next": "^16.1.6",
+    "postcss": "8.4.38",
+    "tailwindcss": "3.4.3",
+    "typescript": "5.4.2"
+  }
+}

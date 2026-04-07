@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* light background for content */
+  --background: 210 40% 99%;
+  --foreground: 222 84% 5%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 84% 5%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 84% 5%;
+  /* primary: #FF9718 */
+  --primary: 32 100% 57%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 45 97% 51%; /* USTP-inspired yellow */
+  --secondary-foreground: 24 10% 10%;
+  --muted: 210 16% 93%;
+  --muted-foreground: 215 15% 35%;
+  --accent: 213 85% 47%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 32 100% 57%;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 222 84% 5%;
+  --foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  /* primary: #FF9718 in dark mode */
+  
+  /*Color of the button*/
+  --primary: 32 100% 57%;
+
+  --primary-foreground: 222 84% 5%;
+  --secondary: 45 97% 51%;
+  --secondary-foreground: 24 10% 10%;
+  --muted: 217 32% 17%;
+  --muted-foreground: 214 32% 80%;
+  --accent: 213 90% 60%;
+  --accent-foreground: 222 84% 5%;
+  --destructive: 0 62% 50%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 32% 24%;
+  --input: 217 32% 24%;
+  --ring: 213 90% 60%;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+}
+
