@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
+import { resolveDormDisplayName } from "@/lib/landlord-db";
 import { formatLeasePeriod } from "@/lib/student-db";
 
 export const dynamic = "force-dynamic";
@@ -48,19 +49,25 @@ export async function GET(
         landlord_name: string | null;
         student_name: string;
         description: string | null;
+        acc_dorm_name: string | null;
       }>(
         `SELECT lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
                 lp.paid_on::text, lp.proof_url, lp.reference_no,
                 p.name AS property_name, r.room_no,
                 s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
                 s.monthly_rent::text,
-                u.full_name AS landlord_name,
+                ul.full_name AS landlord_name,
                 st.full_name AS student_name,
-                NULL::text AS description
+                NULL::text AS description,
+                (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+                 WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                   AND trim(a.dorm_name) <> ''
+                 ORDER BY a.submitted_at DESC
+                 LIMIT 1) AS acc_dorm_name
          FROM public.landlord_payments lp
          JOIN public.landlord_rooms r ON r.id = lp.room_id
          JOIN public.landlord_properties p ON p.id = r.property_id
-         JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
+         JOIN public.boarding_house_app_users ul ON ul.id = p.owner_user_id
          JOIN public.student_dorm_reservations s ON s.room_id = r.id
            AND s.student_user_id = $1::uuid
            AND s.status IN ('Pending', 'Confirmed')
@@ -100,6 +107,12 @@ export async function GET(
         ? new Date(`${x.paid_on.trim().slice(0, 10)}T12:00:00`).toISOString()
         : null;
 
+      const dormName = resolveDormDisplayName(
+        x.property_name,
+        x.acc_dorm_name,
+        "General payment"
+      );
+
       return NextResponse.json({
         payment: {
           id: rawId,
@@ -110,9 +123,9 @@ export async function GET(
           paidAt: paidAtIso,
           receiptUrl: null as string | null,
           proofImageUrl: x.proof_url ?? null,
-          dormName: x.property_name ?? "General payment",
+          dormName,
           roomNo: x.room_no ?? "—",
-          landlord: x.landlord_name ?? "—",
+          landlord: x.landlord_name?.trim() || "—",
           leasePeriod,
           studentName: x.student_name,
           monthlyRent: monthlyRent > 0 ? monthlyRent : null,
@@ -141,19 +154,26 @@ export async function GET(
       landlord_name: string | null;
       student_name: string;
       description: string | null;
+      acc_dorm_name: string | null;
     }>(
       `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
               pay.receipt_url, pay.proof_image_url, pay.reservation_id, pay.description,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text,
-              u.full_name AS landlord_name,
-              st.full_name AS student_name
+              ul.full_name AS landlord_name,
+              st.full_name AS student_name,
+              (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+               WHERE p.id IS NOT NULL
+                 AND (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS acc_dorm_name
        FROM public.student_payment_records pay
        LEFT JOIN public.student_dorm_reservations s ON s.id = pay.reservation_id
        LEFT JOIN public.landlord_rooms r ON r.id = s.room_id
        LEFT JOIN public.landlord_properties p ON p.id = r.property_id
-       LEFT JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
+       LEFT JOIN public.boarding_house_app_users ul ON ul.id = p.owner_user_id
        JOIN public.boarding_house_app_users st ON st.id = pay.student_user_id
        WHERE pay.id = $1::uuid AND pay.student_user_id = $2::uuid`,
       [id, studentId]
@@ -189,6 +209,12 @@ export async function GET(
       : null;
     const notes = x.description?.trim() || null;
 
+    const dormName = resolveDormDisplayName(
+      x.property_name,
+      x.acc_dorm_name,
+      "General payment"
+    );
+
     return NextResponse.json({
       payment: {
         id: x.id,
@@ -199,9 +225,9 @@ export async function GET(
         paidAt: x.paid_at ? new Date(x.paid_at).toISOString() : null,
         receiptUrl: x.receipt_url,
         proofImageUrl: x.proof_image_url,
-        dormName: x.property_name ?? "General payment",
+        dormName,
         roomNo: x.room_no ?? "—",
-        landlord: x.landlord_name ?? "—",
+        landlord: x.landlord_name?.trim() || "—",
         leasePeriod,
         studentName: x.student_name,
         monthlyRent: monthlyRent > 0 ? monthlyRent : null,

@@ -3,6 +3,7 @@ import { getPool } from "@/lib/db";
 import {
   ensureLandlordProperty,
   formatLeasePeriod,
+  resolveDormDisplayName,
 } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
 
@@ -19,8 +20,18 @@ export async function GET() {
     const pool = await getPool();
     const propertyId = await ensureLandlordProperty(pool, ownerId);
 
-    const { rows: prop } = await pool.query<{ name: string }>(
-      `SELECT name FROM public.landlord_properties WHERE id = $1::uuid`,
+    const { rows: prop } = await pool.query<{
+      name: string;
+      acc_dorm_name: string | null;
+    }>(
+      `SELECT p.name,
+              (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+               WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS acc_dorm_name
+       FROM public.landlord_properties p
+       WHERE p.id = $1::uuid`,
       [propertyId]
     );
 
@@ -74,8 +85,13 @@ export async function GET() {
     const maintenance = rooms.filter((r) => r.status === "Maintenance")
       .length;
 
+    const propertyName = resolveDormDisplayName(
+      prop[0]?.name,
+      prop[0]?.acc_dorm_name ?? null
+    );
+
     return NextResponse.json({
-      propertyName: prop[0]?.name ?? "My property",
+      propertyName,
       propertyId,
       stats: { total, occupied, available, maintenance },
       rooms: rooms.map((r) => {

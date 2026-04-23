@@ -10,6 +10,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       sidebarItems={[
         { label: "Dashboard", href: "/admin", icon: RoleIcons.dashboard },
         { label: "User Management", href: "/admin/users", icon: RoleIcons.users },
+        { label: "Account & settings", href: "/admin/settings", icon: RoleIcons.settings },
       ]}
     >
       {children}

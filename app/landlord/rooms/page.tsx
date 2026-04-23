@@ -125,7 +125,7 @@ export default function LandlordRoomsPage() {
     useState<PaymentStatus | "all">("all");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [leaseRows, setLeaseRows] = useState<LeaseRow[]>([]);
-  const [propertyName, setPropertyName] = useState("My property");
+  const [propertyName, setPropertyName] = useState("");
   const [stats, setStats] = useState({
     total: 0,
     occupied: 0,
@@ -191,7 +191,7 @@ export default function LandlordRoomsPage() {
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
-      setPropertyName(json.propertyName ?? "My property");
+      setPropertyName(json.propertyName ?? "");
       if (json.stats) setStats(json.stats);
       setRooms(json.rooms ?? []);
       setLeaseRows(json.leaseRows ?? []);

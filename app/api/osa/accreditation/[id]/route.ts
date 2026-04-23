@@ -104,6 +104,24 @@ export async function PATCH(req: Request, context: Ctx) {
       );
     }
 
+    if (status === "Approved") {
+      await pool.query(
+        `UPDATE public.landlord_properties p
+         SET name = trim(a.dorm_name),
+             address = CASE
+               WHEN trim(COALESCE(a.address, '')) = '' THEN p.address
+               ELSE trim(a.address)
+             END,
+             updated_at = now()
+         FROM public.landlord_accreditation_requests a
+         WHERE a.id = $1::uuid
+           AND a.property_id IS NOT NULL
+           AND p.id = a.property_id
+           AND trim(COALESCE(a.dorm_name, '')) <> ''`,
+        [id]
+      );
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to update";

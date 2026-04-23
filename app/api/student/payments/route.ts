@@ -6,7 +6,10 @@ import {
 } from "@/lib/listing-description";
 import { requireStudent } from "@/lib/require-student";
 import { formatLeasePeriod } from "@/lib/student-db";
-import { syncReservationAndLeaseFromStudentPaymentStatus } from "@/lib/landlord-db";
+import {
+  resolveDormDisplayName,
+  syncReservationAndLeaseFromStudentPaymentStatus,
+} from "@/lib/landlord-db";
 
 export const dynamic = "force-dynamic";
 
@@ -44,21 +47,28 @@ export async function GET() {
       listing_image_urls: unknown;
       listing_background_url: string | null;
       room_image_urls: unknown;
+      acc_dorm_name: string | null;
     }>(
       `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
               pay.receipt_url, pay.proof_image_url, pay.reservation_id,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text AS monthly_rent,
-              u.full_name AS landlord_name,
+              ul.full_name AS landlord_name,
               r.listing_location, p.address AS property_address, p.city AS property_city,
               r.listing_description, r.remarks, r.room_details,
-              r.listing_image_urls, r.listing_background_url, r.room_image_urls
+              r.listing_image_urls, r.listing_background_url, r.room_image_urls,
+              (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+               WHERE p.id IS NOT NULL
+                 AND (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS acc_dorm_name
        FROM public.student_payment_records pay
        LEFT JOIN public.student_dorm_reservations s ON s.id = pay.reservation_id
        LEFT JOIN public.landlord_rooms r ON r.id = s.room_id
        LEFT JOIN public.landlord_properties p ON p.id = r.property_id
-       LEFT JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
+       LEFT JOIN public.boarding_house_app_users ul ON ul.id = p.owner_user_id
        WHERE pay.student_user_id = $1::uuid
        ORDER BY pay.created_at DESC`,
       [studentId]
@@ -88,20 +98,26 @@ export async function GET() {
       listing_image_urls: unknown;
       listing_background_url: string | null;
       room_image_urls: unknown;
+      acc_dorm_name: string | null;
     }>(
       `SELECT lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
               lp.paid_on::text, lp.proof_url, lp.reference_no,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text,
-              u.full_name AS landlord_name,
+              ul.full_name AS landlord_name,
               r.listing_location, p.address AS property_address, p.city AS property_city,
               r.listing_description, r.remarks, r.room_details,
-              r.listing_image_urls, r.listing_background_url, r.room_image_urls
+              r.listing_image_urls, r.listing_background_url, r.room_image_urls,
+              (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+               WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS acc_dorm_name
        FROM public.landlord_payments lp
        JOIN public.landlord_rooms r ON r.id = lp.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
-       JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
+       JOIN public.boarding_house_app_users ul ON ul.id = p.owner_user_id
        JOIN public.student_dorm_reservations s ON s.room_id = r.id
          AND s.student_user_id = $1::uuid
          AND s.status IN ('Pending', 'Confirmed')
@@ -131,7 +147,12 @@ export async function GET() {
         [x.property_address, x.property_city].filter(Boolean).join(", ") ||
         "—";
       const roomLabel = x.room_no ?? "?";
-      const propName = x.property_name ?? "Dorm";
+      const dormName = resolveDormDisplayName(
+        x.property_name,
+        x.acc_dorm_name,
+        "General payment"
+      );
+      const propName = dormName;
       const roomDescription = buildPublicListingDescription(
         x.listing_description,
         x.remarks,
@@ -146,7 +167,7 @@ export async function GET() {
       return {
         id: x.id,
         source: "student_app" as const,
-        dormName: x.property_name ?? "General payment",
+        dormName,
         roomNo: x.room_no ?? "—",
         amount: Number(x.amount),
         method: x.method,
@@ -156,7 +177,7 @@ export async function GET() {
         leaseMonths: months,
         monthlyRent: x.monthly_rent ? Number(x.monthly_rent) : 0,
         location,
-        landlord: x.landlord_name ?? "—",
+        landlord: x.landlord_name?.trim() || "—",
         distance: "—",
         documentType: "Accredited",
         roomDescription,
@@ -192,7 +213,12 @@ export async function GET() {
         [x.property_address, x.property_city].filter(Boolean).join(", ") ||
         "—";
       const roomLabel = x.room_no ?? "?";
-      const propName = x.property_name ?? "Dorm";
+      const dormName = resolveDormDisplayName(
+        x.property_name,
+        x.acc_dorm_name,
+        "General payment"
+      );
+      const propName = dormName;
       const roomDescription = buildPublicListingDescription(
         x.listing_description,
         x.remarks,
@@ -216,7 +242,7 @@ export async function GET() {
       return {
         id: `lp-${x.id}`,
         source: "landlord_entry" as const,
-        dormName: x.property_name ?? "General payment",
+        dormName,
         roomNo: x.room_no ?? "—",
         amount: Number(x.amount),
         method: x.method,
@@ -228,7 +254,7 @@ export async function GET() {
         leaseMonths: months,
         monthlyRent: x.monthly_rent ? Number(x.monthly_rent) : 0,
         location,
-        landlord: x.landlord_name ?? "—",
+        landlord: x.landlord_name?.trim() || "—",
         distance: "—",
         documentType: "Accredited",
         roomDescription,

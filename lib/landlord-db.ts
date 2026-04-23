@@ -1,5 +1,23 @@
 import type { Pool } from "pg";
 
+const PLACEHOLDER_PROPERTY_NAMES = new Set(["", "my property"]);
+
+/** Prefer real property name; fall back to latest accreditation dorm name. */
+export function resolveDormDisplayName(
+  propertyName: string | null | undefined,
+  accreditationDormName: string | null | undefined,
+  fallback = "Dorm name not set"
+): string {
+  const raw = (propertyName ?? "").trim();
+  if (raw && !PLACEHOLDER_PROPERTY_NAMES.has(raw.toLowerCase())) {
+    return raw;
+  }
+  const acc = (accreditationDormName ?? "").trim();
+  if (acc) return acc;
+  if (raw) return raw;
+  return fallback;
+}
+
 export async function ensureLandlordProperty(
   pool: Pool,
   ownerId: string
@@ -12,11 +30,22 @@ export async function ensureLandlordProperty(
     [ownerId]
   );
   if (rows[0]) return rows[0].id;
+
+  const { rows: accRows } = await pool.query<{ dorm_name: string }>(
+    `SELECT dorm_name FROM public.landlord_accreditation_requests
+     WHERE owner_user_id = $1::uuid AND trim(dorm_name) <> ''
+     ORDER BY submitted_at DESC
+     LIMIT 1`,
+    [ownerId]
+  );
+  const initialName =
+    accRows[0]?.dorm_name?.trim() || "Unnamed dormitory";
+
   const ins = await pool.query<{ id: string }>(
     `INSERT INTO public.landlord_properties (owner_user_id, name)
      VALUES ($1::uuid, $2)
      RETURNING id`,
-    [ownerId, "My property"]
+    [ownerId, initialName]
   );
   const row = ins.rows[0];
   if (!row) throw new Error("Could not create property");

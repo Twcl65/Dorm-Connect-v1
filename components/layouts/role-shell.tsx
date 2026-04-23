@@ -39,7 +39,12 @@ export type RoleShellProps = {
   userEmail?: string;
 };
 
-type MeUser = { name: string; email: string; role: string };
+type MeUser = {
+  name: string;
+  email: string;
+  role: string;
+  profileImageUrl?: string | null;
+};
 
 export function RoleShell({
   roleLabel,
@@ -52,18 +57,27 @@ export function RoleShell({
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [me, setMe] = useState<MeUser | null>(null);
   const pathname = usePathname();
+  const settingsHref = `/${pathname.split("/").filter(Boolean)[0] ?? ""}/settings`;
 
   useEffect(() => {
     if (userDisplayNameProp != null && userEmailProp != null) return;
     let cancelled = false;
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { user?: MeUser } | null) => {
-        if (!cancelled && data?.user) setMe(data.user);
-      })
-      .catch(() => {});
+    const load = () => {
+      fetch("/api/auth/me", { credentials: "include" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { user?: MeUser } | null) => {
+          if (!cancelled && data?.user) setMe(data.user);
+        })
+        .catch(() => {});
+    };
+    load();
+    const onUpdated = () => {
+      if (!cancelled) load();
+    };
+    window.addEventListener("dc-profile-updated", onUpdated);
     return () => {
       cancelled = true;
+      window.removeEventListener("dc-profile-updated", onUpdated);
     };
   }, [userDisplayNameProp, userEmailProp]);
 
@@ -161,8 +175,15 @@ export function RoleShell({
             </div>
 
             <div className="relative flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-[0.65rem] font-semibold">
-                {me || userDisplayNameProp ? (
+              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground text-[0.65rem] font-semibold ring-2 ring-white/10">
+                {me?.profileImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={me.profileImageUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : me || userDisplayNameProp ? (
                   <span className="leading-none">{initials}</span>
                 ) : (
                   <UserIcon className="h-4 w-4" />
@@ -189,13 +210,14 @@ export function RoleShell({
               </button>
 
               {isProfileOpen && (
-                <div className="absolute right-0 top-10 w-40 rounded-md border border-slate-700 bg-[#031C2E] text-xs shadow-lg">
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-2 text-left text-slate-100 hover:bg-white/10"
+                <div className="absolute right-0 top-10 z-50 w-48 rounded-md border border-slate-700 bg-[#031C2E] text-xs shadow-lg">
+                  <Link
+                    href={settingsHref}
+                    className="block px-3 py-2 text-left text-slate-100 hover:bg-white/10"
+                    onClick={() => setIsProfileOpen(false)}
                   >
-                    Settings
-                  </button>
+                    Account &amp; settings
+                  </Link>
                   <button
                     type="button"
                     className="block w-full px-3 py-2 text-left text-rose-200 hover:bg-white/10"
@@ -218,7 +240,7 @@ export function RoleShell({
           </header>
 
           {/* Mobile header */}
-          <header className="flex md:hidden h-14 items-center justify-between gap-3 border-b border-[#031C2E] bg-[#031C2E] px-4 text-slate-100">
+          <header className="relative flex md:hidden h-14 items-center justify-between gap-3 border-b border-[#031C2E] bg-[#031C2E] px-4 text-slate-100">
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -234,10 +256,53 @@ export function RoleShell({
             <button
               type="button"
               onClick={() => setIsProfileOpen((open) => !open)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground"
+              className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground ring-2 ring-white/10"
             >
-              <UserIcon className="h-4 w-4" />
+              {me?.profileImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={me.profileImageUrl}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <UserIcon className="h-4 w-4" />
+              )}
             </button>
+
+            {isProfileOpen && (
+              <div className="absolute right-3 top-12 z-50 w-48 rounded-md border border-slate-700 bg-[#031C2E] text-xs shadow-lg">
+                <div className="border-b border-slate-600 px-3 py-2">
+                  <p className="truncate font-medium text-slate-100">{displayName}</p>
+                  {displayEmail ? (
+                    <p className="truncate text-[0.65rem] text-slate-400">{displayEmail}</p>
+                  ) : null}
+                </div>
+                <Link
+                  href={settingsHref}
+                  className="block px-3 py-2 text-left text-slate-100 hover:bg-white/10"
+                  onClick={() => setIsProfileOpen(false)}
+                >
+                  Account &amp; settings
+                </Link>
+                <button
+                  type="button"
+                  className="block w-full px-3 py-2 text-left text-rose-200 hover:bg-white/10"
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    void fetch("/api/auth/logout", {
+                      method: "POST",
+                      credentials: "include",
+                    }).finally(() => {
+                      router.push("/login");
+                      router.refresh();
+                    });
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </header>
 
           <main className="flex-1 bg-muted px-4 py-4 sm:px-6 sm:py-6 md:px-6 lg:px-8">

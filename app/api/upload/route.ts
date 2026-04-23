@@ -7,10 +7,13 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const session = await getSession();
-  if (
-    !session ||
-    (session.role !== "Owner" && session.role !== "Student")
-  ) {
+  const allowed =
+    session &&
+    (session.role === "Owner" ||
+      session.role === "Student" ||
+      session.role === "ICT Admin" ||
+      session.role === "OSA Admin");
+  if (!allowed) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

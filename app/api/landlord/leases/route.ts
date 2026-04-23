@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
+import {
+  ensureLandlordProperty,
+  landlordLog,
+  resolveDormDisplayName,
+} from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -41,14 +45,26 @@ export async function GET() {
     const formatPeriod = (a: string, b: string) =>
       `${new Date(a).toLocaleDateString("en-US", { month: "short", year: "numeric" })} - ${new Date(b).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
 
-    let propertyName = rows[0]?.property_name;
-    if (!propertyName) {
-      const { rows: pn } = await pool.query<{ name: string }>(
-        `SELECT name FROM public.landlord_properties WHERE owner_user_id = $1::uuid LIMIT 1`,
-        [ownerId]
-      );
-      propertyName = pn[0]?.name ?? "My property";
-    }
+    const { rows: pn } = await pool.query<{
+      name: string;
+      acc_dorm_name: string | null;
+    }>(
+      `SELECT p.name,
+              (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+               WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS acc_dorm_name
+       FROM public.landlord_properties p
+       WHERE p.owner_user_id = $1::uuid
+       ORDER BY p.created_at ASC
+       LIMIT 1`,
+      [ownerId]
+    );
+    const propertyName = resolveDormDisplayName(
+      pn[0]?.name,
+      pn[0]?.acc_dorm_name ?? null
+    );
 
     return NextResponse.json({
       propertyName,

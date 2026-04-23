@@ -55,7 +55,7 @@ export default function LandlordTenantsPage() {
   const [paymentFilter, setPaymentFilter] =
     useState<PaymentStatus | "all">("all");
   const [tenantsData, setTenantsData] = useState<Tenant[]>([]);
-  const [propertyName, setPropertyName] = useState("My property");
+  const [propertyName, setPropertyName] = useState("");
   const [stats, setStats] = useState({
     total: 0,
     activeLeases: 0,
@@ -105,7 +105,7 @@ export default function LandlordTenantsPage() {
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
-      setPropertyName(json.propertyName ?? "My property");
+      setPropertyName(json.propertyName ?? "");
       setTenantsData(json.leases ?? []);
       if (json.stats) setStats(json.stats);
     } catch (e) {
