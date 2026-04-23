@@ -67,28 +67,107 @@ export async function GET() {
       reservations.find((r) => r.reservationStatus === "Pending") ??
       null;
 
-    const { rows: payRows } = await pool.query<{
+    const { rows: appPayRows } = await pool.query<{
       amount: string;
       status: string;
       paid_at: Date | null;
+      created_at: Date;
     }>(
-      `SELECT amount::text, status, paid_at
+      `SELECT amount::text, status, paid_at, created_at
        FROM public.student_payment_records
        WHERE student_user_id = $1::uuid
        ORDER BY created_at DESC
        LIMIT 1`,
       [studentId]
     );
-    const latest = payRows[0];
-    const latestPayment = latest
-      ? {
-          amount: Number(latest.amount),
-          status: latest.status as "Paid" | "Pending" | "Failed",
-          paidAtLabel: latest.paid_at
-            ? new Date(latest.paid_at).toLocaleString()
+
+    const { rows: landlordPayRows } = await pool.query<{
+      amount: string;
+      status: string;
+      paid_on: string | null;
+      created_at: Date;
+    }>(
+      `SELECT lp.amount::text, lp.status, lp.paid_on::text, lp.created_at
+       FROM public.landlord_payments lp
+       JOIN public.landlord_rooms r ON r.id = lp.room_id
+       JOIN public.student_dorm_reservations s ON s.room_id = r.id
+         AND s.student_user_id = $1::uuid
+         AND s.status IN ('Pending', 'Confirmed')
+       JOIN public.boarding_house_app_users stu ON stu.id = s.student_user_id
+       WHERE lower(trim(lp.payer_name)) = lower(trim(stu.full_name))
+       ORDER BY COALESCE(lp.paid_on::date, lp.created_at::date) DESC, lp.created_at DESC
+       LIMIT 1`,
+      [studentId]
+    );
+
+    const app = appPayRows[0];
+    const lp = landlordPayRows[0];
+
+    const appTs = app
+      ? (app.paid_at ?? app.created_at).getTime()
+      : -1;
+    const lpTs = lp
+      ? lp.paid_on?.trim()
+        ? new Date(`${lp.paid_on.trim().slice(0, 10)}T12:00:00`).getTime()
+        : new Date(lp.created_at).getTime()
+      : -1;
+
+    let latestPayment: {
+      amount: number;
+      status: string;
+      paidAtLabel: string | null;
+      source: "student_app" | "landlord_entry";
+    } | null = null;
+
+    if (app && lp) {
+      if (appTs >= lpTs) {
+        latestPayment = {
+          amount: Number(app.amount),
+          status: app.status,
+          paidAtLabel: app.paid_at
+            ? new Date(app.paid_at).toLocaleString()
             : null,
-        }
-      : null;
+          source: "student_app",
+        };
+      } else {
+        const paidOn = lp.paid_on?.trim()?.slice(0, 10);
+        latestPayment = {
+          amount: Number(lp.amount),
+          status: lp.status,
+          paidAtLabel: paidOn
+            ? new Date(`${paidOn}T12:00:00`).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })
+            : `Recorded ${new Date(lp.created_at).toLocaleString()}`,
+          source: "landlord_entry",
+        };
+      }
+    } else if (app) {
+      latestPayment = {
+        amount: Number(app.amount),
+        status: app.status,
+        paidAtLabel: app.paid_at
+          ? new Date(app.paid_at).toLocaleString()
+          : null,
+        source: "student_app",
+      };
+    } else if (lp) {
+      const paidOn = lp.paid_on?.trim()?.slice(0, 10);
+      latestPayment = {
+        amount: Number(lp.amount),
+        status: lp.status,
+        paidAtLabel: paidOn
+          ? new Date(`${paidOn}T12:00:00`).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : `Recorded ${new Date(lp.created_at).toLocaleString()}`,
+        source: "landlord_entry",
+      };
+    }
 
     return NextResponse.json({
       reservations,

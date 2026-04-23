@@ -13,14 +13,17 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Users, UserX, Edit3, Eye, Loader2 } from "lucide-react";
+import { Users, Edit3, Eye, Loader2 } from "lucide-react";
 import type { BoardingHouseUserDto } from "@/lib/boarding-house-users";
+import {
+  PasswordInputWithToggle,
+  ViewPasswordPlaceholder,
+} from "@/components/password-input-with-toggle";
 
-function countByRole(users: BoardingHouseUserDto[], role: string): number {
-  return users.filter((u) => u.role === role).length;
-}
+const DASHBOARD_TABLE_LIMIT = 5;
 
 type SystemStats = {
+  totalUsers: number;
   dormitories: number;
   rooms: number;
   studentReservations: number;
@@ -51,6 +54,8 @@ export default function AdminDashboardPage() {
   const [formEmail, setFormEmail] = useState("");
   const [formRole, setFormRole] = useState("Student");
   const [formStatus, setFormStatus] = useState("Active");
+  const [formStudentId, setFormStudentId] = useState("");
+  const [formNewPassword, setFormNewPassword] = useState("");
 
   const loadUsers = useCallback(async () => {
     setListError(null);
@@ -81,6 +86,7 @@ export default function AdminDashboardPage() {
         throw new Error(data.error ?? "Could not load system stats.");
       }
       setSystemStats({
+        totalUsers: data.totalUsers,
         dormitories: data.dormitories,
         rooms: data.rooms,
         studentReservations: data.studentReservations,
@@ -98,31 +104,16 @@ export default function AdminDashboardPage() {
     void loadSystemStats();
   }, [loadUsers, loadSystemStats]);
 
-  const stats = useMemo(() => {
-    const total = users.length;
-    const active = users.filter((u) => u.status === "Active").length;
-    const pending = users.filter((u) => u.status === "Pending").length;
-    const inactive = users.filter((u) => u.status === "Inactive").length;
-    return {
-      total,
-      active,
-      pending,
-      inactive,
-      ictAdmin: countByRole(users, "ICT Admin"),
-      osa: countByRole(users, "OSA Admin"),
-      owners: countByRole(users, "Owner"),
-      students: countByRole(users, "Student"),
-    };
-  }, [users]);
-
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
+      const sid = (u.studentId ?? "").toLowerCase();
       const matchesSearch =
         !q ||
         u.name.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
-        u.displayId.toLowerCase().includes(q);
+        u.displayId.toLowerCase().includes(q) ||
+        (sid && sid.includes(q));
       const matchesRole =
         roleFilter === "All roles" || u.role === roleFilter;
       const matchesStatus =
@@ -130,6 +121,11 @@ export default function AdminDashboardPage() {
       return matchesSearch && matchesRole && matchesStatus;
     });
   }, [users, search, roleFilter, statusFilter]);
+
+  const dashboardTableUsers = useMemo(
+    () => filteredUsers.slice(0, DASHBOARD_TABLE_LIMIT),
+    [filteredUsers]
+  );
 
   const submitEdit = async () => {
     if (!selectedUser) return;
@@ -145,6 +141,8 @@ export default function AdminDashboardPage() {
           email: formEmail,
           role: formRole,
           status: formStatus,
+          studentId: formStudentId.trim() ? formStudentId.trim() : null,
+          newPassword: formNewPassword.trim() || undefined,
         }),
       });
       const data = (await res.json()) as { error?: string };
@@ -153,6 +151,7 @@ export default function AdminDashboardPage() {
       }
       setShowEditDialog(false);
       setSelectedUser(null);
+      setFormNewPassword("");
       await loadUsers();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Could not update user.");
@@ -160,100 +159,6 @@ export default function AdminDashboardPage() {
       setSaving(false);
     }
   };
-
-  const userCards = [
-    {
-      label: "ICT Admin",
-      value: String(stats.ictAdmin),
-      badge: "Registered",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "OSA Admin",
-      value: String(stats.osa),
-      badge: "Registered",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Landlords",
-      value: String(stats.owners),
-      badge: "Registered",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Students",
-      value: String(stats.students),
-      badge: "Registered",
-      badgeVariant: "secondary" as const,
-    },
-  ];
-
-  const systemOverviewCards = [
-    {
-      label: "Dormitories",
-      value: String(systemStats?.dormitories ?? "—"),
-      badge: "Properties",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Rooms listed",
-      value: String(systemStats?.rooms ?? "—"),
-      badge: "Inventory",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Student reservations",
-      value: String(systemStats?.studentReservations ?? "—"),
-      badge: "Flow",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Landlord reservations",
-      value: String(systemStats?.landlordReservations ?? "—"),
-      badge: "Manual",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Accredited (records)",
-      value: String(systemStats?.accredited ?? "—"),
-      badge: "OSA",
-      badgeVariant: "success" as const,
-    },
-    {
-      label: "Accreditation queue",
-      value: String(systemStats?.pendingAccreditation ?? "—"),
-      badge: "Pending",
-      badgeVariant: "warning" as const,
-    },
-  ];
-
-  const overviewCards = [
-    {
-      label: "Total users",
-      value: String(stats.total),
-      badge: "All roles",
-      badgeVariant: "secondary" as const,
-    },
-    {
-      label: "Active",
-      value: String(stats.active),
-      badge: "Status",
-      badgeVariant: "success" as const,
-    },
-    {
-      label: "Pending",
-      value: String(stats.pending),
-      badge: "Status",
-      badgeVariant: "warning" as const,
-    },
-    {
-      label: "Inactive",
-      value: String(stats.inactive),
-      badge: "Status",
-      icon: UserX,
-      badgeVariant: "muted" as const,
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -274,85 +179,97 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {userCards.map((card) => (
-          <Card
-            key={card.label}
-            className="border border-gray-300 bg-white"
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                {card.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-end justify-between pt-0">
-              <p className="text-2xl font-semibold tracking-tight">
-                {loading ? "—" : card.value}
-              </p>
-              <Badge
-                variant={card.badgeVariant}
-                className="text-[0.7rem]"
-              >
-                {card.badge}
-              </Badge>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {overviewCards.map((card) => (
-          <Card
-            key={card.label}
-            className="border border-gray-300 bg-white shadow-sm"
-          >
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                {card.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-end justify-between pt-0">
-              <p className="text-2xl font-semibold tracking-tight">
-                {loading ? "—" : card.value}
-              </p>
-              <Badge
-                variant={card.badgeVariant}
-                className="text-[0.7rem]"
-              >
-                {card.badge}
-              </Badge>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <h4 className="text-sm font-semibold text-slate-800">
-        DormConnect operations
-      </h4>
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {systemOverviewCards.map((card) => (
-          <Card
-            key={card.label}
-            className="border border-gray-300 bg-white shadow-sm"
-          >
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                {card.label}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-end justify-between pt-0">
-              <p className="text-2xl font-semibold tracking-tight">
-                {card.value}
-              </p>
-              <Badge
-                variant={card.badgeVariant}
-                className="text-[0.7rem]"
-              >
-                {card.badge}
-              </Badge>
-            </CardContent>
-          </Card>
-        ))}
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Total users
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.totalUsers ?? "—"}
+            </p>
+            <Badge variant="secondary" className="text-[0.7rem]">
+              All roles
+            </Badge>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Total dorms available
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.dormitories ?? "—"}
+            </p>
+            <Badge variant="secondary" className="text-[0.7rem]">
+              Properties
+            </Badge>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Total rooms listed
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.rooms ?? "—"}
+            </p>
+            <Badge variant="secondary" className="text-[0.7rem]">
+              Dorm capacity
+            </Badge>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Accredited dorms
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.accredited ?? "—"}
+            </p>
+            <Badge variant="secondary" className="text-[0.7rem]">
+              Approved
+            </Badge>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Pending dorm approvals
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.pendingAccreditation ?? "—"}
+            </p>
+            <Badge variant="secondary" className="text-[0.7rem]">
+              For review
+            </Badge>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Student reservation requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.studentReservations ?? "—"}
+            </p>
+            <Badge variant="secondary" className="text-[0.7rem]">
+              Overall
+            </Badge>
+          </CardContent>
+        </Card>
       </section>
 
       <Card className="border border-gray-300 bg-white">
@@ -364,7 +281,8 @@ export default function AdminDashboardPage() {
                 Registered Users
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                List of all registered users.
+                Preview of up to {DASHBOARD_TABLE_LIMIT} users. Open User
+                Management for the full list.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -412,6 +330,7 @@ export default function AdminDashboardPage() {
                   <TableHead>Profile</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Student ID</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right pr-4 font-semibold text-slate-600">
@@ -421,16 +340,16 @@ export default function AdminDashboardPage() {
               </TableHeader>
               <TableBody>
                 {filteredUsers.length === 0 ? (
-                  <TableRow>
+                    <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="py-8 text-center text-xs text-muted-foreground"
                     >
                       No users match your filters.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredUsers.map((user) => (
+                  dashboardTableUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="text-xs font-mono text-slate-500">
                         {user.displayId}
@@ -449,6 +368,9 @@ export default function AdminDashboardPage() {
                       </TableCell>
                       <TableCell className="text-xs text-slate-600">
                         {user.email}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-slate-600">
+                        {user.studentId ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
                         {user.role === "Owner" ? "Landlord" : user.role}
@@ -480,6 +402,8 @@ export default function AdminDashboardPage() {
                               setFormEmail(user.email);
                               setFormRole(user.role);
                               setFormStatus(user.status);
+                              setFormStudentId(user.studentId ?? "");
+                              setFormNewPassword("");
                               setShowEditDialog(true);
                             }}
                           >
@@ -511,7 +435,11 @@ export default function AdminDashboardPage() {
             <p className="text-[0.7rem] text-muted-foreground">
               {loading
                 ? " "
-                : `Showing ${filteredUsers.length} of ${users.length} user${users.length === 1 ? "" : "s"}`}
+                : filteredUsers.length === 0
+                  ? "No users match your filters."
+                  : filteredUsers.length <= DASHBOARD_TABLE_LIMIT
+                    ? `Showing ${filteredUsers.length} of ${users.length} user${users.length === 1 ? "" : "s"}.`
+                    : `Showing first ${DASHBOARD_TABLE_LIMIT} of ${filteredUsers.length} matching users (${users.length} total). Use User Management for the full list.`}
             </p>
           </div>
         </CardContent>
@@ -588,6 +516,22 @@ export default function AdminDashboardPage() {
                   <option value="Pending">Pending</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+                <span className="text-[0.7rem]">Student ID</span>
+                <Input
+                  value={formStudentId}
+                  onChange={(e) => setFormStudentId(e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="School ID (students)"
+                  disabled={saving}
+                />
+                <span className="text-[0.7rem]">New password</span>
+                <PasswordInputWithToggle
+                  value={formNewPassword}
+                  onChange={(e) => setFormNewPassword(e.target.value)}
+                  placeholder="Leave blank to keep current"
+                  autoComplete="new-password"
+                  disabled={saving}
+                />
                 <span className="text-[0.7rem]">Created Date</span>
                 <Input
                   value={selectedUser.createdDate}
@@ -673,6 +617,18 @@ export default function AdminDashboardPage() {
                   readOnly
                   className="h-8 text-xs"
                 />
+                <span className="text-[0.7rem]">Student ID</span>
+                <Input
+                  value={selectedUser.studentId ?? "—"}
+                  readOnly
+                  className="h-8 text-xs"
+                />
+                <span className="text-[0.7rem]">Password</span>
+                <ViewPasswordPlaceholder />
+                <p className="md:col-span-2 text-[0.65rem] text-muted-foreground -mt-1">
+                  Toggle the eye to see why the password cannot be displayed.
+                  Use Edit to set a new password.
+                </p>
                 <span className="text-[0.7rem]">Role</span>
                 <Input
                   value={selectedUser.role}

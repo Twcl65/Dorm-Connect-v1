@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -31,6 +37,10 @@ type Room = {
   listingLocation?: string;
   listingDescription?: string;
   listingImageUrls?: string[];
+  listingBackgroundUrl?: string;
+  roomImageUrls?: string[];
+  roomSizeLabel?: string;
+  roomDetails?: string;
 };
 
 type LeaseRow = {
@@ -46,6 +56,16 @@ type LeaseRow = {
 };
 
 const ROWS_PER_PAGE = 5;
+
+/** Prefill listing description from room record (other details + remarks). */
+function listingDescriptionFromRoom(room: Room): string {
+  const details = room.roomDetails?.trim();
+  const remarks = room.remarks?.trim();
+  const parts: string[] = [];
+  if (details) parts.push(details);
+  if (remarks) parts.push(remarks);
+  return parts.join("\n\n");
+}
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const colorClasses =
@@ -122,6 +142,9 @@ export default function LandlordRoomsPage() {
   const [newRoomCapacity, setNewRoomCapacity] = useState("4");
   const [newRoomRate, setNewRoomRate] = useState("4000");
   const [newRoomRemarks, setNewRoomRemarks] = useState("");
+  const [newRoomSizeLabel, setNewRoomSizeLabel] = useState("");
+  const [newRoomDetails, setNewRoomDetails] = useState("");
+  const [newRoomPhotoFiles, setNewRoomPhotoFiles] = useState<File[]>([]);
 
   const [showUpdateAvailabilityDialog, setShowUpdateAvailabilityDialog] =
     useState(false);
@@ -139,6 +162,10 @@ export default function LandlordRoomsPage() {
   const [listingDescription, setListingDescription] = useState("");
   const [listingImagesInfo, setListingImagesInfo] = useState<string[]>([]);
   const [listingPhotoFiles, setListingPhotoFiles] = useState<File[]>([]);
+  const [listingBackgroundFile, setListingBackgroundFile] = useState<File | null>(
+    null
+  );
+  const [previewRoomImages, setPreviewRoomImages] = useState<string[]>([]);
 
   const [selectedTenant, setSelectedTenant] = useState<LeaseRow | null>(null);
   const [showTenantEditDialog, setShowTenantEditDialog] = useState(false);
@@ -178,6 +205,15 @@ export default function LandlordRoomsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!showAddRoomDialog && !showPostListingDialog) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [showAddRoomDialog, showPostListingDialog]);
 
   const summaryCards = useMemo(
     () => [
@@ -374,6 +410,11 @@ export default function LandlordRoomsPage() {
                         setManageMenuOpen(false);
                         setListingPhotoFiles([]);
                         setListingImagesInfo([]);
+                        setListingBackgroundFile(null);
+                        setPreviewRoomImages([]);
+                        setListingRoomId("");
+                        setListingDescription("");
+                        setListingLocation("");
                         setShowPostListingDialog(true);
                       }}
                     >
@@ -556,9 +597,9 @@ export default function LandlordRoomsPage() {
 
       {/* Add Room dialog */}
       {showAddRoomDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-md border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+          <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg">
+            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
@@ -579,29 +620,29 @@ export default function LandlordRoomsPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
-              <div className="space-y-1">
-                <label className="text-[0.75rem] font-medium text-slate-800">
-                  Dorm Name
-                </label>
-                <Input
-                  value={propertyName}
-                  disabled
-                  className="h-8 text-xs bg-muted"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[0.75rem] font-medium text-slate-800">
-                  Room No.
-                </label>
-                <Input
-                  value={newRoomNo}
-                  onChange={(e) => setNewRoomNo(e.target.value)}
-                  className="h-8 text-xs"
-                  placeholder="e.g. 101"
-                />
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
+            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-slate-800 sm:px-6">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Dorm Name
+                  </label>
+                  <Input
+                    value={propertyName}
+                    disabled
+                    className="h-8 text-xs bg-muted"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Room No.
+                  </label>
+                  <Input
+                    value={newRoomNo}
+                    onChange={(e) => setNewRoomNo(e.target.value)}
+                    className="h-8 text-xs"
+                    placeholder="e.g. 101"
+                  />
+                </div>
                 <div className="space-y-1">
                   <label className="text-[0.75rem] font-medium text-slate-800">
                     Capacity
@@ -626,70 +667,122 @@ export default function LandlordRoomsPage() {
                     className="h-8 text-xs"
                   />
                 </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[0.75rem] font-medium text-slate-800">
-                  Remarks
-                </label>
-                <Textarea
-                  value={newRoomRemarks}
-                  onChange={(e) => setNewRoomRemarks(e.target.value)}
-                  className="min-h-[70px] text-xs"
-                  placeholder="Optional notes about this room..."
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setShowAddRoomDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  disabled={newRoomNo.trim().length === 0 || saving}
-                  onClick={async () => {
-                    setSaving(true);
-                    try {
-                      const res = await fetch("/api/landlord/rooms", {
-                        method: "POST",
-                        credentials: "include",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          roomNo: newRoomNo.trim(),
-                          capacity: Number(newRoomCapacity) || 1,
-                          rate: Number(newRoomRate) || 0,
-                          remarks: newRoomRemarks.trim() || undefined,
-                          status: "Available",
-                        }),
-                      });
-                      const j = (await res.json()) as { error?: string };
-                      if (!res.ok) throw new Error(j.error ?? "Failed");
-                      setNewRoomNo("");
-                      setNewRoomCapacity("4");
-                      setNewRoomRate("4000");
-                      setNewRoomRemarks("");
-                      setShowAddRoomDialog(false);
-                      await loadData();
-                    } catch (e) {
-                      setLoadError(
-                        e instanceof Error ? e.message : "Failed to add room"
-                      );
-                    } finally {
-                      setSaving(false);
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Room size
+                  </label>
+                  <Input
+                    value={newRoomSizeLabel}
+                    onChange={(e) => setNewRoomSizeLabel(e.target.value)}
+                    className="h-8 text-xs"
+                    placeholder="e.g. 12 sqm or 3×4 m"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Room photos (multiple)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="h-8 cursor-pointer text-xs"
+                    onChange={(e) =>
+                      setNewRoomPhotoFiles(
+                        Array.from(e.target.files ?? []).slice(0, 12)
+                      )
                     }
-                  }}
-                >
-                  {saving ? "Saving…" : "Add Room"}
-                </Button>
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Other details
+                  </label>
+                  <Textarea
+                    value={newRoomDetails}
+                    onChange={(e) => setNewRoomDetails(e.target.value)}
+                    rows={2}
+                    className="min-h-[52px] resize-y text-xs"
+                    placeholder="Amenities, furnishing, notes…"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Remarks
+                  </label>
+                  <Textarea
+                    value={newRoomRemarks}
+                    onChange={(e) => setNewRoomRemarks(e.target.value)}
+                    rows={2}
+                    className="min-h-[52px] resize-y text-xs"
+                    placeholder="Optional notes about this room..."
+                  />
+                </div>
               </div>
             </CardContent>
+            <CardFooter className="shrink-0 justify-end gap-2 border-t bg-muted/30 py-3 sm:px-6">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setShowAddRoomDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 px-3 text-xs"
+                disabled={newRoomNo.trim().length === 0 || saving}
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    let roomImageUrls: string[] = [];
+                    if (newRoomPhotoFiles.length > 0) {
+                      roomImageUrls = await uploadDormConnectFiles(
+                        newRoomPhotoFiles
+                      );
+                    }
+                    const res = await fetch("/api/landlord/rooms", {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        roomNo: newRoomNo.trim(),
+                        capacity: Number(newRoomCapacity) || 1,
+                        rate: Number(newRoomRate) || 0,
+                        remarks: newRoomRemarks.trim() || undefined,
+                        status: "Available",
+                        roomSizeLabel: newRoomSizeLabel.trim() || undefined,
+                        roomDetails: newRoomDetails.trim() || undefined,
+                        roomImageUrls:
+                          roomImageUrls.length > 0 ? roomImageUrls : undefined,
+                      }),
+                    });
+                    const j = (await res.json()) as { error?: string };
+                    if (!res.ok) throw new Error(j.error ?? "Failed");
+                    setNewRoomNo("");
+                    setNewRoomCapacity("4");
+                    setNewRoomRate("4000");
+                    setNewRoomRemarks("");
+                    setNewRoomSizeLabel("");
+                    setNewRoomDetails("");
+                    setNewRoomPhotoFiles([]);
+                    setShowAddRoomDialog(false);
+                    await loadData();
+                  } catch (e) {
+                    setLoadError(
+                      e instanceof Error ? e.message : "Failed to add room"
+                    );
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? "Saving…" : "Add Room"}
+              </Button>
+            </CardFooter>
           </Card>
         </div>
       )}
@@ -910,9 +1003,9 @@ export default function LandlordRoomsPage() {
 
       {/* Post listing dialog */}
       {showPostListingDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-2xl border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+          <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg">
+            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
@@ -931,14 +1024,18 @@ export default function LandlordRoomsPage() {
                     setShowPostListingDialog(false);
                     setListingPhotoFiles([]);
                     setListingImagesInfo([]);
+                    setListingBackgroundFile(null);
+                    setPreviewRoomImages([]);
+                    setListingDescription("");
+                    setListingLocation("");
                   }}
                 >
                   Close
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
-              <div className="grid gap-3 md:grid-cols-2">
+            <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-slate-800 sm:px-6">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[0.75rem] font-medium text-slate-800">
                     Dorm Name
@@ -960,9 +1057,6 @@ export default function LandlordRoomsPage() {
                     className="h-8 text-xs"
                   />
                 </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-[0.75rem] font-medium text-slate-800">
                     Room No.
@@ -978,10 +1072,14 @@ export default function LandlordRoomsPage() {
                         setListingCapacity(String(room.capacity));
                         setListingRate(String(room.rate));
                         setListingStatus(room.status);
+                        setPreviewRoomImages(room.roomImageUrls ?? []);
+                        setListingDescription(listingDescriptionFromRoom(room));
                       } else {
                         setListingCapacity("");
                         setListingRate("");
                         setListingStatus("");
+                        setPreviewRoomImages([]);
+                        setListingDescription("");
                       }
                     }}
                   >
@@ -1022,53 +1120,70 @@ export default function LandlordRoomsPage() {
                     </p>
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-[0.75rem] font-medium text-slate-800">
-                  Description
-                </label>
-                <Textarea
-                  value={listingDescription}
-                  onChange={(e) => setListingDescription(e.target.value)}
-                  className="min-h-[80px] text-xs"
-                  placeholder="Describe the room, nearby landmarks, and house rules..."
-                />
-              </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Description
+                  </label>
+                  <p className="text-[0.65rem] text-muted-foreground -mt-0.5 mb-1">
+                    Filled from the room&apos;s &quot;Other details&quot; and
+                    &quot;Remarks&quot; when you pick a room. Edit as needed.
+                  </p>
+                  <Textarea
+                    value={listingDescription}
+                    onChange={(e) => setListingDescription(e.target.value)}
+                    rows={3}
+                    className="min-h-[72px] resize-y text-xs"
+                    placeholder="Select a room to pull details, or type your listing text…"
+                  />
+                </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-[0.75rem] font-medium text-slate-800">
-                  Room Photos (up to 4)
-                </label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="h-8 cursor-pointer text-xs"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []).slice(0, 4);
-                    setListingPhotoFiles(files);
-                    setListingImagesInfo(files.map((file) => file.name));
-                  }}
-                />
-                <p className="text-[0.65rem] text-muted-foreground">
-                  Up to 4 images (JPG, PNG, WebP, GIF). Files are saved on the
-                  server and shown to students browsing this listing.
-                </p>
-                {listingImagesInfo.length > 0 && (
-                  <ul className="mt-1 list-disc pl-4 text-[0.65rem] text-slate-700">
-                    {listingImagesInfo.map((name) => (
-                      <li key={name}>{name}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
                 <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Listing background (cover)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    className="h-8 cursor-pointer text-xs"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setListingBackgroundFile(f);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Extra listing photos (optional)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="h-8 cursor-pointer text-xs"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []).slice(0, 4);
+                      setListingPhotoFiles(files);
+                      setListingImagesInfo(files.map((file) => file.name));
+                    }}
+                  />
+                  <p className="text-[0.65rem] text-muted-foreground">
+                    Added to room photos (up to 4).
+                  </p>
+                  {listingImagesInfo.length > 0 && (
+                    <ul className="mt-1 list-disc pl-4 text-[0.65rem] text-slate-700">
+                      {listingImagesInfo.map((name) => (
+                        <li key={name}>{name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-[0.75rem] font-medium text-slate-800">
                     Accreditation & Safety
                   </label>
-                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[0.7rem]">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[0.7rem] md:inline-block md:min-w-[240px]">
                     <p>
                       Accreditation:{" "}
                       <span className="font-semibold text-emerald-700">
@@ -1083,85 +1198,115 @@ export default function LandlordRoomsPage() {
                     </p>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => {
-                    setShowPostListingDialog(false);
-                    setListingPhotoFiles([]);
-                    setListingImagesInfo([]);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  disabled={
-                    !listingRoomId ||
-                    !listingLocation ||
-                    !listingDescription ||
-                    saving
-                  }
-                  onClick={async () => {
-                    setSaving(true);
-                    try {
-                      let listingImageUrls: string[] | undefined;
-                      if (listingPhotoFiles.length > 0) {
-                        listingImageUrls = await uploadDormConnectFiles(
-                          listingPhotoFiles
-                        );
-                      }
-                      const payload: Record<string, unknown> = {
-                        isListed: true,
-                        listingLocation: listingLocation.trim(),
-                        listingDescription: listingDescription.trim(),
-                      };
-                      if (listingImageUrls && listingImageUrls.length > 0) {
-                        payload.listingImageUrls = listingImageUrls;
-                      }
-                      const res = await fetch(
-                        `/api/landlord/rooms/${listingRoomId}`,
-                        {
-                          method: "PATCH",
-                          credentials: "include",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify(payload),
-                        }
-                      );
-                      const j = (await res.json()) as { error?: string };
-                      if (!res.ok) throw new Error(j.error ?? "Failed");
-                      setShowPostListingDialog(false);
-                      setListingLocation("");
-                      setListingRoomId("");
-                      setListingCapacity("");
-                      setListingRate("");
-                      setListingStatus("");
-                      setListingDescription("");
-                      setListingImagesInfo([]);
-                      setListingPhotoFiles([]);
-                      await loadData();
-                    } catch (e) {
-                      setLoadError(
-                        e instanceof Error
-                          ? e.message
-                          : "Failed to post listing"
-                      );
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  {saving ? "Saving…" : "Post Listing"}
-                </Button>
+                {listingRoomId && previewRoomImages.length > 0 && (
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[0.75rem] font-medium text-slate-800">
+                      Room images (from room record)
+                    </label>
+                    <div className="flex flex-wrap gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+                      {previewRoomImages.map((url) => (
+                        <img
+                          key={url}
+                          src={url}
+                          alt=""
+                          className="h-20 w-28 rounded border object-cover"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
+            <CardFooter className="shrink-0 justify-end gap-2 border-t bg-muted/30 py-3 sm:px-6">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => {
+                  setShowPostListingDialog(false);
+                  setListingPhotoFiles([]);
+                  setListingImagesInfo([]);
+                  setListingBackgroundFile(null);
+                  setPreviewRoomImages([]);
+                  setListingDescription("");
+                  setListingLocation("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 px-3 text-xs"
+                disabled={
+                  !listingRoomId ||
+                  !listingLocation?.trim() ||
+                  !listingDescription?.trim() ||
+                  saving
+                }
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const selected = rooms.find((r) => r.id === listingRoomId);
+                    const baseRoom = selected?.roomImageUrls ?? [];
+                    let extra: string[] = [];
+                    if (listingPhotoFiles.length > 0) {
+                      extra = await uploadDormConnectFiles(listingPhotoFiles);
+                    }
+                    const merged = [...new Set([...baseRoom, ...extra])];
+                    let listingBackgroundUrl: string | null = null;
+                    if (listingBackgroundFile) {
+                      const [bg] = await uploadDormConnectFiles([
+                        listingBackgroundFile,
+                      ]);
+                      listingBackgroundUrl = bg;
+                    }
+                    const payload: Record<string, unknown> = {
+                      isListed: true,
+                      listingLocation: listingLocation.trim(),
+                      listingDescription: listingDescription.trim(),
+                      listingImageUrls: merged,
+                    };
+                    if (listingBackgroundUrl) {
+                      payload.listingBackgroundUrl = listingBackgroundUrl;
+                    }
+                    const res = await fetch(
+                      `/api/landlord/rooms/${listingRoomId}`,
+                      {
+                        method: "PATCH",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                      }
+                    );
+                    const j = (await res.json()) as { error?: string };
+                    if (!res.ok) throw new Error(j.error ?? "Failed");
+                    setShowPostListingDialog(false);
+                    setListingLocation("");
+                    setListingRoomId("");
+                    setListingCapacity("");
+                    setListingRate("");
+                    setListingStatus("");
+                    setListingDescription("");
+                    setListingImagesInfo([]);
+                    setListingPhotoFiles([]);
+                    setListingBackgroundFile(null);
+                    setPreviewRoomImages([]);
+                    await loadData();
+                  } catch (e) {
+                    setLoadError(
+                      e instanceof Error ? e.message : "Failed to post listing"
+                    );
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? "Saving…" : "Post Listing"}
+              </Button>
+            </CardFooter>
           </Card>
         </div>
       )}

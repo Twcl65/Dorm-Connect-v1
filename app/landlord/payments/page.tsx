@@ -34,6 +34,7 @@ type Payment = {
   referenceNo?: string;
   proofOfPaymentUrl?: string;
   date?: string;
+  periodLabel?: string;
 };
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
@@ -74,22 +75,47 @@ export default function LandlordPaymentsPage() {
   const [editProof, setEditProof] = useState("");
   const [proofUploading, setProofUploading] = useState(false);
 
+  const [onsiteRoomNo, setOnsiteRoomNo] = useState("");
+  const [onsiteRoomHints, setOnsiteRoomHints] = useState<
+    { roomNo: string; suggestedTenantName: string | null }[]
+  >([]);
+  const [onsitePayerName, setOnsitePayerName] = useState("");
+  const [onsiteAmount, setOnsiteAmount] = useState("");
+  const [onsitePaidOn, setOnsitePaidOn] = useState("");
+  const [onsiteProofFile, setOnsiteProofFile] = useState<File | null>(null);
+  const [onsiteError, setOnsiteError] = useState<string | null>(null);
+  const [onsiteSaving, setOnsiteSaving] = useState(false);
+  const [showOnsiteDialog, setShowOnsiteDialog] = useState(false);
+
   const loadData = useCallback(async () => {
     setLoadError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/landlord/payments", {
-        credentials: "include",
-      });
-      const json = (await res.json()) as {
+      const [payRes, hintsRes] = await Promise.all([
+        fetch("/api/landlord/payments", { credentials: "include" }),
+        fetch("/api/landlord/payments/onsite-hints", {
+          credentials: "include",
+        }),
+      ]);
+      const json = (await payRes.json()) as {
         payments?: Payment[];
         error?: string;
       };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load");
+      const hj = (await hintsRes.json()) as {
+        rooms?: { roomNo: string; suggestedTenantName: string | null }[];
+        error?: string;
+      };
+      if (!payRes.ok) throw new Error(json.error ?? "Failed to load");
       setPaymentsList(json.payments ?? []);
+      if (hintsRes.ok && hj.rooms) {
+        setOnsiteRoomHints(hj.rooms);
+      } else {
+        setOnsiteRoomHints([]);
+      }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
       setPaymentsList([]);
+      setOnsiteRoomHints([]);
     } finally {
       setLoading(false);
     }
@@ -140,6 +166,15 @@ export default function LandlordPaymentsPage() {
     setPage((p) => Math.min(p, Math.max(1, totalPages)));
   }, [totalPages]);
 
+  useEffect(() => {
+    if (!showDetailsDialog && !showOnsiteDialog) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [showDetailsDialog, showOnsiteDialog]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -150,23 +185,36 @@ export default function LandlordPaymentsPage() {
             rooms.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => void loadData()}
-          disabled={loading}
-        >
-          {loading ? (
-            <>
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              Loading…
-            </>
-          ) : (
-            "Refresh"
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => {
+              setOnsiteError(null);
+              setShowOnsiteDialog(true);
+            }}
+          >
+            Record onsite payment
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => void loadData()}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Loading…
+              </>
+            ) : (
+              "Refresh"
+            )}
+          </Button>
+        </div>
       </div>
 
       {loadError && (
@@ -218,6 +266,7 @@ export default function LandlordPaymentsPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Source</TableHead>
+                <TableHead>Period</TableHead>
                 <TableHead>Room No.</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Amount</TableHead>
@@ -232,7 +281,7 @@ export default function LandlordPaymentsPage() {
               {paginatedPayments.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-8 text-center text-xs text-muted-foreground"
                   >
                     {loading ? "Loading…" : "No payment records yet."}
@@ -246,6 +295,9 @@ export default function LandlordPaymentsPage() {
                   </TableCell>
                   <TableCell className="text-xs text-slate-600">
                     {p.source === "student" ? "Student app" : "Manual"}
+                  </TableCell>
+                  <TableCell className="text-xs text-slate-700 whitespace-nowrap">
+                    {p.periodLabel ?? "—"}
                   </TableCell>
                   <TableCell className="text-xs text-slate-700">{p.roomNo}</TableCell>
                   <TableCell className="text-sm font-medium text-slate-800">
@@ -324,10 +376,190 @@ export default function LandlordPaymentsPage() {
         </CardContent>
       </Card>
 
+      {showOnsiteDialog && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+          <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-lg flex-col border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-sm font-semibold text-slate-800">
+                    Record onsite cash payment
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Log cash received at the dorm: room, tenant name, amount,
+                    date paid, and a photo of the receipt or signed slip.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 px-2 text-[0.7rem]"
+                  onClick={() => setShowOnsiteDialog(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-4 text-xs">
+              {onsiteError && (
+                <div className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[0.7rem] text-red-800">
+                  {onsiteError}
+                </div>
+              )}
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-medium text-slate-800">Room</label>
+                  {onsiteRoomHints.length > 0 ? (
+                    <select
+                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      value={onsiteRoomNo}
+                      onChange={(e) => {
+                        const no = e.target.value;
+                        setOnsiteRoomNo(no);
+                        const hint = onsiteRoomHints.find((h) => h.roomNo === no);
+                        setOnsitePayerName(
+                          hint?.suggestedTenantName?.trim() ?? ""
+                        );
+                      }}
+                    >
+                      <option value="">Select room</option>
+                      {onsiteRoomHints.map((h) => (
+                        <option key={h.roomNo} value={h.roomNo}>
+                          Room {h.roomNo}
+                          {h.suggestedTenantName
+                            ? ` — ${h.suggestedTenantName}`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      className="h-8 text-xs"
+                      placeholder="e.g. 07"
+                      value={onsiteRoomNo}
+                      onChange={(e) => setOnsiteRoomNo(e.target.value)}
+                    />
+                  )}
+                  <p className="text-[0.65rem] text-muted-foreground">
+                    {onsiteRoomHints.length > 0
+                      ? "Tenant name fills from an active booking or lease; you can edit it."
+                      : "Add rooms under Rooms first, or type the room number."}
+                  </p>
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-medium text-slate-800">Tenant name</label>
+                  <Input
+                    className="h-8 text-xs"
+                    placeholder="Student full name"
+                    value={onsitePayerName}
+                    onChange={(e) => setOnsitePayerName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-medium text-slate-800">Amount (₱)</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    className="h-8 text-xs"
+                    value={onsiteAmount}
+                    onChange={(e) => setOnsiteAmount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-medium text-slate-800">Paid on</label>
+                  <Input
+                    type="date"
+                    className="h-8 text-xs"
+                    value={onsitePaidOn}
+                    onChange={(e) => setOnsitePaidOn(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-medium text-slate-800">
+                    Proof (receipt / slip photo)
+                  </label>
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="h-8 cursor-pointer text-xs"
+                    onChange={(e) =>
+                      setOnsiteProofFile(e.target.files?.[0] ?? null)
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setShowOnsiteDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={
+                    onsiteSaving ||
+                    !onsiteRoomNo.trim() ||
+                    !onsitePayerName.trim() ||
+                    !onsiteAmount ||
+                    !onsitePaidOn ||
+                    !onsiteProofFile
+                  }
+                  onClick={async () => {
+                    setOnsiteError(null);
+                    setOnsiteSaving(true);
+                    try {
+                      const proofUrl = await uploadDormConnectFile(onsiteProofFile!);
+                      const res = await fetch("/api/landlord/payments", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          roomNo: onsiteRoomNo.trim(),
+                          payerName: onsitePayerName.trim(),
+                          amount: Number(onsiteAmount),
+                          method: "Cash",
+                          status: "Paid",
+                          paidOn: onsitePaidOn,
+                          proofUrl,
+                        }),
+                      });
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed to save");
+                      setOnsiteRoomNo("");
+                      setOnsitePayerName("");
+                      setOnsiteAmount("");
+                      setOnsitePaidOn("");
+                      setOnsiteProofFile(null);
+                      setShowOnsiteDialog(false);
+                      await loadData();
+                    } catch (e) {
+                      setOnsiteError(
+                        e instanceof Error ? e.message : "Could not save payment"
+                      );
+                    } finally {
+                      setOnsiteSaving(false);
+                    }
+                  }}
+                >
+                  {onsiteSaving ? "Saving…" : "Save onsite payment"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {showDetailsDialog && selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-xl border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+          <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-4xl flex-col border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
@@ -348,7 +580,7 @@ export default function LandlordPaymentsPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-3 text-xs text-slate-800">
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-slate-900">
                   {selectedPayment.name}

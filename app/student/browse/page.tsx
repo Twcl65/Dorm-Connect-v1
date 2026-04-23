@@ -5,7 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
+
+function normWs(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/** Avoid showing room "other details" twice when already part of the listing description. */
+function showRoomDetailsAside(
+  description: string,
+  roomDetails: string | null | undefined
+): boolean {
+  if (!roomDetails?.trim()) return false;
+  return !normWs(description).includes(normWs(roomDetails));
+}
 
 type DormReview = {
   author: string;
@@ -26,8 +39,11 @@ type Dorm = {
   landlord: string;
   roomType: string;
   capacity: string;
+  roomSizeLabel?: string | null;
+  roomDetails?: string | null;
   images: string[];
   reviewSummary: { avg: number | null; count: number };
+  myReservationStatus?: "Pending" | "Confirmed" | null;
 };
 
 export default function StudentBrowseDormsPage() {
@@ -43,12 +59,14 @@ export default function StudentBrowseDormsPage() {
   const [draftMaxPrice, setDraftMaxPrice] = useState("6000");
   const [selectedDorm, setSelectedDorm] = useState<Dorm | null>(null);
   const [showDormDialog, setShowDormDialog] = useState(false);
+  const [showTermsDialog, setShowTermsDialog] = useState(false);
   const [reservationStep, setReservationStep] = useState<1 | 2 | 3>(1);
   const [moveInDate, setMoveInDate] = useState("");
   const [leaseDuration, setLeaseDuration] = useState("12");
   const [dialogReviews, setDialogReviews] = useState<DormReview[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const loadListings = useCallback(async () => {
     setListError(null);
@@ -97,6 +115,24 @@ export default function StudentBrowseDormsPage() {
       cancelled = true;
     };
   }, [showDormDialog, selectedDorm?.id]);
+
+  useEffect(() => {
+    if (!showDormDialog) setLightboxUrl(null);
+  }, [showDormDialog]);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightboxUrl]);
 
   const filteredDorms = useMemo(
     () =>
@@ -268,24 +304,110 @@ export default function StudentBrowseDormsPage() {
                   ))}
                 </div>
               </div>
-              <Button
-                className="w-full mt-2"
-                size="sm"
-                onClick={() => {
-                  setSelectedDorm(dorm);
-                  setReservationStep(1);
-                  setMoveInDate("");
-                  setLeaseDuration("12");
-                  setSubmitError(null);
-                  setShowDormDialog(true);
-                }}
-              >
-                Reserve
-              </Button>
+              {dorm.myReservationStatus === "Pending" ? (
+                <Button
+                  type="button"
+                  className="w-full mt-2"
+                  size="sm"
+                  variant="secondary"
+                  disabled
+                >
+                  Sent booking request
+                </Button>
+              ) : dorm.myReservationStatus === "Confirmed" ? (
+                <Button
+                  type="button"
+                  className="w-full mt-2"
+                  size="sm"
+                  variant="secondary"
+                  disabled
+                >
+                  Booking confirmed
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="w-full mt-2"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedDorm(dorm);
+                    setSubmitError(null);
+                    setShowTermsDialog(true);
+                  }}
+                >
+                  Book Now
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
       </section>
+
+      {showTermsDialog && selectedDorm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <Card className="w-full max-w-lg border border-gray-300 bg-white max-h-[85vh] overflow-y-auto">
+            <CardHeader className="pb-2 border-b bg-muted/40">
+              <CardTitle className="text-sm font-semibold">
+                Terms & conditions
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Please read before booking {selectedDorm.name}.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs text-slate-700">
+              <ul className="list-disc space-y-2 pl-4">
+                <li>
+                  Reservations are requests until the landlord confirms availability
+                  and terms.
+                </li>
+                <li>
+                  Rent, deposits, and utilities follow the landlord&apos;s policy
+                  and your signed lease.
+                </li>
+                <li>
+                  Misrepresentation or policy violations may result in cancellation.
+                </li>
+                <li>
+                  DormConnect facilitates booking; the lease is between you and the
+                  landlord.
+                </li>
+                <li>
+                  By continuing you agree to follow house rules and quiet hours as
+                  posted on site.
+                </li>
+              </ul>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    setShowTermsDialog(false);
+                    setSelectedDorm(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    setShowTermsDialog(false);
+                    setReservationStep(1);
+                    setMoveInDate("");
+                    setLeaseDuration("12");
+                    setShowDormDialog(true);
+                  }}
+                >
+                  I agree — continue
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {showPriceDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -399,13 +521,42 @@ export default function StudentBrowseDormsPage() {
                 <>
                   <div className="grid gap-4 md:grid-cols-[2fr,1.3fr]">
                     <div className="space-y-2">
-                      <div className="h-52 w-full overflow-hidden rounded-md bg-slate-200">
+                      <button
+                        type="button"
+                        className="group relative h-52 w-full overflow-hidden rounded-md bg-slate-200 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary"
+                        onClick={() =>
+                          setLightboxUrl(selectedDorm.images[0] ?? null)
+                        }
+                        aria-label="View cover photo larger"
+                      >
                         <img
                           src={selectedDorm.images[0]}
                           alt={selectedDorm.name}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-cover transition duration-200 group-hover:brightness-[0.97]"
                         />
-                      </div>
+                        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent px-2 py-2 text-[0.65rem] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                          Click to enlarge
+                        </span>
+                      </button>
+                      {selectedDorm.images.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedDorm.images.slice(1).map((src) => (
+                            <button
+                              key={src}
+                              type="button"
+                              className="relative h-16 w-24 overflow-hidden rounded border border-slate-200 outline-none ring-offset-1 focus-visible:ring-2 focus-visible:ring-primary"
+                              onClick={() => setLightboxUrl(src)}
+                              aria-label="View photo larger"
+                            >
+                              <img
+                                src={src}
+                                alt=""
+                                className="h-full w-full object-cover transition hover:brightness-95"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-3 text-sm text-slate-700">
@@ -431,14 +582,31 @@ export default function StudentBrowseDormsPage() {
                         <span className="font-medium text-slate-900">
                           {selectedDorm.capacity}
                         </span>
+                        {selectedDorm.roomSizeLabel ? (
+                          <>
+                            <br />
+                            Size:{" "}
+                            <span className="font-medium text-slate-900">
+                              {selectedDorm.roomSizeLabel}
+                            </span>
+                          </>
+                        ) : null}
                       </p>
+                      {showRoomDetailsAside(
+                        selectedDorm.description,
+                        selectedDorm.roomDetails
+                      ) && selectedDorm.roomDetails ? (
+                        <p className="text-xs text-slate-700 border-l-2 border-primary/30 pl-2">
+                          {selectedDorm.roomDetails}
+                        </p>
+                      ) : null}
                       <p className="text-xs text-muted-foreground">
                         Document status:{" "}
                         <Badge variant="outline" className="text-[0.65rem]">
                           {selectedDorm.documentType}
                         </Badge>
                       </p>
-                      <p className="text-sm text-slate-700">
+                      <p className="whitespace-pre-line text-sm text-slate-700">
                         {selectedDorm.description}
                       </p>
                       <div>
@@ -660,6 +828,34 @@ export default function StudentBrowseDormsPage() {
           </Card>
         </div>
       )}
+
+      {lightboxUrl ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/92 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white backdrop-blur transition hover:bg-white/20"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxUrl(null);
+            }}
+            aria-label="Close preview"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-h-[min(90vh,900px)] max-w-full object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

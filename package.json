@@ -7,12 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "db:reset": "node scripts/reset-db-and-seed-ictadmin.cjs",
     "db:migrate:users": "node scripts/migrate-boarding-users.cjs",
     "db:migrate:landlord": "node scripts/apply-sql-migration.cjs db/migrations/003_landlord_tables.sql",
     "db:migrate:student": "node scripts/apply-sql-migration.cjs db/migrations/004_student_tables.sql",
     "db:migrate:system": "node scripts/apply-sql-migration.cjs db/migrations/005_system_alignment.sql",
     "db:migrate:listing-images": "node scripts/apply-sql-migration.cjs db/migrations/006_listing_images.sql",
     "db:migrate:tenant-lease-link": "node scripts/apply-sql-migration.cjs db/migrations/007_tenant_lease_student_reservation.sql",
+    "db:migrate:dormconnect-features": "node scripts/apply-sql-migration.cjs db/migrations/008_dormconnect_features.sql",
+    "db:migrate:landlord-tenant-announcements": "node scripts/apply-sql-migration.cjs db/migrations/009_landlord_tenant_announcements.sql",
     "db:probe-pooler": "node scripts/probe-pooler-region.cjs"
   },
   "dependencies": {

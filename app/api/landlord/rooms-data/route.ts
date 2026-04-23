@@ -35,9 +35,14 @@ export async function GET() {
       listing_location: string | null;
       listing_description: string | null;
       listing_image_urls: unknown;
+      listing_background_url: string | null;
+      room_image_urls: unknown;
+      room_size_label: string | null;
+      room_details: string | null;
     }>(
       `SELECT id, room_no, capacity, monthly_rate::text, status, remarks,
-              is_listed, listing_location, listing_description, listing_image_urls
+              is_listed, listing_location, listing_description, listing_image_urls,
+              listing_background_url, room_image_urls, room_size_label, room_details
        FROM public.landlord_rooms
        WHERE owner_user_id = $1::uuid
        ORDER BY room_no`,
@@ -77,6 +82,9 @@ export async function GET() {
         const imgs = Array.isArray(r.listing_image_urls)
           ? (r.listing_image_urls as string[])
           : [];
+        const roomImgs = Array.isArray(r.room_image_urls)
+          ? (r.room_image_urls as string[])
+          : [];
         return {
           id: r.id,
           roomNo: r.room_no,
@@ -88,6 +96,10 @@ export async function GET() {
           listingLocation: r.listing_location ?? undefined,
           listingDescription: r.listing_description ?? undefined,
           listingImageUrls: imgs,
+          listingBackgroundUrl: r.listing_background_url ?? undefined,
+          roomImageUrls: roomImgs,
+          roomSizeLabel: r.room_size_label ?? undefined,
+          roomDetails: r.room_details ?? undefined,
         };
       }),
       leaseRows: leases.map((l) => ({

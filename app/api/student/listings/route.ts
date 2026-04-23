@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import {
+  buildPublicListingDescription,
+  buildRoomListingGallery,
+} from "@/lib/listing-description";
 import { requireStudent } from "@/lib/require-student";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +16,26 @@ export async function GET() {
 
   try {
     const pool = await getPool();
+    const studentId = session.sub;
+
+    const { rows: reservationRows } = await pool.query<{
+      room_id: string;
+      status: string;
+    }>(
+      `SELECT DISTINCT ON (s.room_id) s.room_id, s.status
+       FROM public.student_dorm_reservations s
+       WHERE s.student_user_id = $1::uuid
+         AND s.status IN ('Pending', 'Confirmed')
+       ORDER BY s.room_id, s.created_at DESC`,
+      [studentId]
+    );
+    const reservationByRoom = new Map(
+      reservationRows.map((r) => [
+        r.room_id,
+        r.status as "Pending" | "Confirmed",
+      ])
+    );
+
     const { rows } = await pool.query<{
       room_id: string;
       room_no: string;
@@ -26,9 +50,15 @@ export async function GET() {
       landlord_name: string;
       property_id: string;
       listing_image_urls: unknown;
+      listing_background_url: string | null;
+      room_image_urls: unknown;
+      room_size_label: string | null;
+      room_details: string | null;
     }>(
       `SELECT r.id AS room_id, r.room_no, r.monthly_rate::text, r.capacity,
-              r.listing_location, r.listing_description, r.remarks, r.listing_image_urls,
+              r.listing_location, r.listing_description, r.remarks,
+              r.listing_image_urls, r.listing_background_url,
+              r.room_image_urls, r.room_size_label, r.room_details,
               p.name AS property_name, p.address AS property_address, p.city AS property_city,
               u.full_name AS landlord_name, p.id AS property_id
        FROM public.landlord_rooms r
@@ -64,19 +94,28 @@ export async function GET() {
           [row.property_address, row.property_city].filter(Boolean).join(", ") ||
           "Location on request";
 
-        const desc =
-          row.listing_description?.trim() ||
-          row.remarks?.trim() ||
-          `Room ${row.room_no} at ${row.property_name}. Contact the landlord for a tour.`;
+        const listingBody = buildPublicListingDescription(
+          row.listing_description,
+          row.remarks,
+          row.room_details,
+          `Room ${row.room_no} at ${row.property_name}. Contact the landlord for a tour.`
+        );
 
-        const uploaded =
-          Array.isArray(row.listing_image_urls) &&
-          (row.listing_image_urls as string[]).every((x) => typeof x === "string")
-            ? (row.listing_image_urls as string[])
-            : [];
-        const fallback =
-          "https://images.pexels.com/photos/1643383/pexels-photo-1643383.jpeg?auto=compress&cs=tinysrgb&w=1200";
-        const images = uploaded.length > 0 ? uploaded : [fallback];
+        const images = buildRoomListingGallery(
+          row.listing_image_urls,
+          row.listing_background_url,
+          row.room_image_urls
+        );
+
+        const sizeLine = row.room_size_label?.trim();
+        const extra = row.room_details?.trim();
+        const amenities = [
+          "Listed on DormConnect",
+          ...(sizeLine ? [`Size: ${sizeLine}`] : []),
+        ];
+
+        const myReservationStatus =
+          reservationByRoom.get(row.room_id) ?? null;
 
         return {
           id: row.room_id,
@@ -84,14 +123,17 @@ export async function GET() {
           price: Number(row.monthly_rate),
           location: loc,
           documentType,
-          description: desc,
+          description: listingBody,
           distance: "—",
           landlord: row.landlord_name,
           roomType: `${row.capacity}-bed capacity`,
           capacity: String(row.capacity),
-          amenities: ["Listed on DormConnect"] as string[],
+          roomSizeLabel: sizeLine ?? null,
+          roomDetails: extra ?? null,
+          amenities,
           images,
           reviewSummary: { avg, count: reviewCount },
+          myReservationStatus,
         };
       })
     );

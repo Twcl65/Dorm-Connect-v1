@@ -22,6 +22,12 @@ function mapStudentPayStatus(
   return "Pending";
 }
 
+function monthYearLabel(paidOnIso: string | null | undefined, createdAt: Date) {
+  const raw = paidOnIso?.slice(0, 10);
+  const d = raw ? new Date(`${raw}T12:00:00`) : createdAt;
+  return d.toLocaleString("en-US", { month: "long", year: "numeric" });
+}
+
 export async function GET() {
   const session = await requireOwner();
   if (!session) {
@@ -84,6 +90,7 @@ export async function GET() {
       referenceNo: x.reference_no ?? undefined,
       proofOfPaymentUrl: x.proof_url ?? undefined,
       date: x.paid_on?.slice(0, 10),
+      periodLabel: monthYearLabel(x.paid_on, x.created_at),
       createdAt: x.created_at.toISOString(),
     }));
 
@@ -104,6 +111,10 @@ export async function GET() {
         date: x.paid_at
           ? new Date(x.paid_at).toISOString().slice(0, 10)
           : new Date(x.created_at).toISOString().slice(0, 10),
+        periodLabel: monthYearLabel(
+          x.paid_at ? new Date(x.paid_at).toISOString().slice(0, 10) : null,
+          x.created_at
+        ),
         createdAt: x.created_at.toISOString(),
       };
     });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,11 +14,13 @@ import {
 } from "@/components/ui/table";
 import { Eye, Loader2 } from "lucide-react";
 import { ProofMedia } from "@/components/proof-media";
+import { Input } from "@/components/ui/input";
 
-type PaymentStatus = "Paid" | "Pending" | "Failed";
+type PaymentStatus = "Paid" | "Pending" | "Failed" | "Overdue";
 
 type Payment = {
   id: string;
+  source?: "student_app" | "landlord_entry";
   dormName: string;
   roomNo: string;
   amount: number;
@@ -31,8 +34,12 @@ type Payment = {
   landlord: string;
   distance: string;
   documentType: string;
+  roomDescription?: string;
   images: string[];
   receiptUrl?: string;
+  proofImageUrl?: string;
+  landlordProofUrl?: string;
+  referenceNo?: string;
   paidAt?: string;
   leasePeriod?: string;
 };
@@ -43,9 +50,9 @@ const PLACEHOLDER_IMG =
   "https://images.pexels.com/photos/1643383/pexels-photo-1643383.jpeg?auto=compress&cs=tinysrgb&w=1200";
 
 function formatMonthYear(dateStr: string) {
-  const date = new Date(dateStr);
+  const date = new Date(`${dateStr}T12:00:00`);
   return date.toLocaleString("en-US", {
-    month: "short",
+    month: "long",
     year: "numeric"
   });
 }
@@ -65,14 +72,14 @@ export default function StudentPaymentsPage() {
     setLoadError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/student/payments", {
+      const payRes = await fetch("/api/student/payments", {
         credentials: "include",
       });
-      const json = (await res.json()) as {
+      const json = (await payRes.json()) as {
         payments?: Payment[];
         error?: string;
       };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load");
+      if (!payRes.ok) throw new Error(json.error ?? "Failed to load");
       const list = (json.payments ?? []).map((p) => ({
         ...p,
         images:
@@ -90,6 +97,15 @@ export default function StudentPaymentsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!showDetailsDialog) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [showDetailsDialog]);
 
   const methods = useMemo(
     () =>
@@ -199,6 +215,7 @@ export default function StudentPaymentsPage() {
                   <option value="Paid">Paid</option>
                   <option value="Pending">Pending</option>
                   <option value="Failed">Failed</option>
+                  <option value="Overdue">Overdue</option>
                 </select>
               </div>
 
@@ -277,6 +294,8 @@ export default function StudentPaymentsPage() {
                             ? "bg-emerald-100 text-emerald-800"
                             : payment.status === "Pending"
                             ? "bg-amber-100 text-amber-800"
+                            : payment.status === "Overdue"
+                            ? "bg-red-100 text-red-800"
                             : "bg-red-100 text-red-800"
                         }`}
                       >
@@ -284,7 +303,20 @@ export default function StudentPaymentsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="pr-4">
-                      <div className="flex justify-end">
+                      <div className="flex justify-end flex-wrap gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[0.65rem]"
+                          asChild
+                        >
+                          <Link
+                            href={`/student/payments/receipt/${payment.id}`}
+                            target="_blank"
+                          >
+                            Receipt
+                          </Link>
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -295,7 +327,7 @@ export default function StudentPaymentsPage() {
                           }}
                         >
                           <Eye className="h-3 w-3" />
-                          View Details
+                          View
                         </Button>
                       </div>
                     </TableCell>
@@ -351,9 +383,9 @@ export default function StudentPaymentsPage() {
 
       {/* Payment details dialog */}
       {showDetailsDialog && selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-3xl border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+          <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-5xl flex-col border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
@@ -374,17 +406,39 @@ export default function StudentPaymentsPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 pt-3 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pt-3 text-xs text-slate-800">
               <div className="grid gap-4 md:grid-cols-[2fr,1.4fr]">
                 {/* Dorm information */}
                 <div className="space-y-2">
-                  <div className="h-40 w-full overflow-hidden rounded-md bg-slate-200">
+                  <div className="h-44 w-full overflow-hidden rounded-md bg-slate-200">
                     <img
                       src={selectedPayment.images[0] ?? PLACEHOLDER_IMG}
                       alt={selectedPayment.dormName}
                       className="h-full w-full object-cover"
                     />
                   </div>
+                  {selectedPayment.images.length > 1 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedPayment.images.slice(1, 6).map((src) => (
+                        <img
+                          key={src}
+                          src={src}
+                          alt=""
+                          className="h-14 w-20 rounded border border-slate-200 object-cover"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {selectedPayment.roomDescription ? (
+                    <div className="space-y-1">
+                      <p className="text-[0.75rem] font-semibold text-slate-900">
+                        About this room
+                      </p>
+                      <p className="whitespace-pre-line text-[0.7rem] text-slate-700">
+                        {selectedPayment.roomDescription}
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-slate-900">
                       {selectedPayment.dormName} – Room {selectedPayment.roomNo}
@@ -461,6 +515,17 @@ export default function StudentPaymentsPage() {
                           {selectedPayment.status}
                         </span>
                       </p>
+                      {selectedPayment.source === "landlord_entry" && (
+                        <p className="text-[0.65rem] text-muted-foreground">
+                          Recorded by landlord (onsite / manual entry).
+                        </p>
+                      )}
+                      {selectedPayment.referenceNo ? (
+                        <p>
+                          <span className="font-semibold">Reference:</span>{" "}
+                          {selectedPayment.referenceNo}
+                        </p>
+                      ) : null}
                       <p>
                         <span className="font-semibold">Method:</span>{" "}
                         {selectedPayment.method}
@@ -480,8 +545,34 @@ export default function StudentPaymentsPage() {
 
                   <div className="space-y-2">
                     <p className="text-[0.75rem] font-semibold text-slate-900">
-                      Payment Receipt
+                      Proof & attachments
                     </p>
+                    {selectedPayment.proofImageUrl ? (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                        <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 p-1 sm:max-w-[200px]">
+                          <ProofMedia
+                            url={selectedPayment.proofImageUrl}
+                            className="max-h-36 w-full rounded object-contain"
+                          />
+                        </div>
+                        <p className="flex-1 text-[0.7rem] text-slate-700">
+                          Payment proof attachment.
+                        </p>
+                      </div>
+                    ) : null}
+                    {selectedPayment.landlordProofUrl ? (
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                        <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 p-1 sm:max-w-[200px]">
+                          <ProofMedia
+                            url={selectedPayment.landlordProofUrl}
+                            className="max-h-36 w-full rounded object-contain"
+                          />
+                        </div>
+                        <p className="flex-1 text-[0.7rem] text-slate-700">
+                          Proof uploaded when the landlord recorded this payment.
+                        </p>
+                      </div>
+                    ) : null}
                     {selectedPayment.receiptUrl ? (
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
                         <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 p-1 sm:max-w-[200px]">
@@ -491,16 +582,25 @@ export default function StudentPaymentsPage() {
                           />
                         </div>
                         <p className="flex-1 text-[0.7rem] text-slate-700">
-                          This is the proof of payment you uploaded when you
-                          paid for this reservation. The landlord can review
-                          this receipt together with your reservation details.
+                          Uploaded receipt reference.
                         </p>
                       </div>
-                    ) : (
-                      <p className="text-[0.7rem] text-muted-foreground">
-                        No receipt is attached to this payment yet.
-                      </p>
-                    )}
+                    ) : null}
+                    {!selectedPayment.proofImageUrl &&
+                      !selectedPayment.landlordProofUrl &&
+                      !selectedPayment.receiptUrl && (
+                        <p className="text-[0.7rem] text-muted-foreground">
+                          No proof image attached.
+                        </p>
+                      )}
+                    <Button type="button" size="sm" className="h-8 text-xs" asChild>
+                      <Link
+                        href={`/student/payments/receipt/${selectedPayment.id}`}
+                        target="_blank"
+                      >
+                        Open printable receipt
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               </div>

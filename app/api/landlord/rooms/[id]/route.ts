@@ -28,6 +28,10 @@ export async function PATCH(req: Request, context: Ctx) {
       listingLocation?: string | null;
       listingDescription?: string | null;
       listingImageUrls?: string[];
+      listingBackgroundUrl?: string | null;
+      roomImageUrls?: string[];
+      roomSizeLabel?: string | null;
+      roomDetails?: string | null;
     };
 
     const pool = await getPool();
@@ -40,10 +44,15 @@ export async function PATCH(req: Request, context: Ctx) {
       listing_location: string | null;
       listing_description: string | null;
       listing_image_urls: unknown;
+      listing_background_url: string | null;
+      room_image_urls: unknown;
+      room_size_label: string | null;
+      room_details: string | null;
       room_no: string;
     }>(
       `SELECT capacity, monthly_rate::text, status, remarks, is_listed,
-              listing_location, listing_description, listing_image_urls, room_no
+              listing_location, listing_description, listing_image_urls,
+              listing_background_url, room_image_urls, room_size_label, room_details, room_no
        FROM public.landlord_rooms
        WHERE owner_user_id = $1::uuid AND id = $2::uuid`,
       [ownerId, id]
@@ -86,6 +95,30 @@ export async function PATCH(req: Request, context: Ctx) {
           ? (cur.listing_image_urls as string[])
           : [];
 
+    const listingBackgroundUrl =
+      body.listingBackgroundUrl !== undefined
+        ? body.listingBackgroundUrl &&
+          body.listingBackgroundUrl.startsWith("/uploads/")
+          ? body.listingBackgroundUrl
+          : null
+        : cur.listing_background_url;
+
+    const roomImageUrls =
+      body.roomImageUrls !== undefined
+        ? body.roomImageUrls.filter(
+            (u) => typeof u === "string" && u.startsWith("/uploads/")
+          )
+        : Array.isArray(cur.room_image_urls)
+          ? (cur.room_image_urls as string[])
+          : [];
+
+    const roomSizeLabel =
+      body.roomSizeLabel !== undefined
+        ? body.roomSizeLabel
+        : cur.room_size_label;
+    const roomDetails =
+      body.roomDetails !== undefined ? body.roomDetails : cur.room_details;
+
     await pool.query(
       `UPDATE public.landlord_rooms SET
         capacity = $1,
@@ -96,8 +129,12 @@ export async function PATCH(req: Request, context: Ctx) {
         listing_location = $6,
         listing_description = $7,
         listing_image_urls = $8::jsonb,
+        listing_background_url = $9,
+        room_image_urls = $10::jsonb,
+        room_size_label = $11,
+        room_details = $12,
         updated_at = now()
-       WHERE owner_user_id = $9::uuid AND id = $10::uuid`,
+       WHERE owner_user_id = $13::uuid AND id = $14::uuid`,
       [
         capacity,
         monthlyRate,
@@ -107,6 +144,10 @@ export async function PATCH(req: Request, context: Ctx) {
         listingLocation,
         listingDescription,
         JSON.stringify(listingImageUrls),
+        listingBackgroundUrl,
+        JSON.stringify(roomImageUrls),
+        roomSizeLabel,
+        roomDetails,
         ownerId,
         id,
       ]

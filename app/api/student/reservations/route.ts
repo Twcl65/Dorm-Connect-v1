@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
 import {
+  buildPublicListingDescription,
+  buildRoomListingGallery,
+} from "@/lib/listing-description";
+import {
   formatLeasePeriod,
   landlordStatusToStudentApproved,
 } from "@/lib/student-db";
@@ -30,12 +34,28 @@ export async function GET() {
       property_city: string | null;
       landlord_name: string;
       created_at: Date;
+      capacity: number;
+      room_size_label: string | null;
+      room_details: string | null;
+      listing_description: string | null;
+      remarks: string | null;
+      listing_image_urls: unknown;
+      listing_background_url: string | null;
+      room_image_urls: unknown;
+      payment_sent: boolean;
     }>(
       `SELECT s.id, p.name AS property_name, r.room_no,
               s.lease_start::text, s.lease_end::text, s.status,
               s.monthly_rent::text,
               r.listing_location, p.address AS property_address, p.city AS property_city,
-              u.full_name AS landlord_name, s.created_at
+              u.full_name AS landlord_name, s.created_at,
+              r.capacity, r.room_size_label, r.room_details,
+              r.listing_description, r.remarks,
+              r.listing_image_urls, r.listing_background_url, r.room_image_urls,
+              EXISTS (
+                SELECT 1 FROM public.student_payment_records pr
+                WHERE pr.reservation_id = s.id
+              ) AS payment_sent
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -56,6 +76,23 @@ export async function GET() {
         x.listing_location?.trim() ||
         [x.property_address, x.property_city].filter(Boolean).join(", ") ||
         "—";
+      const description = buildPublicListingDescription(
+        x.listing_description,
+        x.remarks,
+        x.room_details,
+        `Room ${x.room_no} at ${x.property_name}. Contact the landlord for a tour.`
+      );
+      const images = buildRoomListingGallery(
+        x.listing_image_urls,
+        x.listing_background_url,
+        x.room_image_urls
+      );
+      const sizeLine = x.room_size_label?.trim();
+      const roomDetails = x.room_details?.trim() ?? null;
+      const amenities = [
+        "Listed on DormConnect",
+        ...(sizeLine ? [`Size: ${sizeLine}`] : []),
+      ];
       return {
         id: x.id,
         dorm: x.property_name,
@@ -68,12 +105,15 @@ export async function GET() {
         location,
         landlord: x.landlord_name,
         distance: "—",
-        documentType: "Listed",
-        amenities: [] as string[],
-        images: [
-          "https://images.pexels.com/photos/1643383/pexels-photo-1643383.jpeg?auto=compress&cs=tinysrgb&w=1200",
-        ],
+        documentType: "Accredited",
+        description,
+        roomDetails,
+        roomSizeLabel: sizeLine ?? null,
+        capacity: String(x.capacity),
+        amenities,
+        images,
         leasePeriod: formatLeasePeriod(ls, le),
+        paymentSent: x.payment_sent,
       };
     });
 

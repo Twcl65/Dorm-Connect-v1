@@ -15,6 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Edit3, Eye, Loader2 } from "lucide-react";
 import type { BoardingHouseUserDto } from "@/lib/boarding-house-users";
+import {
+  PasswordInputWithToggle,
+  ViewPasswordPlaceholder,
+} from "@/components/password-input-with-toggle";
 
 function randomTempPassword(): string {
   return `TEMP-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -43,6 +47,8 @@ export default function AdminUsersPage() {
   const [formRole, setFormRole] = useState("Student");
   const [formStatus, setFormStatus] = useState("Active");
   const [formTempPassword, setFormTempPassword] = useState("");
+  const [formStudentId, setFormStudentId] = useState("");
+  const [formNewPassword, setFormNewPassword] = useState("");
 
   const loadUsers = useCallback(async () => {
     setListError(null);
@@ -76,7 +82,8 @@ export default function AdminUsersPage() {
         !q ||
         u.name.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
-        u.displayId.toLowerCase().includes(q);
+        u.displayId.toLowerCase().includes(q) ||
+        (u.studentId && u.studentId.toLowerCase().includes(q));
       const matchesRole =
         roleFilter === "All roles" || u.role === roleFilter;
       const matchesStatus =
@@ -92,6 +99,7 @@ export default function AdminUsersPage() {
     setFormRole("Student");
     setFormStatus("Active");
     setFormTempPassword(randomTempPassword());
+    setFormStudentId("");
     setShowAddDialog(true);
   };
 
@@ -109,6 +117,7 @@ export default function AdminUsersPage() {
           role: formRole,
           status: formStatus,
           temporaryPassword: formTempPassword,
+          studentId: formStudentId.trim() || undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -141,6 +150,8 @@ export default function AdminUsersPage() {
           email: formEmail,
           role: formRole,
           status: formStatus,
+          studentId: formStudentId.trim() ? formStudentId.trim() : null,
+          newPassword: formNewPassword.trim() || undefined,
         }),
       });
       const data = (await res.json()) as {
@@ -152,6 +163,7 @@ export default function AdminUsersPage() {
       }
       setShowEditDialog(false);
       setSelectedUser(null);
+      setFormNewPassword("");
       await loadUsers();
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Could not update user.");
@@ -242,8 +254,9 @@ export default function AdminUsersPage() {
                   <TableHead>ID</TableHead>
                   <TableHead>Profile</TableHead>
                   <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Student ID</TableHead>
+                <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right pr-4 font-semibold text-slate-600">
                     Actions
@@ -254,7 +267,7 @@ export default function AdminUsersPage() {
                 {filteredUsers.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="py-8 text-center text-xs text-muted-foreground"
                     >
                       No users match your filters.
@@ -280,6 +293,9 @@ export default function AdminUsersPage() {
                       </TableCell>
                       <TableCell className="text-xs text-slate-600">
                         {user.email}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-slate-600">
+                        {user.studentId ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
                         {user.role}
@@ -311,6 +327,8 @@ export default function AdminUsersPage() {
                               setFormEmail(user.email);
                               setFormRole(user.role);
                               setFormStatus(user.status);
+                              setFormStudentId(user.studentId ?? "");
+                              setFormNewPassword("");
                               setShowEditDialog(true);
                             }}
                           >
@@ -405,13 +423,22 @@ export default function AdminUsersPage() {
                   <option value="Pending">Pending</option>
                   <option value="Inactive">Inactive</option>
                 </select>
-                <span className="text-[0.7rem]">Temporary Password</span>
+                <span className="text-[0.7rem]">Student ID</span>
                 <Input
+                  value={formStudentId}
+                  onChange={(e) => setFormStudentId(e.target.value)}
+                  className="h-8 text-xs"
+                  disabled={saving}
+                  placeholder="Optional (school ID)"
+                />
+                <span className="text-[0.7rem]">Temporary Password</span>
+                <PasswordInputWithToggle
                   value={formTempPassword}
                   onChange={(e) => setFormTempPassword(e.target.value)}
-                  className="h-8 text-xs font-mono"
+                  className="font-mono"
                   disabled={saving}
                   placeholder="At least 8 characters"
+                  autoComplete="new-password"
                 />
               </div>
               <p className="text-[0.65rem] text-muted-foreground">
@@ -523,6 +550,21 @@ export default function AdminUsersPage() {
                   <option value="Pending">Pending</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+                <span className="text-[0.7rem]">Student ID</span>
+                <Input
+                  value={formStudentId}
+                  onChange={(e) => setFormStudentId(e.target.value)}
+                  className="h-8 text-xs"
+                  disabled={saving}
+                />
+                <span className="text-[0.7rem]">New password</span>
+                <PasswordInputWithToggle
+                  value={formNewPassword}
+                  onChange={(e) => setFormNewPassword(e.target.value)}
+                  placeholder="Leave blank to keep"
+                  autoComplete="new-password"
+                  disabled={saving}
+                />
                 <span className="text-[0.7rem]">Created Date</span>
                 <Input
                   value={selectedUser.createdDate}
@@ -608,6 +650,18 @@ export default function AdminUsersPage() {
                   readOnly
                   className="h-8 text-xs"
                 />
+                <span className="text-[0.7rem]">Student ID</span>
+                <Input
+                  value={selectedUser.studentId ?? "—"}
+                  readOnly
+                  className="h-8 text-xs"
+                />
+                <span className="text-[0.7rem]">Password</span>
+                <ViewPasswordPlaceholder />
+                <p className="md:col-span-2 text-[0.65rem] text-muted-foreground -mt-1">
+                  Toggle the eye to see why the password cannot be displayed.
+                  Use Edit to set a new password.
+                </p>
                 <span className="text-[0.7rem]">Role</span>
                 <Input
                   value={selectedUser.role}

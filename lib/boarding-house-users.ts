@@ -17,6 +17,7 @@ export type BoardingHouseUserRow = {
   email: string;
   role: string;
   status: string;
+  student_id: string | null;
   created_at: Date;
   updated_at: Date;
   last_login_at: Date | null;
@@ -29,6 +30,7 @@ export type BoardingHouseUserDto = {
   email: string;
   role: string;
   status: string;
+  studentId: string | null;
   createdDate: string;
   lastLogin: string;
 };
@@ -54,6 +56,7 @@ export function rowToDto(row: BoardingHouseUserRow): BoardingHouseUserDto {
     email: row.email,
     role: row.role,
     status: row.status,
+    studentId: row.student_id?.trim() ? row.student_id.trim() : null,
     createdDate: formatDate(row.created_at),
     lastLogin,
   };

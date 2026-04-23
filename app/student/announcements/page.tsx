@@ -16,7 +16,14 @@ function isNewAnnouncement(dateStr: string) {
   return diffDays <= NEW_THRESHOLD_DAYS;
 }
 
-type Row = { id: string; title: string; message: string; date: string };
+type Row = {
+  id: string;
+  title: string;
+  message: string;
+  date: string;
+  source?: "osa" | "landlord";
+  propertyName?: string;
+};
 
 export default function StudentAnnouncementsPage() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -53,7 +60,8 @@ export default function StudentAnnouncementsPage() {
             Announcements
           </h1>
           <p className="text-sm text-muted-foreground">
-            Official notices from OSA and dorm landlords.
+            Official notices from OSA and messages from landlords where you
+            have an active booking.
           </p>
         </div>
         <Button
@@ -88,24 +96,43 @@ export default function StudentAnnouncementsPage() {
           return (
             <Card key={a.id} className="border border-gray-200 bg-white">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm font-semibold text-slate-900">
                     {a.title}
                   </CardTitle>
-                  <Badge
-                    className={
-                      isNew
-                        ? "rounded-full bg-emerald-100 px-3 py-1 text-[0.65rem] font-semibold text-emerald-800"
-                        : "rounded-full bg-slate-100 px-3 py-1 text-[0.65rem] font-medium text-slate-600"
-                    }
-                  >
-                    {isNew ? "New" : "Archive"}
-                  </Badge>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {a.source === "landlord" && a.propertyName ? (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-amber-200 bg-amber-50 px-2 py-0.5 text-[0.6rem] font-medium text-amber-900"
+                      >
+                        Landlord · {a.propertyName}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full px-2 py-0.5 text-[0.6rem]"
+                      >
+                        OSA
+                      </Badge>
+                    )}
+                    <Badge
+                      className={
+                        isNew
+                          ? "rounded-full bg-emerald-100 px-3 py-1 text-[0.65rem] font-semibold text-emerald-800"
+                          : "rounded-full bg-slate-100 px-3 py-1 text-[0.65rem] font-medium text-slate-600"
+                      }
+                    >
+                      {isNew ? "New" : "Archive"}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-1">
                 <p className="text-[0.7rem] text-muted-foreground">{a.date}</p>
-                <p className="text-sm text-muted-foreground">{a.message}</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                  {a.message}
+                </p>
               </CardContent>
             </Card>
           );

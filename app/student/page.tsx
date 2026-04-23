@@ -80,6 +80,7 @@ export default function StudentDashboardPage() {
     amount: number;
     status: string;
     paidAtLabel: string | null;
+    source?: "student_app" | "landlord_entry";
   } | null>(null);
   const [paymentHint, setPaymentHint] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -250,9 +251,16 @@ export default function StudentDashboardPage() {
                     ₱{latestPayment.amount.toLocaleString()}
                   </span>
                 </p>
+                {latestPayment.source === "landlord_entry" && (
+                  <p className="text-[0.65rem] text-muted-foreground">
+                    Recorded by your landlord (manual / onsite entry).
+                  </p>
+                )}
                 {latestPayment.paidAtLabel && (
                   <p className="text-xs text-muted-foreground">
-                    Paid: {latestPayment.paidAtLabel}
+                    {latestPayment.paidAtLabel.startsWith("Recorded ")
+                      ? latestPayment.paidAtLabel
+                      : `Paid: ${latestPayment.paidAtLabel}`}
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground flex items-center gap-2">

@@ -18,7 +18,7 @@ export async function GET() {
     }
     const pool = await getPool();
     const { rows } = await pool.query<BoardingHouseUserRow>(
-      `SELECT id, seq_id, full_name, email, role, status, created_at, updated_at, last_login_at
+      `SELECT id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at
        FROM public.boarding_house_app_users
        ORDER BY seq_id ASC`
     );
@@ -41,12 +41,15 @@ export async function POST(req: Request) {
       role?: string;
       status?: string;
       temporaryPassword?: string;
+      studentId?: string | null;
     };
     const name = (body.name ?? "").trim();
     const email = (body.email ?? "").trim().toLowerCase();
     const role = body.role ?? "";
     const status = body.status ?? "Active";
     const temporaryPassword = (body.temporaryPassword ?? "").trim();
+    const studentIdRaw = (body.studentId ?? "").trim();
+    const studentId = studentIdRaw.length > 0 ? studentIdRaw : null;
 
     if (gate === "bootstrap" && role !== "ICT Admin") {
       return NextResponse.json(
@@ -78,10 +81,10 @@ export async function POST(req: Request) {
     const pool = await getPool();
     const { rows } = await pool.query<BoardingHouseUserRow>(
       `INSERT INTO public.boarding_house_app_users
-        (full_name, email, role, status, password_hash)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, seq_id, full_name, email, role, status, created_at, updated_at, last_login_at`,
-      [name, email, role, status, password_hash]
+        (full_name, email, role, status, password_hash, student_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at`,
+      [name, email, role, status, password_hash, studentId]
     );
     const row = rows[0];
     if (!row) {
@@ -95,7 +98,10 @@ export async function POST(req: Request) {
     const err = e as { code?: string };
     if (err.code === "23505") {
       return NextResponse.json(
-        { error: "A user with this email already exists." },
+        {
+          error:
+            "A user with this email or student ID already exists.",
+        },
         { status: 409 }
       );
     }

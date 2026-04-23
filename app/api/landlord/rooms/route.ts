@@ -19,6 +19,9 @@ export async function POST(req: Request) {
       rate?: number;
       remarks?: string;
       status?: string;
+      roomSizeLabel?: string | null;
+      roomDetails?: string | null;
+      roomImageUrls?: string[];
     };
     const roomNo = (body.roomNo ?? "").trim();
     if (!roomNo) {
@@ -33,16 +36,35 @@ export async function POST(req: Request) {
         ? body.status
         : "Available";
     const remarks = (body.remarks ?? "").trim() || null;
+    const roomSizeLabel = (body.roomSizeLabel ?? "").trim() || null;
+    const roomDetails = (body.roomDetails ?? "").trim() || null;
+    const roomImageUrls = Array.isArray(body.roomImageUrls)
+      ? body.roomImageUrls.filter(
+          (u) => typeof u === "string" && u.startsWith("/uploads/")
+        )
+      : [];
 
     const pool = await getPool();
     const propertyId = await ensureLandlordProperty(pool, ownerId);
 
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_rooms
-        (owner_user_id, property_id, room_no, capacity, monthly_rate, status, remarks)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+        (owner_user_id, property_id, room_no, capacity, monthly_rate, status, remarks,
+         room_size_label, room_details, room_image_urls)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
        RETURNING id`,
-      [ownerId, propertyId, roomNo, capacity, rate, status, remarks]
+      [
+        ownerId,
+        propertyId,
+        roomNo,
+        capacity,
+        rate,
+        status,
+        remarks,
+        roomSizeLabel,
+        roomDetails,
+        JSON.stringify(roomImageUrls),
+      ]
     );
     await landlordLog(
       pool,

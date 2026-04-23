@@ -13,7 +13,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PenSquare, Eye, Loader2 } from "lucide-react";
+import { PenSquare, Eye, Loader2, X } from "lucide-react";
+
+function normWs(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function showRoomDetailsAside(
+  description: string,
+  roomDetails: string | null | undefined
+): boolean {
+  if (!roomDetails?.trim()) return false;
+  return !normWs(description).includes(normWs(roomDetails));
+}
 import { Input as FileInput } from "@/components/ui/input";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 
@@ -35,9 +47,14 @@ type Reservation = {
   landlord: string;
   distance: string;
   documentType: string;
+  description: string;
+  roomDetails?: string | null;
+  roomSizeLabel?: string | null;
+  capacity: string;
   amenities: string[];
   images: string[];
   leasePeriod?: string;
+  paymentSent?: boolean;
 };
 
 function StatusBadge({ status }: { status: ReservationStatus }) {
@@ -78,6 +95,7 @@ export default function StudentReservationsPage() {
     useState(false);
   /** Proof image/PDF for GCash or bank transfer. */
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -148,6 +166,24 @@ export default function StudentReservationsPage() {
   useEffect(() => {
     setPage((p) => Math.min(p, Math.max(1, totalPages)));
   }, [totalPages]);
+
+  useEffect(() => {
+    if (!showDetailsDialog) setLightboxUrl(null);
+  }, [showDetailsDialog]);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightboxUrl]);
 
   return (
     <div className="space-y-6">
@@ -400,6 +436,13 @@ export default function StudentReservationsPage() {
               </div>
 
               <div className="space-y-1 text-xs">
+                <p className="font-semibold text-slate-800">Room listing</p>
+                <p className="whitespace-pre-line text-slate-700">
+                  {selectedReservation.description}
+                </p>
+              </div>
+
+              <div className="space-y-1 text-xs">
                 <p className="font-semibold text-slate-800">Amenities</p>
                 {selectedReservation.amenities.length === 0 ? (
                   <p className="text-[0.7rem] text-muted-foreground">—</p>
@@ -477,16 +520,17 @@ export default function StudentReservationsPage() {
 
       {/* View details / payment dialog */}
       {showDetailsDialog && selectedReservation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-4xl border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 pb-6 pt-7 sm:pt-8">
+          <Card className="mb-4 flex w-full max-w-4xl flex-col border border-gray-300 bg-white max-h-[calc(100vh-4rem)]">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
-                    Reservation Details
+                    {selectedReservation.dorm} – Room {selectedReservation.room}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Full information about your reservation and payment options.
+                    {selectedReservation.location} • Reservation details and
+                    payment
                   </p>
                 </div>
                 <Button
@@ -500,59 +544,113 @@ export default function StudentReservationsPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 pt-3 text-sm text-slate-700">
-              <div className="grid gap-4 md:grid-cols-[2fr,1.3fr]">
+            <CardContent className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto pt-3 text-sm text-slate-700">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
                 <div className="space-y-2">
-                  <div className="h-40 w-full overflow-hidden rounded-md bg-slate-200">
+                  <button
+                    type="button"
+                    className="group relative h-52 w-full overflow-hidden rounded-md bg-slate-200 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() =>
+                      setLightboxUrl(selectedReservation.images[0] ?? null)
+                    }
+                    aria-label="View cover photo larger"
+                  >
                     <img
                       src={selectedReservation.images[0]}
                       alt={selectedReservation.dorm}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover transition duration-200 group-hover:brightness-[0.97]"
                     />
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent px-2 py-2 text-[0.65rem] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                      Click to enlarge
+                    </span>
+                  </button>
+                  {selectedReservation.images.length > 1 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedReservation.images.slice(1).map((src) => (
+                        <button
+                          key={src}
+                          type="button"
+                          className="relative h-16 w-24 overflow-hidden rounded border border-slate-200 outline-none ring-offset-1 focus-visible:ring-2 focus-visible:ring-primary"
+                          onClick={() => setLightboxUrl(src)}
+                          aria-label="View photo larger"
+                        >
+                          <img
+                            src={src}
+                            alt=""
+                            className="h-full w-full object-cover transition hover:brightness-95"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 text-sm">
+                  <p className="text-lg font-semibold text-primary">
+                    ₱{selectedReservation.monthlyRent.toLocaleString()}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      / month
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Managed by{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.landlord}
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Room type:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.capacity}-bed capacity
+                    </span>
+                    <br />
+                    Capacity:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.capacity}
+                    </span>
+                    {selectedReservation.roomSizeLabel ? (
+                      <>
+                        <br />
+                        Size:{" "}
+                        <span className="font-medium text-slate-900">
+                          {selectedReservation.roomSizeLabel}
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                  {showRoomDetailsAside(
+                    selectedReservation.description,
+                    selectedReservation.roomDetails
+                  ) && selectedReservation.roomDetails ? (
+                    <p className="text-xs text-slate-700 border-l-2 border-primary/30 pl-2">
+                      {selectedReservation.roomDetails}
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    Document status:{" "}
+                    <Badge variant="outline" className="text-[0.65rem]">
+                      {selectedReservation.documentType}
+                    </Badge>
+                  </p>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-slate-800">
+                      About this room
+                    </p>
+                    <p className="whitespace-pre-line text-sm text-slate-700">
+                      {selectedReservation.description}
+                    </p>
                   </div>
-                  <div className="space-y-1 text-xs">
-                    <p className="font-semibold text-slate-900">
-                      {selectedReservation.dorm} – Room{" "}
-                      {selectedReservation.room}
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-slate-800">
+                      Amenities
                     </p>
-                    <p className="text-muted-foreground">
-                      Reservation ID:{" "}
-                      <span className="font-mono">
-                        {selectedReservation.id}
-                      </span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Location: {selectedReservation.location}
-                    </p>
-                    <p className="text-muted-foreground">
-                      Distance: {selectedReservation.distance}
-                    </p>
-                    <p className="text-muted-foreground">
-                      Move-in date:{" "}
-                      <span className="font-medium text-slate-900">
-                        {selectedReservation.moveInDate}
-                      </span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Lease period:{" "}
-                      <span className="font-medium text-slate-900">
-                        {selectedReservation.leaseMonths} months
-                      </span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Monthly rent:{" "}
-                      <span className="font-semibold text-slate-900">
-                        ₱{selectedReservation.monthlyRent.toLocaleString()}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <p className="font-semibold text-slate-800">Amenities</p>
-                    {selectedReservation.amenities.length === 0 ? (
-                      <p className="text-[0.7rem] text-muted-foreground">—</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedReservation.amenities.map((amenity) => (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedReservation.amenities.length === 0 ? (
+                        <span className="text-[0.7rem] text-muted-foreground">
+                          —
+                        </span>
+                      ) : (
+                        selectedReservation.amenities.map((amenity) => (
                           <Badge
                             key={amenity}
                             variant="muted"
@@ -560,70 +658,92 @@ export default function StudentReservationsPage() {
                           >
                             {amenity}
                           </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-center text-[0.8rem] font-semibold text-slate-900">
-                      Rental Terms Summary
-                    </p>
-                    <div className="mt-1 space-y-1">
-                      <p>
-                        <span className="font-semibold">Monthly Rent:</span>{" "}
-                        ₱{selectedReservation.monthlyRent.toLocaleString()}
-                      </p>
-                      <p>
-                        <span className="font-semibold">
-                          Advance Payment (1 Month):
-                        </span>{" "}
-                        ₱{selectedReservation.monthlyRent.toLocaleString()}
-                      </p>
-                      <p>
-                        <span className="font-semibold">
-                          Security Deposit (1 Month):
-                        </span>{" "}
-                        ₱{selectedReservation.monthlyRent.toLocaleString()}
-                      </p>
+                        ))
+                      )}
                     </div>
-                    <hr className="my-2 border-slate-200" />
-                    <ul className="space-y-1 text-[0.7rem] text-slate-700">
-                      <li>
-                        <span className="font-semibold">Advance</span> =
-                        Applied to your first month&apos;s rent.
-                      </li>
-                      <li>
-                        <span className="font-semibold">Security deposit</span>{" "}
-                        = Refundable at end of lease (if no damages and all
-                        dues are settled).
-                      </li>
-                      <li>
-                        Utilities (electricity, water, internet) may be billed
-                        separately depending on usage and dorm policy.
-                      </li>
-                    </ul>
                   </div>
 
-                  <div className="space-y-1">
-                    <p className="text-[0.8rem] font-semibold text-slate-900">
-                      Payment Information
+                  <div className="rounded-md border border-slate-200 bg-slate-50/90 px-3 py-2 text-xs">
+                    <p className="font-semibold text-slate-900">
+                      Your reservation
                     </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Total initial amount to pay (first month + advance +
-                      deposit):
+                    <p className="mt-1 text-muted-foreground">
+                      ID:{" "}
+                      <span className="font-mono text-slate-800">
+                        {selectedReservation.id}
+                      </span>
                     </p>
-                    <p className="text-[0.9rem] font-semibold text-slate-900">
-                      ₱
-                      {(selectedReservation.monthlyRent * 3).toLocaleString()}
+                    <p className="text-muted-foreground">
+                      Submitted: {selectedReservation.date}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Status:{" "}
+                      <span className="font-medium text-slate-900">
+                        {selectedReservation.status}
+                      </span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Move-in: {selectedReservation.moveInDate} · Lease:{" "}
+                      {selectedReservation.leaseMonths} mo
+                      {selectedReservation.leasePeriod
+                        ? ` (${selectedReservation.leasePeriod})`
+                        : ""}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-1">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                  <p className="text-center text-[0.8rem] font-semibold text-slate-900">
+                    Rental terms summary
+                  </p>
+                  <div className="mt-1 space-y-1">
+                    <p>
+                      <span className="font-semibold">Monthly rent:</span> ₱
+                      {selectedReservation.monthlyRent.toLocaleString()}
+                    </p>
+                    <p>
+                      <span className="font-semibold">
+                        Advance (1 month):
+                      </span>{" "}
+                      ₱{selectedReservation.monthlyRent.toLocaleString()}
+                    </p>
+                    <p>
+                      <span className="font-semibold">
+                        Security deposit (1 month):
+                      </span>{" "}
+                      ₱{selectedReservation.monthlyRent.toLocaleString()}
+                    </p>
+                  </div>
+                  <hr className="my-2 border-slate-200" />
+                  <ul className="space-y-1 text-[0.7rem] text-slate-700">
+                    <li>
+                      Advance applies to your first month&apos;s rent.
+                    </li>
+                    <li>
+                      Security deposit is refundable when the lease ends if terms
+                      are met.
+                    </li>
+                    <li>Utilities may be billed separately per dorm policy.</li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col justify-center rounded-md border border-slate-200 bg-white px-3 py-2 text-xs">
+                  <p className="text-[0.8rem] font-semibold text-slate-900">
+                    Payment to prepare
+                  </p>
+                  <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                    Typical initial total (first month + advance + deposit):
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    ₱
+                    {(selectedReservation.monthlyRent * 3).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2 border-t pt-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -633,25 +753,65 @@ export default function StudentReservationsPage() {
                 >
                   Close
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => {
-                    setShowDetailsDialog(false);
-                    setPaymentMethod("gcash");
-                    setShowGcashPaymentSection(false);
-                    setPaymentProofFile(null);
-                    setShowPaymentDialog(true);
-                  }}
-                >
-                  Pay Now
-                </Button>
+                {selectedReservation.paymentSent ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 px-3 text-xs"
+                    disabled
+                  >
+                    Payment sent
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => {
+                      setShowDetailsDialog(false);
+                      setPaymentMethod("gcash");
+                      setShowGcashPaymentSection(false);
+                      setPaymentProofFile(null);
+                      setShowPaymentDialog(true);
+                    }}
+                  >
+                    Pay Now
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
       )}
+
+      {lightboxUrl ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/92 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo preview"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white backdrop-blur transition hover:bg-white/20"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxUrl(null);
+            }}
+            aria-label="Close preview"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-h-[min(90vh,900px)] max-w-full object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
 
       {/* Payment dialog */}
       {showPaymentDialog && selectedReservation && (
@@ -894,6 +1054,9 @@ export default function StudentReservationsPage() {
                       setShowPaymentDialog(false);
                       setShowGcashPaymentSection(false);
                       setPaymentProofFile(null);
+                      setSelectedReservation((prev) =>
+                        prev ? { ...prev, paymentSent: true } : null
+                      );
                       await loadData();
                     } catch (e) {
                       setLoadError(
