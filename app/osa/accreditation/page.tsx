@@ -638,7 +638,7 @@ export default function OsaAccreditationPage() {
       </Card>
 
       {showRequestDialog && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -763,7 +763,7 @@ export default function OsaAccreditationPage() {
       )}
       {/* Approve confirmation dialog */}
       {showApproveConfirm && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <CardTitle className="text-base font-semibold text-slate-900">
@@ -831,7 +831,7 @@ export default function OsaAccreditationPage() {
 
       {/* Reject application (terminal) */}
       {showRejectDialog && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <CardTitle className="text-base font-semibold text-slate-900">
@@ -908,7 +908,7 @@ export default function OsaAccreditationPage() {
 
       {/* Request additional documents */}
       {showNeedsDocsDialog && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <CardTitle className="text-base font-semibold text-slate-900">
@@ -983,7 +983,7 @@ export default function OsaAccreditationPage() {
 
       {/* Dorm review dialog */}
       {showDormReviewDialog && selectedDorm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-xl border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">

@@ -597,7 +597,7 @@ export default function LandlordRoomsPage() {
 
       {/* Add Room dialog */}
       {showAddRoomDialog && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-6 sm:py-10">
           <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg">
             <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
               <div className="flex items-center justify-between gap-2">
@@ -789,7 +789,7 @@ export default function LandlordRoomsPage() {
 
       {/* Update availability dialog */}
       {showUpdateAvailabilityDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-3xl border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -870,7 +870,7 @@ export default function LandlordRoomsPage() {
 
       {/* Edit single room dialog */}
       {showEditRoomDialog && roomToEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -1003,7 +1003,7 @@ export default function LandlordRoomsPage() {
 
       {/* Post listing dialog */}
       {showPostListingDialog && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-6 sm:py-10">
           <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg">
             <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
               <div className="flex items-center justify-between gap-2">
@@ -1313,7 +1313,7 @@ export default function LandlordRoomsPage() {
 
       {/* Tenant edit dialog */}
       {showTenantEditDialog && selectedTenant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -1456,7 +1456,7 @@ export default function LandlordRoomsPage() {
 
       {/* Tenant view details dialog */}
       {showTenantDetailsDialog && selectedTenant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">

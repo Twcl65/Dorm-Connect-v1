@@ -359,9 +359,9 @@ export default function AdminUsersPage() {
       </Card>
 
       {showAddDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-md border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="my-auto flex w-full max-h-[min(90vh,calc(100dvh-2rem))] max-w-md flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   Add User
@@ -378,7 +378,7 @@ export default function AdminUsersPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-4 text-xs text-slate-800">
               {formError && (
                 <div className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[0.7rem] text-red-800">
                   {formError}
@@ -480,9 +480,9 @@ export default function AdminUsersPage() {
       )}
 
       {showEditDialog && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-md border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="my-auto flex w-full max-h-[min(90vh,calc(100dvh-2rem))] max-w-md flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   Edit User
@@ -499,7 +499,7 @@ export default function AdminUsersPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-4 text-xs text-slate-800">
               {formError && (
                 <div className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[0.7rem] text-red-800">
                   {formError}
@@ -612,9 +612,9 @@ export default function AdminUsersPage() {
       )}
 
       {showDetailsDialog && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-md border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="my-auto flex w-full max-h-[min(90vh,calc(100dvh-2rem))] max-w-md flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   User Details
@@ -630,7 +630,7 @@ export default function AdminUsersPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-4 text-xs text-slate-800">
               <div className="grid gap-2 md:grid-cols-[90px,1fr] items-center">
                 <span className="text-[0.7rem]">User ID</span>
                 <Input

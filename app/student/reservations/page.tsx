@@ -378,7 +378,7 @@ export default function StudentReservationsPage() {
 
       {/* Edit reservation dialog */}
       {showEditDialog && selectedReservation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-xl border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -520,7 +520,7 @@ export default function StudentReservationsPage() {
 
       {/* View details / payment dialog */}
       {showDetailsDialog && selectedReservation && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 pb-6 pt-7 sm:pt-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
           <Card className="mb-4 flex w-full max-w-4xl flex-col border border-gray-300 bg-white max-h-[calc(100vh-4rem)]">
             <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -815,7 +815,7 @@ export default function StudentReservationsPage() {
 
       {/* Payment dialog */}
       {showPaymentDialog && selectedReservation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-xl border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">

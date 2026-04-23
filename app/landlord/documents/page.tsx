@@ -402,7 +402,7 @@ export default function LandlordDocumentsPage() {
 
       {/* Apply for Accreditation wizard */}
       {showWizard && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-2xl border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
@@ -898,7 +898,7 @@ export default function LandlordDocumentsPage() {
 
       {/* Accreditation request view details dialog */}
       {showDetailsDialog && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-2xl border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">

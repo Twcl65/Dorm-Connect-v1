@@ -12,6 +12,7 @@ export async function GET() {
     const pool = await getPool();
     const { rows } = await pool.query<{
       total_users: string;
+      inactive_accounts: string;
       dormitories: string;
       rooms: string;
       student_reservations: string;
@@ -21,6 +22,7 @@ export async function GET() {
     }>(
       `SELECT
          (SELECT COUNT(*)::text FROM public.boarding_house_app_users) AS total_users,
+         (SELECT COUNT(*)::text FROM public.boarding_house_app_users WHERE status = 'Inactive') AS inactive_accounts,
          (SELECT COUNT(*)::text FROM public.landlord_properties) AS dormitories,
          (SELECT COUNT(*)::text FROM public.landlord_rooms) AS rooms,
          (SELECT COUNT(*)::text FROM public.student_dorm_reservations) AS student_reservations,
@@ -32,6 +34,7 @@ export async function GET() {
     const r = rows[0];
     return NextResponse.json({
       totalUsers: Number(r?.total_users ?? 0),
+      inactiveAccounts: Number(r?.inactive_accounts ?? 0),
       dormitories: Number(r?.dormitories ?? 0),
       rooms: Number(r?.rooms ?? 0),
       studentReservations: Number(r?.student_reservations ?? 0),

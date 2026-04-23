@@ -158,7 +158,7 @@ export default function StudentIncidentsPage() {
       )}
 
       {showReportDialog && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
           <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-lg flex-col border border-gray-300 bg-white">
             <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
               <div className="flex items-start justify-between gap-2">
@@ -350,7 +350,7 @@ export default function StudentIncidentsPage() {
       </Card>
 
       {showDetailsDialog && selectedReport && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
           <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-2xl flex-col border border-gray-300 bg-white">
             <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
               <div className="flex items-start justify-between gap-2">

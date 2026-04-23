@@ -24,6 +24,7 @@ const DASHBOARD_TABLE_LIMIT = 5;
 
 type SystemStats = {
   totalUsers: number;
+  inactiveAccounts: number;
   dormitories: number;
   rooms: number;
   studentReservations: number;
@@ -87,6 +88,7 @@ export default function AdminDashboardPage() {
       }
       setSystemStats({
         totalUsers: data.totalUsers,
+        inactiveAccounts: data.inactiveAccounts ?? 0,
         dormitories: data.dormitories,
         rooms: data.rooms,
         studentReservations: data.studentReservations,
@@ -179,7 +181,7 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <Card className="border border-gray-300 bg-white shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -192,6 +194,21 @@ export default function AdminDashboardPage() {
             </p>
             <Badge variant="secondary" className="text-[0.7rem]">
               All roles
+            </Badge>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-300 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Inactive accounts
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between pt-0">
+            <p className="text-2xl font-semibold tracking-tight">
+              {systemStats?.inactiveAccounts ?? "—"}
+            </p>
+            <Badge variant="outline" className="text-[0.7rem] border-slate-400 text-slate-700">
+              Disabled sign-in
             </Badge>
           </CardContent>
         </Card>
@@ -446,9 +463,9 @@ export default function AdminDashboardPage() {
       </Card>
 
       {showEditDialog && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-md border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="my-auto flex w-full max-h-[min(90vh,calc(100dvh-2rem))] max-w-md flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   Edit User
@@ -465,7 +482,7 @@ export default function AdminDashboardPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-4 text-xs text-slate-800">
               {formError && (
                 <div className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[0.7rem] text-red-800">
                   {formError}
@@ -579,9 +596,9 @@ export default function AdminDashboardPage() {
       )}
 
       {showDetailsDialog && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <Card className="w-full max-w-md border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="my-auto flex w-full max-h-[min(90vh,calc(100dvh-2rem))] max-w-md flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   User Details
@@ -597,7 +614,7 @@ export default function AdminDashboardPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-4 text-xs text-slate-800">
               <div className="grid gap-2 md:grid-cols-[90px,1fr] items-center">
                 <span className="text-[0.7rem]">User ID</span>
                 <Input

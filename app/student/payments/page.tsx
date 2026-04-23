@@ -310,10 +310,7 @@ export default function StudentPaymentsPage() {
                           className="h-7 px-2 text-[0.65rem]"
                           asChild
                         >
-                          <Link
-                            href={`/student/payments/receipt/${payment.id}`}
-                            target="_blank"
-                          >
+                          <Link href={`/student/payments/receipt/${payment.id}`}>
                             Receipt
                           </Link>
                         </Button>
@@ -383,8 +380,8 @@ export default function StudentPaymentsPage() {
 
       {/* Payment details dialog */}
       {showDetailsDialog && selectedPayment && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-black/40 px-4 pb-4 pt-7 sm:pt-8">
-          <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-5xl flex-col border border-gray-300 bg-white">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
+          <Card className="my-auto flex max-h-[min(92vh,calc(100dvh-2rem))] w-full max-w-5xl flex-col overflow-hidden border border-gray-300 bg-white">
             <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -594,10 +591,7 @@ export default function StudentPaymentsPage() {
                         </p>
                       )}
                     <Button type="button" size="sm" className="h-8 text-xs" asChild>
-                      <Link
-                        href={`/student/payments/receipt/${selectedPayment.id}`}
-                        target="_blank"
-                      >
+                      <Link href={`/student/payments/receipt/${selectedPayment.id}`}>
                         Open printable receipt
                       </Link>
                     </Button>
