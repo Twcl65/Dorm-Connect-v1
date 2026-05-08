@@ -25,7 +25,7 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (searchParams.get("error") === "forbidden") {
+    if (searchParams?.get("error") === "forbidden") {
       setError(
         "You do not have access to that area. Sign in with an account that has permission."
       );
@@ -56,7 +56,7 @@ function LoginForm() {
         return;
       }
       if (data.redirect) {
-        const next = searchParams.get("next");
+        const next = searchParams?.get("next");
         const safeNext =
           next &&
           next.startsWith("/") &&

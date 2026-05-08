@@ -63,6 +63,15 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 function collectFormAttachmentUrls(formData: unknown): string[] {
   if (!formData || typeof formData !== "object") return [];
   const o = formData as Record<string, unknown>;
+  // Prefer the explicit, flattened `attachmentUrls` list when present.
+  // Otherwise, fall back to reading owner/docs/supporting from the structured form.
+  if (Array.isArray(o.attachmentUrls)) {
+    const urls = o.attachmentUrls.filter(
+      (x): x is string => typeof x === "string"
+    );
+    return Array.from(new Set(urls));
+  }
+
   const urls: string[] = [];
   const owner = o.owner;
   if (owner && typeof owner === "object") {
@@ -70,12 +79,34 @@ function collectFormAttachmentUrls(formData: unknown): string[] {
     if (typeof ow.ownerIdFrontUrl === "string") urls.push(ow.ownerIdFrontUrl);
     if (typeof ow.ownerIdBackUrl === "string") urls.push(ow.ownerIdBackUrl);
   }
-  if (Array.isArray(o.attachmentUrls)) {
-    for (const x of o.attachmentUrls) {
-      if (typeof x === "string") urls.push(x);
+
+  const docs = o.documents;
+  if (docs && typeof docs === "object") {
+    const d = docs as Record<string, unknown>;
+    for (const key of [
+      "businessPermit",
+      "barangayClearance",
+      "fireSafetyCertificate",
+      "occupancyPermit",
+      "sanitaryPermit",
+      "signature",
+    ]) {
+      const v = d[key];
+      if (v && typeof v === "object") {
+        const vv = v as Record<string, unknown>;
+        if (typeof vv.url === "string") urls.push(vv.url);
+      }
+    }
+    const supporting = d.supporting;
+    if (supporting && typeof supporting === "object") {
+      const s = supporting as Record<string, unknown>;
+      if (Array.isArray(s.urls)) {
+        for (const x of s.urls) if (typeof x === "string") urls.push(x);
+      }
     }
   }
-  return urls;
+
+  return Array.from(new Set(urls));
 }
 
 export default function LandlordDocumentsPage() {
@@ -106,10 +137,23 @@ export default function LandlordDocumentsPage() {
   const [ownerIdFrontFile, setOwnerIdFrontFile] = useState<File | null>(null);
   const [ownerIdBackFile, setOwnerIdBackFile] = useState<File | null>(null);
 
-  // Step C – Required documents (files stored for upload on submit)
-  const [accreditationDocFiles, setAccreditationDocFiles] = useState<File[]>(
-    []
+  // Step C – Required documents (segregated uploads)
+  const [businessPermitFile, setBusinessPermitFile] = useState<File | null>(
+    null
   );
+  const [barangayClearanceFile, setBarangayClearanceFile] =
+    useState<File | null>(null);
+  const [fireSafetyCertFile, setFireSafetyCertFile] = useState<File | null>(
+    null
+  );
+  const [occupancyPermitFile, setOccupancyPermitFile] = useState<File | null>(
+    null
+  );
+  const [sanitaryApplicable, setSanitaryApplicable] = useState(false);
+  const [sanitaryPermitFile, setSanitaryPermitFile] = useState<File | null>(
+    null
+  );
+  const [supportingDocFiles, setSupportingDocFiles] = useState<File[]>([]);
 
   // Step D – Safety & compliance
   const [safetyExits, setSafetyExits] = useState(false);
@@ -119,12 +163,13 @@ export default function LandlordDocumentsPage() {
 
   // Step E – Declaration
   const [declName, setDeclName] = useState("");
-  const [declSignature, setDeclSignature] = useState("");
-  const [declDate, setDeclDate] = useState("");
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [wizardErrors, setWizardErrors] = useState<string[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<AccreditationRow | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [detailsFormData, setDetailsFormData] = useState<unknown>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -195,8 +240,12 @@ export default function LandlordDocumentsPage() {
   useEffect(() => {
     if (!showDetailsDialog || !selectedRequest) {
       setDetailsFormData(null);
+      setDetailsLoading(false);
       return;
     }
+    setDetailsLoading(true);
+    // Prevent showing attachments from a previously selected request while loading.
+    setDetailsFormData(null);
     let cancelled = false;
     void (async () => {
       try {
@@ -208,12 +257,115 @@ export default function LandlordDocumentsPage() {
         if (!cancelled && res.ok) setDetailsFormData(j.formData ?? null);
       } catch {
         if (!cancelled) setDetailsFormData(null);
+      } finally {
+        if (!cancelled) setDetailsLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [showDetailsDialog, selectedRequest]);
+
+  useEffect(() => {
+    if (!showWizard) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showWizard]);
+
+  const validateWizardStep = useCallback(
+    (step: 1 | 2 | 3 | 4 | 5): string[] => {
+      const errors: string[] = [];
+      if (step === 1) {
+        if (!dormName.trim()) errors.push("Dorm name is required.");
+        if (!dormAddress.trim()) errors.push("Dorm address is required.");
+        if (!dormCity.trim()) errors.push("City / municipality is required.");
+        if (!dormContact.trim()) errors.push("Contact number is required.");
+        if (!dormEmail.trim()) errors.push("Email address is required.");
+        if (!dormRooms.trim()) errors.push("Number of rooms is required.");
+        if (!dormCapacity.trim()) errors.push("Total capacity is required.");
+      }
+      if (step === 2) {
+        if (!ownerName.trim()) errors.push("Owner full name is required.");
+        if (!ownerBusinessName.trim())
+          errors.push("Business name is required.");
+        if (!ownerContact.trim()) errors.push("Owner contact number is required.");
+        if (!ownerEmail.trim()) errors.push("Owner email address is required.");
+        if (!ownerIdFrontFile) errors.push("Valid ID (front) is required.");
+        if (!ownerIdBackFile) errors.push("Valid ID (back) is required.");
+      }
+      if (step === 3) {
+        if (!businessPermitFile) errors.push("Business Permit is required.");
+        if (!barangayClearanceFile)
+          errors.push("Barangay Clearance is required.");
+        if (!fireSafetyCertFile)
+          errors.push("Fire Safety Certificate is required.");
+        if (!occupancyPermitFile) errors.push("Occupancy Permit is required.");
+        if (sanitaryApplicable && !sanitaryPermitFile) {
+          errors.push("Sanitary Permit is required if applicable.");
+        }
+      }
+      if (step === 4) {
+        if (!safetyExits)
+          errors.push("Confirm fire exits are marked and accessible.");
+        if (!safetyExtinguishers)
+          errors.push("Confirm fire extinguishers are available and functional.");
+        if (!safetyContacts)
+          errors.push("Confirm emergency contact numbers are posted.");
+        if (!safetyRooms)
+          errors.push("Confirm rooms meet minimum requirements.");
+      }
+      if (step === 5) {
+        if (!declName.trim()) errors.push("Applicant name is required.");
+        if (!signatureFile) errors.push("Applicant signature upload is required.");
+      }
+      return errors;
+    },
+    [
+      dormName,
+      dormAddress,
+      dormCity,
+      dormContact,
+      dormEmail,
+      dormRooms,
+      dormCapacity,
+      ownerName,
+      ownerBusinessName,
+      ownerContact,
+      ownerEmail,
+      ownerIdFrontFile,
+      ownerIdBackFile,
+      businessPermitFile,
+      barangayClearanceFile,
+      fireSafetyCertFile,
+      occupancyPermitFile,
+      sanitaryApplicable,
+      sanitaryPermitFile,
+      safetyExits,
+      safetyExtinguishers,
+      safetyContacts,
+      safetyRooms,
+      declName,
+      signatureFile,
+    ]
+  );
+
+  const goNext = useCallback(() => {
+    const errs = validateWizardStep(wizardStep);
+    if (errs.length > 0) {
+      setWizardErrors(errs);
+      return;
+    }
+    setWizardErrors([]);
+    setWizardStep((s) => (s < 5 ? ((s + 1) as 2 | 3 | 4 | 5) : s));
+  }, [validateWizardStep, wizardStep]);
+
+  const goBack = useCallback(() => {
+    setWizardErrors([]);
+    setWizardStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : s));
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -251,7 +403,15 @@ export default function LandlordDocumentsPage() {
               setWizardStep(1);
               setOwnerIdFrontFile(null);
               setOwnerIdBackFile(null);
-              setAccreditationDocFiles([]);
+              setBusinessPermitFile(null);
+              setBarangayClearanceFile(null);
+              setFireSafetyCertFile(null);
+              setOccupancyPermitFile(null);
+              setSanitaryApplicable(false);
+              setSanitaryPermitFile(null);
+              setSupportingDocFiles([]);
+              setSignatureFile(null);
+              setWizardErrors([]);
               setShowWizard(true);
             }}
           >
@@ -344,6 +504,8 @@ export default function LandlordDocumentsPage() {
                         className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
                         onClick={() => {
                           setSelectedRequest(req);
+                              setDetailsFormData(null);
+                              setDetailsLoading(false);
                           setShowDetailsDialog(true);
                         }}
                       >
@@ -421,6 +583,16 @@ export default function LandlordDocumentsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4 pt-4 text-xs text-slate-800">
+              {wizardErrors.length > 0 && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[0.7rem] text-red-800">
+                  <p className="font-semibold">Please complete the required items:</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                    {wizardErrors.map((e) => (
+                      <li key={e}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {wizardStep === 1 && (
                 <div className="space-y-3">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
@@ -499,12 +671,21 @@ export default function LandlordDocumentsPage() {
                       className="h-8 text-xs"
                     />
                   </div>
-                  <div className="flex justify-end pt-2">
+                  <div className="flex items-center justify-between pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setShowWizard(false)}
+                    >
+                      Back
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={() => setWizardStep(2)}
+                      onClick={goNext}
                     >
                       Next Page &rarr;
                     </Button>
@@ -595,12 +776,21 @@ export default function LandlordDocumentsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex justify-end pt-2">
+                  <div className="flex items-center justify-between pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={goBack}
+                    >
+                      Back
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={() => setWizardStep(3)}
+                      onClick={goNext}
                     >
                       Next Page &rarr;
                     </Button>
@@ -613,50 +803,130 @@ export default function LandlordDocumentsPage() {
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     C. Required Documents (Upload)
                   </p>
-                  <div className="space-y-1 text-[0.7rem] text-slate-800">
-                    <p>Business Permit</p>
-                    <p>Barangay Clearance</p>
-                    <p>Fire Safety Certificate</p>
-                    <p>Occupancy Permit</p>
-                    <p>Sanitary Permit (if applicable)</p>
-                    <p>
-                      Other Supporting Documents:{" "}
-                      <span className="text-slate-500">
-                        (e.g. lease contract, photos, etc.)
-                      </span>
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[0.75rem] font-semibold text-slate-900">
-                      Upload Documents
-                    </p>
-                    <div className="min-h-[120px] rounded-md border border-dashed border-slate-300 bg-slate-50 p-3">
+                  <div className="space-y-3">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {[
+                        {
+                          label: "Business Permit",
+                          file: businessPermitFile,
+                          set: setBusinessPermitFile,
+                        },
+                        {
+                          label: "Barangay Clearance",
+                          file: barangayClearanceFile,
+                          set: setBarangayClearanceFile,
+                        },
+                        {
+                          label: "Fire Safety Certificate",
+                          file: fireSafetyCertFile,
+                          set: setFireSafetyCertFile,
+                        },
+                        {
+                          label: "Occupancy Permit",
+                          file: occupancyPermitFile,
+                          set: setOccupancyPermitFile,
+                        },
+                      ].map((x) => (
+                        <div
+                          key={x.label}
+                          className="space-y-1 rounded-md border border-dashed border-slate-300 bg-slate-50 p-3"
+                        >
+                          <p className="text-[0.75rem] font-semibold text-slate-900">
+                            {x.label}
+                          </p>
+                          <Input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            className="h-8 cursor-pointer text-xs"
+                            onChange={(e) => x.set(e.target.files?.[0] ?? null)}
+                          />
+                          {x.file && (
+                            <p className="text-[0.65rem] text-muted-foreground">
+                              {x.file.name}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-md border border-slate-200 bg-white p-3">
+                      <label className="flex items-center gap-2 text-[0.7rem]">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={sanitaryApplicable}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setSanitaryApplicable(on);
+                            if (!on) setSanitaryPermitFile(null);
+                          }}
+                        />
+                        Sanitary Permit is applicable for my dorm
+                      </label>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-[0.75rem] font-semibold text-slate-900">
+                          Sanitary Permit{" "}
+                          <span className="text-slate-500 font-normal">
+                            (if applicable)
+                          </span>
+                        </p>
+                        <Input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="h-8 cursor-pointer text-xs"
+                          disabled={!sanitaryApplicable}
+                          onChange={(e) =>
+                            setSanitaryPermitFile(e.target.files?.[0] ?? null)
+                          }
+                        />
+                        {sanitaryPermitFile && (
+                          <p className="text-[0.65rem] text-muted-foreground">
+                            {sanitaryPermitFile.name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 rounded-md border border-dashed border-slate-300 bg-slate-50 p-3">
+                      <p className="text-[0.75rem] font-semibold text-slate-900">
+                        Other supporting documents{" "}
+                        <span className="text-slate-500 font-normal">
+                          (optional: lease contract, photos, etc.)
+                        </span>
+                      </p>
                       <Input
                         type="file"
                         accept="image/*,application/pdf"
                         multiple
                         className="h-8 cursor-pointer text-xs"
-                        onChange={(e) => {
-                          setAccreditationDocFiles(
-                            Array.from(e.target.files ?? [])
-                          );
-                        }}
+                        onChange={(e) =>
+                          setSupportingDocFiles(Array.from(e.target.files ?? []))
+                        }
                       />
-                      {accreditationDocFiles.length > 0 && (
-                        <ul className="mt-2 list-disc pl-4 text-[0.65rem] text-slate-700">
-                          {accreditationDocFiles.map((file) => (
-                            <li key={file.name}>{file.name}</li>
+                      {supportingDocFiles.length > 0 && (
+                        <ul className="mt-1 list-disc pl-4 text-[0.65rem] text-slate-700">
+                          {supportingDocFiles.map((file) => (
+                            <li key={`${file.name}-${file.size}`}>{file.name}</li>
                           ))}
                         </ul>
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-end pt-2">
+                  <div className="flex items-center justify-between pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={goBack}
+                    >
+                      Back
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={() => setWizardStep(4)}
+                      onClick={goNext}
                     >
                       Next Page &rarr;
                     </Button>
@@ -712,12 +982,21 @@ export default function LandlordDocumentsPage() {
                       Rooms meet minimum space and ventilation requirements.
                     </label>
                   </div>
-                  <div className="flex justify-end pt-2">
+                  <div className="flex items-center justify-between pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={goBack}
+                    >
+                      Back
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={() => setWizardStep(5)}
+                      onClick={goNext}
                     >
                       Next Page &rarr;
                     </Button>
@@ -757,137 +1036,221 @@ export default function LandlordDocumentsPage() {
                       className="h-8 text-xs"
                     />
                     <span className="text-[0.7rem] text-slate-700">
-                      Signature:
+                      Signature (upload):
                     </span>
                     <Input
-                      value={declSignature}
-                      onChange={(e) => setDeclSignature(e.target.value)}
-                      className="h-8 text-xs"
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="h-8 cursor-pointer text-xs"
+                      onChange={(e) => setSignatureFile(e.target.files?.[0] ?? null)}
                     />
-                    <span className="text-[0.7rem] text-slate-700">
-                      Date:
-                    </span>
-                    <Input
-                      type="date"
-                      value={declDate}
-                      onChange={(e) => setDeclDate(e.target.value)}
-                      className="h-8 text-xs"
-                    />
+                    {signatureFile && (
+                      <div className="md:col-start-2 text-[0.65rem] text-muted-foreground">
+                        {signatureFile.name}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-3">
+                  <div className="flex justify-between gap-2 pt-3">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={() => setShowWizard(false)}
+                      onClick={goBack}
                     >
-                      Cancel
+                      Back
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      disabled={
-                        submitting ||
-                        !dormName.trim() ||
-                        !dormAddress.trim() ||
-                        !declName.trim()
-                      }
-                      onClick={async () => {
-                        const address = [dormAddress.trim(), dormCity.trim()]
-                          .filter(Boolean)
-                          .join(", ");
-                        setSubmitting(true);
-                        try {
-                          let ownerIdFrontUrl: string | undefined;
-                          let ownerIdBackUrl: string | undefined;
-                          if (ownerIdFrontFile) {
-                            ownerIdFrontUrl = await uploadDormConnectFile(
-                              ownerIdFrontFile
-                            );
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setShowWizard(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        disabled={submitting}
+                        onClick={async () => {
+                          const errs = validateWizardStep(5);
+                          if (errs.length > 0) {
+                            setWizardErrors(errs);
+                            return;
                           }
-                          if (ownerIdBackFile) {
-                            ownerIdBackUrl = await uploadDormConnectFile(
-                              ownerIdBackFile
+                          setWizardErrors([]);
+                          const address = [dormAddress.trim(), dormCity.trim()]
+                            .filter(Boolean)
+                            .join(", ");
+                          setSubmitting(true);
+                          try {
+                            const [
+                              ownerIdFrontUrl,
+                              ownerIdBackUrl,
+                              businessPermitUrl,
+                              barangayClearanceUrl,
+                              fireSafetyCertificateUrl,
+                              occupancyPermitUrl,
+                              sanitaryPermitUrl,
+                              signatureUrl,
+                              supportingUrls,
+                            ] = await (async () => {
+                              const idFront = await uploadDormConnectFile(
+                                ownerIdFrontFile!
+                              );
+                              const idBack = await uploadDormConnectFile(
+                                ownerIdBackFile!
+                              );
+                              const bp = await uploadDormConnectFile(
+                                businessPermitFile!
+                              );
+                              const bc = await uploadDormConnectFile(
+                                barangayClearanceFile!
+                              );
+                              const fs = await uploadDormConnectFile(
+                                fireSafetyCertFile!
+                              );
+                              const op = await uploadDormConnectFile(
+                                occupancyPermitFile!
+                              );
+                              const sp = sanitaryApplicable
+                                ? await uploadDormConnectFile(sanitaryPermitFile!)
+                                : undefined;
+                              const sig = await uploadDormConnectFile(signatureFile!);
+                              const supporting =
+                                supportingDocFiles.length > 0
+                                  ? await uploadDormConnectFiles(supportingDocFiles)
+                                  : [];
+                              return [
+                                idFront,
+                                idBack,
+                                bp,
+                                bc,
+                                fs,
+                                op,
+                                sp,
+                                sig,
+                                supporting,
+                              ] as const;
+                            })();
+
+                            const allAttachmentUrls = [
+                              ownerIdFrontUrl,
+                              ownerIdBackUrl,
+                              businessPermitUrl,
+                              barangayClearanceUrl,
+                              fireSafetyCertificateUrl,
+                              occupancyPermitUrl,
+                              ...(sanitaryPermitUrl ? [sanitaryPermitUrl] : []),
+                              signatureUrl,
+                              ...supportingUrls,
+                            ];
+
+                            const res = await fetch("/api/landlord/accreditation", {
+                              method: "POST",
+                              credentials: "include",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                dormName: dormName.trim(),
+                                address,
+                                formData: {
+                                  dorm: {
+                                    name: dormName,
+                                    address: dormAddress,
+                                    city: dormCity,
+                                    contact: dormContact,
+                                    email: dormEmail,
+                                    type: dormType,
+                                    rooms: dormRooms,
+                                    capacity: dormCapacity,
+                                  },
+                                  owner: {
+                                    name: ownerName,
+                                    businessName: ownerBusinessName,
+                                    contact: ownerContact,
+                                    email: ownerEmail,
+                                    idFrontFileName: ownerIdFrontFile?.name,
+                                    idBackFileName: ownerIdBackFile?.name,
+                                    ownerIdFrontUrl,
+                                    ownerIdBackUrl,
+                                  },
+                                  documents: {
+                                    businessPermit: {
+                                      fileName: businessPermitFile?.name,
+                                      url: businessPermitUrl,
+                                    },
+                                    barangayClearance: {
+                                      fileName: barangayClearanceFile?.name,
+                                      url: barangayClearanceUrl,
+                                    },
+                                    fireSafetyCertificate: {
+                                      fileName: fireSafetyCertFile?.name,
+                                      url: fireSafetyCertificateUrl,
+                                    },
+                                    occupancyPermit: {
+                                      fileName: occupancyPermitFile?.name,
+                                      url: occupancyPermitUrl,
+                                    },
+                                    sanitaryPermit: sanitaryApplicable
+                                      ? {
+                                          fileName: sanitaryPermitFile?.name,
+                                          url: sanitaryPermitUrl,
+                                        }
+                                      : undefined,
+                                    supporting: {
+                                      fileNames: supportingDocFiles.map((f) => f.name),
+                                      urls: supportingUrls,
+                                    },
+                                    signature: {
+                                      fileName: signatureFile?.name,
+                                      url: signatureUrl,
+                                    },
+                                  },
+                                  // Back-compat convenience array for previews
+                                  attachmentUrls: allAttachmentUrls,
+                                  safety: {
+                                    exits: safetyExits,
+                                    extinguishers: safetyExtinguishers,
+                                    contacts: safetyContacts,
+                                    rooms: safetyRooms,
+                                  },
+                                  declaration: {
+                                    name: declName,
+                                  },
+                                },
+                              }),
+                            });
+                            const j = (await res.json()) as { error?: string };
+                            if (!res.ok) throw new Error(j.error ?? "Failed");
+                            setShowWizard(false);
+                            setOwnerIdFrontFile(null);
+                            setOwnerIdBackFile(null);
+                            setBusinessPermitFile(null);
+                            setBarangayClearanceFile(null);
+                            setFireSafetyCertFile(null);
+                            setOccupancyPermitFile(null);
+                            setSanitaryApplicable(false);
+                            setSanitaryPermitFile(null);
+                            setSupportingDocFiles([]);
+                            setSignatureFile(null);
+                            setWizardErrors([]);
+                            await loadData();
+                          } catch (e) {
+                            setLoadError(
+                              e instanceof Error ? e.message : "Submit failed"
                             );
+                          } finally {
+                            setSubmitting(false);
                           }
-                          const attachmentUrls =
-                            accreditationDocFiles.length > 0
-                              ? await uploadDormConnectFiles(
-                                  accreditationDocFiles
-                                )
-                              : [];
-                          const documentsCount =
-                            attachmentUrls.length +
-                            (ownerIdFrontUrl ? 1 : 0) +
-                            (ownerIdBackUrl ? 1 : 0);
-                          const res = await fetch("/api/landlord/accreditation", {
-                            method: "POST",
-                            credentials: "include",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              dormName: dormName.trim(),
-                              address,
-                              documentsCount,
-                              formData: {
-                                dorm: {
-                                  name: dormName,
-                                  address: dormAddress,
-                                  city: dormCity,
-                                  contact: dormContact,
-                                  email: dormEmail,
-                                  type: dormType,
-                                  rooms: dormRooms,
-                                  capacity: dormCapacity,
-                                },
-                                owner: {
-                                  name: ownerName,
-                                  businessName: ownerBusinessName,
-                                  contact: ownerContact,
-                                  email: ownerEmail,
-                                  idFrontFileName: ownerIdFrontFile?.name,
-                                  idBackFileName: ownerIdBackFile?.name,
-                                  ownerIdFrontUrl,
-                                  ownerIdBackUrl,
-                                },
-                                documentFileNames: accreditationDocFiles.map(
-                                  (f) => f.name
-                                ),
-                                attachmentUrls,
-                                safety: {
-                                  exits: safetyExits,
-                                  extinguishers: safetyExtinguishers,
-                                  contacts: safetyContacts,
-                                  rooms: safetyRooms,
-                                },
-                                declaration: {
-                                  name: declName,
-                                  signature: declSignature,
-                                  date: declDate,
-                                },
-                              },
-                            }),
-                          });
-                          const j = (await res.json()) as { error?: string };
-                          if (!res.ok) throw new Error(j.error ?? "Failed");
-                          setShowWizard(false);
-                          setOwnerIdFrontFile(null);
-                          setOwnerIdBackFile(null);
-                          setAccreditationDocFiles([]);
-                          await loadData();
-                        } catch (e) {
-                          setLoadError(
-                            e instanceof Error ? e.message : "Submit failed"
-                          );
-                        } finally {
-                          setSubmitting(false);
-                        }
-                      }}
-                    >
-                      {submitting ? "Submitting…" : "Submit"}
-                    </Button>
+                        }}
+                      >
+                        {submitting ? "Submitting…" : "Submit"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -961,7 +1324,11 @@ export default function LandlordDocumentsPage() {
                 <p className="text-[0.75rem] font-semibold text-slate-900">
                   Uploaded files (stored on server)
                 </p>
-                {collectFormAttachmentUrls(detailsFormData).length === 0 ? (
+                {detailsLoading ? (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Loading uploaded documents…
+                  </p>
+                ) : collectFormAttachmentUrls(detailsFormData).length === 0 ? (
                   <p className="text-[0.7rem] text-muted-foreground">
                     No file attachments found for this request (older
                     submissions may only have file names in the record).

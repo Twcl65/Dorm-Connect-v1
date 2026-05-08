@@ -56,7 +56,7 @@ export function RoleShell({
   const router = useRouter();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [me, setMe] = useState<MeUser | null>(null);
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const settingsHref = `/${pathname.split("/").filter(Boolean)[0] ?? ""}/settings`;
 
   useEffect(() => {

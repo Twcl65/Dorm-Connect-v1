@@ -5,6 +5,48 @@ import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
 
+function collectAttachmentUrls(formData: unknown): string[] {
+  if (!formData || typeof formData !== "object") return [];
+  const o = formData as Record<string, unknown>;
+  const urls: string[] = [];
+  const owner = o.owner;
+  if (owner && typeof owner === "object") {
+    const ow = owner as Record<string, unknown>;
+    if (typeof ow.ownerIdFrontUrl === "string") urls.push(ow.ownerIdFrontUrl);
+    if (typeof ow.ownerIdBackUrl === "string") urls.push(ow.ownerIdBackUrl);
+  }
+  const docs = o.documents;
+  if (docs && typeof docs === "object") {
+    const d = docs as Record<string, unknown>;
+    for (const key of [
+      "businessPermit",
+      "barangayClearance",
+      "fireSafetyCertificate",
+      "occupancyPermit",
+      "sanitaryPermit",
+      "signature",
+    ]) {
+      const v = d[key];
+      if (v && typeof v === "object") {
+        const vv = v as Record<string, unknown>;
+        if (typeof vv.url === "string") urls.push(vv.url);
+      }
+    }
+    const supporting = d.supporting;
+    if (supporting && typeof supporting === "object") {
+      const s = supporting as Record<string, unknown>;
+      if (Array.isArray(s.urls)) {
+        for (const x of s.urls) if (typeof x === "string") urls.push(x);
+      }
+    }
+  }
+  if (Array.isArray(o.attachmentUrls)) {
+    for (const x of o.attachmentUrls) if (typeof x === "string") urls.push(x);
+  }
+  // de-dupe
+  return Array.from(new Set(urls));
+}
+
 export async function GET() {
   const session = await requireOwner();
   if (!session) {
@@ -61,7 +103,6 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       dormName?: string;
       address?: string;
-      documentsCount?: number;
       formData?: Record<string, unknown>;
     };
     const dormName = (body.dormName ?? "").trim();
@@ -72,8 +113,56 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const documentsCount = Math.max(0, Number(body.documentsCount) || 0);
     const formData = body.formData ?? {};
+
+    // Server-side validation: required uploads and required checkboxes
+    const urls = collectAttachmentUrls(formData);
+    const docsCount = urls.length;
+    const errors: string[] = [];
+
+    const owner = (formData.owner ?? {}) as Record<string, unknown>;
+    if (typeof owner.ownerIdFrontUrl !== "string")
+      errors.push("Owner ID front upload is required.");
+    if (typeof owner.ownerIdBackUrl !== "string")
+      errors.push("Owner ID back upload is required.");
+
+    const docs = (formData.documents ?? {}) as Record<string, unknown>;
+    const requiredDocKeys = [
+      "businessPermit",
+      "barangayClearance",
+      "fireSafetyCertificate",
+      "occupancyPermit",
+      "signature",
+    ] as const;
+    for (const k of requiredDocKeys) {
+      const v = docs[k];
+      const url =
+        v && typeof v === "object" ? (v as Record<string, unknown>).url : undefined;
+      if (typeof url !== "string") {
+        errors.push(`${k} upload is required.`);
+      }
+    }
+
+    const safety = (formData.safety ?? {}) as Record<string, unknown>;
+    for (const [k, label] of [
+      ["exits", "Fire exits confirmation is required."],
+      ["extinguishers", "Fire extinguishers confirmation is required."],
+      ["contacts", "Emergency contacts confirmation is required."],
+      ["rooms", "Room requirements confirmation is required."],
+    ] as const) {
+      if (safety[k] !== true) errors.push(label);
+    }
+
+    const declaration = (formData.declaration ?? {}) as Record<string, unknown>;
+    const declName = (declaration.name ?? "").toString().trim();
+    if (!declName) errors.push("Applicant name is required.");
+
+    if (errors.length > 0) {
+      return NextResponse.json(
+        { error: errors[0], details: errors },
+        { status: 400 }
+      );
+    }
 
     const pool = await getPool();
     const propertyId = await ensureLandlordProperty(pool, ownerId);
@@ -83,7 +172,7 @@ export async function POST(req: Request) {
         (owner_user_id, property_id, dorm_name, address, documents_count, form_data, status)
        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'Submitted')
        RETURNING id`,
-      [ownerId, propertyId, dormName, address, documentsCount, JSON.stringify(formData)]
+      [ownerId, propertyId, dormName, address, docsCount, JSON.stringify(formData)]
     );
 
     await landlordLog(

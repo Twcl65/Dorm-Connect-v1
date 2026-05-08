@@ -26,7 +26,7 @@ type Payment = {
 export default function PaymentReceiptPage() {
   const router = useRouter();
   const params = useParams();
-  const id = typeof params.id === "string" ? params.id : "";
+  const id = typeof params?.id === "string" ? params.id : "";
   const [payment, setPayment] = useState<Payment | null>(null);
   const [error, setError] = useState<string | null>(null);
 
