@@ -9,10 +9,10 @@ export async function POST(req: Request) {
   const session = await getSession();
   const allowed =
     session &&
-    (session.role === "Owner" ||
+    (session.role === "Landlord" ||
       session.role === "Student" ||
       session.role === "ICT Admin" ||
-      session.role === "OSA Admin");
+      session.role === "OSA/SAS Admin");
   if (!allowed) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }

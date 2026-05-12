@@ -191,7 +191,7 @@ export default function OsaDashboardPage() {
                 <TableRow>
                   <TableHead>Reference</TableHead>
                   <TableHead>Name</TableHead>
-                  <TableHead>Owner</TableHead>
+                  <TableHead>Landlord</TableHead>
                   <TableHead>Submitted</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right pr-4 text-slate-600">
@@ -312,7 +312,7 @@ export default function OsaDashboardPage() {
                   readOnly
                   className="h-8 text-xs"
                 />
-                <span className="text-[0.7rem]">Owner</span>
+                <span className="text-[0.7rem]">Landlord</span>
                 <Input
                   value={selectedRequest.owner}
                   readOnly

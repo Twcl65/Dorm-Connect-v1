@@ -116,7 +116,11 @@ function LoginForm() {
             </CardTitle>
             <CardDescription className="text-xs sm:text-sm">
               Enter your email and password. You will be redirected to the correct dashboard based on
-              your registered role. Only <strong>active</strong> accounts can sign in.
+              your registered role. Students can{" "}
+              <a href="/register" className="text-primary underline font-medium">
+                register here
+              </a>
+              ; only <strong>active</strong> accounts can sign in.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -188,8 +192,8 @@ function LoginForm() {
               </Button>
 
               <p className="text-[0.7rem] sm:text-xs text-muted-foreground text-center">
-                Only users created in User Management can sign in. Pending or inactive accounts are
-                blocked.
+                Landlords and admins are created in ICT User Management. Inactive accounts cannot sign
+                in; students pending ICT verification can browse but cannot book until verified.
               </p>
             </form>
           </CardContent>

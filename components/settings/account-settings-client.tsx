@@ -128,7 +128,7 @@ function AccreditationReadonly({ acc }: { acc: LatestAccreditation }) {
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
-          <p className="text-sm font-semibold text-slate-900">Owner information</p>
+          <p className="text-sm font-semibold text-slate-900">Landlord information</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Owner name" value={str(owner.name)} />
             <Field label="Business name" value={str(owner.businessName)} />
@@ -574,11 +574,11 @@ export function AccountSettingsClient() {
         </CardContent>
       </Card>
 
-      {profile.role === "Owner" && profile.latestAccreditation && (
+      {profile.role === "Landlord" && profile.latestAccreditation && (
         <AccreditationReadonly acc={profile.latestAccreditation} />
       )}
 
-      {profile.role === "Owner" && !profile.latestAccreditation && (
+      {profile.role === "Landlord" && !profile.latestAccreditation && (
         <Card className="border-dashed border-slate-200 bg-slate-50/50">
           <CardHeader>
             <CardTitle className="text-base">Accreditation</CardTitle>

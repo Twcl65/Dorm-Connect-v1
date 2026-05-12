@@ -20,11 +20,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { PenSquare, Eye, Settings, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { PenSquare, Eye, Settings, Loader2, Trash2 } from "lucide-react";
 import { uploadDormConnectFiles } from "@/lib/upload-file-client";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
-type RoomStatus = "Occupied" | "Available" | "Maintenance";
+type RoomStatus = "Occupied" | "Available" | "Reserved" | "Maintenance";
 
 type Room = {
   id: string;
@@ -56,6 +57,22 @@ type LeaseRow = {
 };
 
 const ROWS_PER_PAGE = 5;
+
+type PropertyOption = {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  contactPhone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+function formatPropertyAddress(p: PropertyOption | undefined): string {
+  if (!p) return "";
+  const line = [p.address, p.city].filter(Boolean).join(", ").trim();
+  return line;
+}
 
 /** Prefill listing description from room record (other details + remarks). */
 function listingDescriptionFromRoom(room: Room): string {
@@ -91,7 +108,9 @@ function RoomStatusBadge({ status }: { status: RoomStatus }) {
       ? "bg-emerald-100 text-emerald-800"
       : status === "Available"
         ? "bg-blue-100 text-blue-800"
-        : "bg-amber-100 text-amber-800";
+        : status === "Reserved"
+          ? "bg-violet-100 text-violet-800"
+          : "bg-amber-100 text-amber-800";
 
   return (
     <Badge
@@ -126,10 +145,14 @@ export default function LandlordRoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [leaseRows, setLeaseRows] = useState<LeaseRow[]>([]);
   const [propertyName, setPropertyName] = useState("");
+  const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [addRoomPropertyId, setAddRoomPropertyId] = useState("");
   const [stats, setStats] = useState({
     total: 0,
     occupied: 0,
     available: 0,
+    reserved: 0,
     maintenance: 0,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -176,15 +199,22 @@ export default function LandlordRoomsPage() {
   const [editTenantPaymentStatus, setEditTenantPaymentStatus] =
     useState<PaymentStatus>("Paid");
 
-  const loadData = useCallback(async () => {
-    setLoadError(null);
-    setLoading(true);
-    try {
-      const res = await fetch("/api/landlord/rooms-data", {
-        credentials: "include",
-      });
+  const loadData = useCallback(
+    async (propertyIdOverride?: string) => {
+      setLoadError(null);
+      setLoading(true);
+      const pid = (propertyIdOverride ?? selectedPropertyId).trim();
+      try {
+        const qs = pid
+          ? `?propertyId=${encodeURIComponent(pid)}`
+          : "";
+        const res = await fetch(`/api/landlord/rooms-data${qs}`, {
+          credentials: "include",
+        });
       const json = (await res.json()) as {
         propertyName?: string;
+        selectedPropertyId?: string;
+        properties?: PropertyOption[];
         stats?: typeof stats;
         rooms?: Room[];
         leaseRows?: LeaseRow[];
@@ -192,6 +222,28 @@ export default function LandlordRoomsPage() {
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
       setPropertyName(json.propertyName ?? "");
+      if (json.properties?.length) {
+        setPropertyOptions(
+          json.properties.map((p) => ({
+            id: p.id,
+            name: p.name,
+            address: p.address ?? null,
+            city: p.city ?? null,
+            contactPhone: p.contactPhone ?? null,
+            latitude:
+              typeof p.latitude === "number" && !Number.isNaN(p.latitude)
+                ? p.latitude
+                : null,
+            longitude:
+              typeof p.longitude === "number" && !Number.isNaN(p.longitude)
+                ? p.longitude
+                : null,
+          }))
+        );
+      }
+      if (json.selectedPropertyId) {
+        setSelectedPropertyId(json.selectedPropertyId);
+      }
       if (json.stats) setStats(json.stats);
       setRooms(json.rooms ?? []);
       setLeaseRows(json.leaseRows ?? []);
@@ -200,7 +252,17 @@ export default function LandlordRoomsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedPropertyId]);
+
+  const addRoomProperty = useMemo(
+    () => propertyOptions.find((p) => p.id === addRoomPropertyId),
+    [propertyOptions, addRoomPropertyId]
+  );
+
+  const selectedProperty = useMemo(
+    () => propertyOptions.find((p) => p.id === selectedPropertyId),
+    [propertyOptions, selectedPropertyId]
+  );
 
   useEffect(() => {
     void loadData();
@@ -234,6 +296,12 @@ export default function LandlordRoomsPage() {
         value: String(stats.available),
         badge: "Vacant",
         badgeVariant: "success" as const,
+      },
+      {
+        label: "Reserved",
+        value: String(stats.reserved ?? 0),
+        badge: "On hold",
+        badgeVariant: "secondary" as const,
       },
       {
         label: "Maintenance",
@@ -301,6 +369,27 @@ export default function LandlordRoomsPage() {
           <p className="text-sm text-muted-foreground">
             Manage room assignments, leases, and payment status.
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Link
+              href="/landlord/properties"
+              className="text-xs font-medium text-primary underline"
+            >
+              Property &amp; map settings
+            </Link>
+            {propertyOptions.length > 0 ? (
+              <select
+                className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
+                value={selectedPropertyId}
+                onChange={(e) => setSelectedPropertyId(e.target.value)}
+              >
+                {propertyOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
         </div>
         <Button
           type="button"
@@ -327,7 +416,7 @@ export default function LandlordRoomsPage() {
         </div>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {summaryCards.map((card) => (
           <Card
             key={card.label}
@@ -388,6 +477,11 @@ export default function LandlordRoomsPage() {
                       className="block w-full px-3 py-1.5 text-left hover:bg-slate-50"
                       onClick={() => {
                         setManageMenuOpen(false);
+                        setAddRoomPropertyId(
+                          selectedPropertyId ||
+                            propertyOptions[0]?.id ||
+                            ""
+                        );
                         setShowAddRoomDialog(true);
                       }}
                     >
@@ -414,7 +508,11 @@ export default function LandlordRoomsPage() {
                         setPreviewRoomImages([]);
                         setListingRoomId("");
                         setListingDescription("");
-                        setListingLocation("");
+                        const loc =
+                          formatPropertyAddress(selectedProperty) ||
+                          selectedProperty?.name ||
+                          "";
+                        setListingLocation(loc);
                         setShowPostListingDialog(true);
                       }}
                     >
@@ -508,6 +606,37 @@ export default function LandlordRoomsPage() {
                         >
                           <PenSquare className="h-3 w-3" />
                           Room
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[0.7rem] text-red-600 border-red-200 hover:bg-red-50"
+                          onClick={async () => {
+                            if (
+                              !window.confirm(
+                                `Delete room ${room.roomNo}? This cannot be undone.`
+                              )
+                            )
+                              return;
+                            setSaving(true);
+                            try {
+                              const res = await fetch(
+                                `/api/landlord/rooms/${room.id}`,
+                                { method: "DELETE", credentials: "include" }
+                              );
+                              const j = (await res.json()) as { error?: string };
+                              if (!res.ok) throw new Error(j.error ?? "Failed");
+                              await loadData();
+                            } catch (e) {
+                              setLoadError(
+                                e instanceof Error ? e.message : "Delete failed"
+                              );
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
                         </Button>
                         {lease ? (
                           <>
@@ -606,7 +735,8 @@ export default function LandlordRoomsPage() {
                     Add Room
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Create a new room entry for your dorm.
+                    Choose which property this room belongs to. It appears on the
+                    student map using that property&apos;s address and map pin.
                   </p>
                 </div>
                 <Button
@@ -622,16 +752,69 @@ export default function LandlordRoomsPage() {
             </CardHeader>
             <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 py-3 text-xs text-slate-800 sm:px-6">
               <div className="grid grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-2">
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-[0.75rem] font-medium text-slate-800">
-                    Dorm Name
+                    Property
                   </label>
-                  <Input
-                    value={propertyName}
-                    disabled
-                    className="h-8 text-xs bg-muted"
-                  />
+                  <select
+                    className="h-8 w-full max-w-md rounded-md border border-gray-300 bg-white px-2 text-xs"
+                    value={addRoomPropertyId}
+                    onChange={(e) => setAddRoomPropertyId(e.target.value)}
+                    disabled={propertyOptions.length === 0}
+                  >
+                    {propertyOptions.length === 0 ? (
+                      <option value="">No properties yet</option>
+                    ) : (
+                      propertyOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-[0.65rem] text-muted-foreground">
+                    The room is stored under this property so browse and map
+                    views match the correct building.
+                  </p>
                 </div>
+
+                {addRoomProperty ? (
+                  <div className="space-y-2 md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-[0.7rem] text-slate-700">
+                    <p className="text-[0.7rem] font-semibold text-slate-900">
+                      Location shown to students (from property settings)
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Address: </span>
+                      {formatPropertyAddress(addRoomProperty) || "—"}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Contact: </span>
+                      {addRoomProperty.contactPhone?.trim() || "—"}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Map pin: </span>
+                      {addRoomProperty.latitude != null &&
+                      addRoomProperty.longitude != null ? (
+                        <>
+                          {addRoomProperty.latitude.toFixed(5)},{" "}
+                          {addRoomProperty.longitude.toFixed(5)}
+                        </>
+                      ) : (
+                        <span className="text-amber-800">
+                          Not set — open{" "}
+                          <Link
+                            href="/landlord/properties"
+                            className="underline font-medium text-primary"
+                          >
+                            Property &amp; map settings
+                          </Link>{" "}
+                          to pin this property on the map.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="space-y-1">
                   <label className="text-[0.75rem] font-medium text-slate-800">
                     Room No.
@@ -734,8 +917,18 @@ export default function LandlordRoomsPage() {
                 type="button"
                 size="sm"
                 className="h-8 px-3 text-xs"
-                disabled={newRoomNo.trim().length === 0 || saving}
+                disabled={
+                  newRoomNo.trim().length === 0 ||
+                  saving ||
+                  !addRoomPropertyId ||
+                  propertyOptions.length === 0
+                }
                 onClick={async () => {
+                  const pid = addRoomPropertyId.trim();
+                  if (!pid) {
+                    setLoadError("Select a property for this room.");
+                    return;
+                  }
                   setSaving(true);
                   try {
                     let roomImageUrls: string[] = [];
@@ -749,6 +942,7 @@ export default function LandlordRoomsPage() {
                       credentials: "include",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
+                        propertyId: pid,
                         roomNo: newRoomNo.trim(),
                         capacity: Number(newRoomCapacity) || 1,
                         rate: Number(newRoomRate) || 0,
@@ -770,7 +964,8 @@ export default function LandlordRoomsPage() {
                     setNewRoomDetails("");
                     setNewRoomPhotoFiles([]);
                     setShowAddRoomDialog(false);
-                    await loadData();
+                    setSelectedPropertyId(pid);
+                    await loadData(pid);
                   } catch (e) {
                     setLoadError(
                       e instanceof Error ? e.message : "Failed to add room"
@@ -941,6 +1136,7 @@ export default function LandlordRoomsPage() {
                     }
                   >
                     <option value="Available">Available</option>
+                    <option value="Reserved">Reserved</option>
                     <option value="Occupied">Occupied</option>
                     <option value="Maintenance">Maintenance</option>
                   </select>

@@ -5,6 +5,7 @@ import { requireIctAdminUnlessBootstrapEmpty } from "@/lib/admin-api-guard";
 import {
   isBoardingRole,
   isBoardingStatus,
+  isIctVerificationStatus,
   rowToDto,
   type BoardingHouseUserRow,
 } from "@/lib/boarding-house-users";
@@ -18,7 +19,9 @@ export async function GET() {
     }
     const pool = await getPool();
     const { rows } = await pool.query<BoardingHouseUserRow>(
-      `SELECT id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at
+      `SELECT id, seq_id, full_name, email, role, status, student_id,
+              ict_verification_status, emergency_contact_name, emergency_contact_phone, course,
+              created_at, updated_at, last_login_at
        FROM public.boarding_house_app_users
        ORDER BY seq_id ASC`
     );
@@ -42,6 +45,7 @@ export async function POST(req: Request) {
       status?: string;
       temporaryPassword?: string;
       studentId?: string | null;
+      ictVerificationStatus?: string;
     };
     const name = (body.name ?? "").trim();
     const email = (body.email ?? "").trim().toLowerCase();
@@ -79,12 +83,24 @@ export async function POST(req: Request) {
 
     const password_hash = await bcrypt.hash(temporaryPassword, 10);
     const pool = await getPool();
+    let ictStatus = "Verified";
+    if (role === "Student" && body.ictVerificationStatus !== undefined) {
+      if (!isIctVerificationStatus(body.ictVerificationStatus)) {
+        return NextResponse.json(
+          { error: "Invalid ICT verification status." },
+          { status: 400 }
+        );
+      }
+      ictStatus = body.ictVerificationStatus;
+    }
     const { rows } = await pool.query<BoardingHouseUserRow>(
       `INSERT INTO public.boarding_house_app_users
-        (full_name, email, role, status, password_hash, student_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at`,
-      [name, email, role, status, password_hash, studentId]
+        (full_name, email, role, status, password_hash, student_id, ict_verification_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, seq_id, full_name, email, role, status, student_id,
+                 ict_verification_status, emergency_contact_name, emergency_contact_phone, course,
+                 created_at, updated_at, last_login_at`,
+      [name, email, role, status, password_hash, studentId, ictStatus]
     );
     const row = rows[0];
     if (!row) {

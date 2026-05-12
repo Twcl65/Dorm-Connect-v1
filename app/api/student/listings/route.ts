@@ -47,6 +47,11 @@ export async function GET() {
       property_name: string;
       property_address: string | null;
       property_city: string | null;
+      property_contact_phone: string | null;
+      property_description: string | null;
+      cover_image_url: string | null;
+      latitude: string | null;
+      longitude: string | null;
       landlord_name: string;
       property_id: string;
       listing_image_urls: unknown;
@@ -60,6 +65,10 @@ export async function GET() {
               r.listing_image_urls, r.listing_background_url,
               r.room_image_urls, r.room_size_label, r.room_details,
               p.name AS property_name, p.address AS property_address, p.city AS property_city,
+              p.contact_phone AS property_contact_phone,
+              p.description AS property_description,
+              p.cover_image_url,
+              p.latitude::text AS latitude, p.longitude::text AS longitude,
               u.full_name AS landlord_name, p.id AS property_id
        FROM public.landlord_rooms r
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -117,6 +126,17 @@ export async function GET() {
         const myReservationStatus =
           reservationByRoom.get(row.room_id) ?? null;
 
+        const latRaw = row.latitude?.trim();
+        const lngRaw = row.longitude?.trim();
+        const latitude =
+          latRaw != null && latRaw !== "" && !Number.isNaN(Number(latRaw))
+            ? Number(latRaw)
+            : null;
+        const longitude =
+          lngRaw != null && lngRaw !== "" && !Number.isNaN(Number(lngRaw))
+            ? Number(lngRaw)
+            : null;
+
         return {
           id: row.room_id,
           name: `${row.property_name} – Room ${row.room_no}`,
@@ -134,6 +154,16 @@ export async function GET() {
           images,
           reviewSummary: { avg, count: reviewCount },
           myReservationStatus,
+          propertyId: row.property_id,
+          propertyName: row.property_name,
+          propertyAddress: row.property_address?.trim() || null,
+          propertyCity: row.property_city?.trim() || null,
+          propertyContactPhone: row.property_contact_phone?.trim() || null,
+          propertyDescription:
+            row.property_description?.trim() || null,
+          propertyCoverImageUrl: row.cover_image_url?.trim() || null,
+          latitude,
+          longitude,
         };
       })
     );

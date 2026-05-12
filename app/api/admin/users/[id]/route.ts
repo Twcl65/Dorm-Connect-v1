@@ -6,11 +6,17 @@ import { appUserCount } from "@/lib/admin-api-guard";
 import {
   isBoardingRole,
   isBoardingStatus,
+  isIctVerificationStatus,
   rowToDto,
   type BoardingHouseUserRow,
 } from "@/lib/boarding-house-users";
 
 export const dynamic = "force-dynamic";
+
+const RETURNING =
+  `id, seq_id, full_name, email, role, status, student_id,
+   ict_verification_status, emergency_contact_name, emergency_contact_phone, course,
+   created_at, updated_at, last_login_at`;
 
 export async function PATCH(
   req: Request,
@@ -36,6 +42,10 @@ export async function PATCH(
       status?: string;
       studentId?: string | null;
       newPassword?: string;
+      ictVerificationStatus?: string;
+      emergencyContactName?: string | null;
+      emergencyContactPhone?: string | null;
+      course?: string | null;
     };
     const name = (body.name ?? "").trim();
     const email = (body.email ?? "").trim().toLowerCase();
@@ -52,6 +62,15 @@ export async function PATCH(
           ? studentIdRaw
           : null;
     const newPassword = (body.newPassword ?? "").trim();
+
+    if (body.ictVerificationStatus !== undefined) {
+      if (!isIctVerificationStatus(body.ictVerificationStatus)) {
+        return NextResponse.json(
+          { error: "Invalid ICT verification status." },
+          { status: 400 }
+        );
+      }
+    }
 
     if (!name || !email) {
       return NextResponse.json(
@@ -74,71 +93,70 @@ export async function PATCH(
 
     const pool = await getPool();
 
-    let sql: string;
-    if (studentId !== undefined && newPassword.length > 0) {
-      const hash = await bcrypt.hash(newPassword, 10);
-      sql = `UPDATE public.boarding_house_app_users
-       SET full_name = $1, email = $2, role = $3, status = $4, student_id = $5,
-           password_hash = $6, updated_at = now()
-       WHERE id = $7::uuid
-       RETURNING id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at`;
-      const { rows } = await pool.query<BoardingHouseUserRow>(sql, [
-        name,
-        email,
-        role,
-        status,
-        studentId,
-        hash,
-        id,
-      ]);
-      const row = rows[0];
-      if (!row) {
-        return NextResponse.json({ error: "User not found." }, { status: 404 });
-      }
-      return NextResponse.json({ user: rowToDto(row) });
+    const encName =
+      body.emergencyContactName !== undefined
+        ? (body.emergencyContactName ?? "").trim() || null
+        : undefined;
+    const encPhone =
+      body.emergencyContactPhone !== undefined
+        ? (body.emergencyContactPhone ?? "").trim() || null
+        : undefined;
+    const courseVal =
+      body.course !== undefined
+        ? (body.course ?? "").trim() || null
+        : undefined;
+
+    const parts: string[] = [
+      "full_name = $1",
+      "email = $2",
+      "role = $3",
+      "status = $4",
+    ];
+    const vals: unknown[] = [name, email, role, status];
+    let p = 5;
+
+    if (studentId !== undefined) {
+      parts.push(`student_id = $${p}`);
+      vals.push(studentId);
+      p++;
     }
-    if (studentId !== undefined && newPassword.length === 0) {
-      sql = `UPDATE public.boarding_house_app_users
-       SET full_name = $1, email = $2, role = $3, status = $4, student_id = $5, updated_at = now()
-       WHERE id = $6::uuid
-       RETURNING id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at`;
-      const { rows } = await pool.query<BoardingHouseUserRow>(sql, [
-        name,
-        email,
-        role,
-        status,
-        studentId,
-        id,
-      ]);
-      const row = rows[0];
-      if (!row) {
-        return NextResponse.json({ error: "User not found." }, { status: 404 });
-      }
-      return NextResponse.json({ user: rowToDto(row) });
+    if (body.ictVerificationStatus !== undefined) {
+      parts.push(`ict_verification_status = $${p}`);
+      vals.push(body.ictVerificationStatus);
+      p++;
     }
-    if (studentId === undefined && newPassword.length > 0) {
-      const hash = await bcrypt.hash(newPassword, 10);
-      const { rows } = await pool.query<BoardingHouseUserRow>(
-        `UPDATE public.boarding_house_app_users
-       SET full_name = $1, email = $2, role = $3, status = $4, password_hash = $5, updated_at = now()
-       WHERE id = $6::uuid
-       RETURNING id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at`,
-        [name, email, role, status, hash, id]
-      );
-      const row = rows[0];
-      if (!row) {
-        return NextResponse.json({ error: "User not found." }, { status: 404 });
-      }
-      return NextResponse.json({ user: rowToDto(row) });
+    if (encName !== undefined) {
+      parts.push(`emergency_contact_name = $${p}`);
+      vals.push(encName);
+      p++;
+    }
+    if (encPhone !== undefined) {
+      parts.push(`emergency_contact_phone = $${p}`);
+      vals.push(encPhone);
+      p++;
+    }
+    if (courseVal !== undefined) {
+      parts.push(`course = $${p}`);
+      vals.push(courseVal);
+      p++;
     }
 
-    const { rows } = await pool.query<BoardingHouseUserRow>(
-      `UPDATE public.boarding_house_app_users
-       SET full_name = $1, email = $2, role = $3, status = $4, updated_at = now()
-       WHERE id = $5::uuid
-       RETURNING id, seq_id, full_name, email, role, status, student_id, created_at, updated_at, last_login_at`,
-      [name, email, role, status, id]
-    );
+    if (newPassword.length > 0) {
+      const hash = await bcrypt.hash(newPassword, 10);
+      parts.push(`password_hash = $${p}`);
+      vals.push(hash);
+      p++;
+    }
+
+    parts.push("updated_at = now()");
+    vals.push(id);
+
+    const sql = `UPDATE public.boarding_house_app_users
+       SET ${parts.join(", ")}
+       WHERE id = $${p}::uuid
+       RETURNING ${RETURNING}`;
+
+    const { rows } = await pool.query<BoardingHouseUserRow>(sql, vals);
     const row = rows[0];
     if (!row) {
       return NextResponse.json({ error: "User not found." }, { status: 404 });

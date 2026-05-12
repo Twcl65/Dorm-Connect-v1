@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_ROLES = new Set([
   "Student",
-  "Owner",
+  "Landlord",
   "ICT Admin",
-  "OSA Admin",
+  "OSA/SAS Admin",
 ]);
 
 export async function POST(req: Request) {

@@ -20,13 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FilePlus2, Eye, Loader2 } from "lucide-react";
 
-type RequestStatus =
-  | "Submitted"
-  | "In Review"
-  | "Approved"
-  | "Rejected"
-  | "Needs Documents";
-
 const ROWS_PER_PAGE = 5;
 
 type AccreditationRow = {
@@ -35,20 +28,26 @@ type AccreditationRow = {
   address: string;
   documentsCount: number;
   submittedDate: string;
-  status: RequestStatus;
+  status: string;
 };
 
-function StatusBadge({ status }: { status: RequestStatus }) {
+function StatusBadge({ status }: { status: string }) {
   const colorClasses =
     status === "Approved"
       ? "bg-emerald-100 text-emerald-800"
-      : status === "In Review"
-        ? "bg-blue-100 text-blue-800"
-        : status === "Submitted"
-          ? "bg-slate-100 text-slate-800"
-          : status === "Rejected"
-            ? "bg-red-100 text-red-800"
-            : "bg-amber-100 text-amber-900";
+      : status === "Rejected"
+        ? "bg-red-100 text-red-800"
+        : status === "Expired"
+          ? "bg-slate-200 text-slate-800"
+          : status === "Pending"
+            ? "bg-slate-100 text-slate-800"
+            : status === "Scheduled for Inspection"
+              ? "bg-sky-100 text-sky-800"
+              : status === "Recommended for Approval"
+                ? "bg-emerald-50 text-emerald-900"
+                : status === "Hold"
+                  ? "bg-amber-100 text-amber-900"
+                  : "bg-slate-100 text-slate-700";
 
   return (
     <Badge

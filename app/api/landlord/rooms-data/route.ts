@@ -5,20 +5,68 @@ import {
   formatLeasePeriod,
   resolveDormDisplayName,
 } from "@/lib/landlord-db";
-import { requireOwner } from "@/lib/require-owner";
+import { requireLandlord } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const session = await requireOwner();
+export async function GET(req: Request) {
+  const session = await requireLandlord();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   const ownerId = session.sub;
+  const { searchParams } = new URL(req.url);
+  let propertyId = (searchParams.get("propertyId") ?? "").trim();
 
   try {
     const pool = await getPool();
-    const propertyId = await ensureLandlordProperty(pool, ownerId);
+
+    let { rows: propList } = await pool.query<{
+      id: string;
+      name: string;
+      address: string | null;
+      city: string | null;
+      contact_phone: string | null;
+      latitude: string | null;
+      longitude: string | null;
+    }>(
+      `SELECT id, name, address, city, contact_phone,
+              latitude::text, longitude::text
+       FROM public.landlord_properties
+       WHERE owner_user_id = $1::uuid
+       ORDER BY created_at ASC`,
+      [ownerId]
+    );
+
+    if (propList.length === 0) {
+      await ensureLandlordProperty(pool, ownerId);
+      const again = await pool.query<{
+        id: string;
+        name: string;
+        address: string | null;
+        city: string | null;
+        contact_phone: string | null;
+        latitude: string | null;
+        longitude: string | null;
+      }>(
+        `SELECT id, name, address, city, contact_phone,
+                latitude::text, longitude::text
+         FROM public.landlord_properties
+         WHERE owner_user_id = $1::uuid
+         ORDER BY created_at ASC`,
+        [ownerId]
+      );
+      propList = again.rows;
+    }
+
+    if (!propertyId || !/^[0-9a-f-]{36}$/i.test(propertyId)) {
+      propertyId = propList[0]?.id ?? "";
+    } else {
+      const ok = propList.some((p) => p.id === propertyId);
+      if (!ok) {
+        return NextResponse.json({ error: "Invalid property." }, { status: 400 });
+      }
+    }
 
     const { rows: prop } = await pool.query<{
       name: string;
@@ -37,6 +85,7 @@ export async function GET() {
 
     const { rows: rooms } = await pool.query<{
       id: string;
+      property_id: string;
       room_no: string;
       capacity: number;
       monthly_rate: string;
@@ -51,13 +100,13 @@ export async function GET() {
       room_size_label: string | null;
       room_details: string | null;
     }>(
-      `SELECT id, room_no, capacity, monthly_rate::text, status, remarks,
+      `SELECT id, property_id, room_no, capacity, monthly_rate::text, status, remarks,
               is_listed, listing_location, listing_description, listing_image_urls,
               listing_background_url, room_image_urls, room_size_label, room_details
        FROM public.landlord_rooms
-       WHERE owner_user_id = $1::uuid
+       WHERE owner_user_id = $1::uuid AND property_id = $2::uuid
        ORDER BY room_no`,
-      [ownerId]
+      [ownerId, propertyId]
     );
 
     const { rows: leases } = await pool.query<{
@@ -74,16 +123,16 @@ export async function GET() {
               l.lease_start, l.lease_end, l.payment_status
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
-       WHERE l.owner_user_id = $1::uuid
+       WHERE l.owner_user_id = $1::uuid AND l.property_id = $2::uuid
        ORDER BY r.room_no`,
-      [ownerId]
+      [ownerId, propertyId]
     );
 
     const total = rooms.length;
     const occupied = rooms.filter((r) => r.status === "Occupied").length;
     const available = rooms.filter((r) => r.status === "Available").length;
-    const maintenance = rooms.filter((r) => r.status === "Maintenance")
-      .length;
+    const reserved = rooms.filter((r) => r.status === "Reserved").length;
+    const maintenance = rooms.filter((r) => r.status === "Maintenance").length;
 
     const propertyName = resolveDormDisplayName(
       prop[0]?.name,
@@ -91,9 +140,22 @@ export async function GET() {
     );
 
     return NextResponse.json({
+      properties: propList.map((p) => ({
+        id: p.id,
+        name: p.name,
+        address: p.address?.trim() || null,
+        city: p.city?.trim() || null,
+        contactPhone: p.contact_phone?.trim() || null,
+        latitude:
+          p.latitude != null && p.latitude !== "" ? Number(p.latitude) : null,
+        longitude:
+          p.longitude != null && p.longitude !== ""
+            ? Number(p.longitude)
+            : null,
+      })),
+      selectedPropertyId: propertyId,
       propertyName,
-      propertyId,
-      stats: { total, occupied, available, maintenance },
+      stats: { total, occupied, available, reserved, maintenance },
       rooms: rooms.map((r) => {
         const imgs = Array.isArray(r.listing_image_urls)
           ? (r.listing_image_urls as string[])
@@ -103,6 +165,7 @@ export async function GET() {
           : [];
         return {
           id: r.id,
+          propertyId: r.property_id,
           roomNo: r.room_no,
           capacity: r.capacity,
           rate: Number(r.monthly_rate),
@@ -130,7 +193,11 @@ export async function GET() {
           new Date(l.lease_end)
         ),
         paymentStatus: l.payment_status as "Paid" | "Pending" | "Overdue",
-        status: l.room_status as "Occupied" | "Available" | "Maintenance",
+        status: l.room_status as
+          | "Occupied"
+          | "Available"
+          | "Reserved"
+          | "Maintenance",
       })),
     });
   } catch (e) {

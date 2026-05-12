@@ -48,6 +48,8 @@ export default function AdminUsersPage() {
   const [formStatus, setFormStatus] = useState("Active");
   const [formTempPassword, setFormTempPassword] = useState("");
   const [formStudentId, setFormStudentId] = useState("");
+  const [formIctVerification, setFormIctVerification] =
+    useState("Verified");
   const [formNewPassword, setFormNewPassword] = useState("");
 
   const loadUsers = useCallback(async () => {
@@ -100,6 +102,7 @@ export default function AdminUsersPage() {
     setFormStatus("Active");
     setFormTempPassword(randomTempPassword());
     setFormStudentId("");
+    setFormIctVerification("Verified");
     setShowAddDialog(true);
   };
 
@@ -118,6 +121,9 @@ export default function AdminUsersPage() {
           status: formStatus,
           temporaryPassword: formTempPassword,
           studentId: formStudentId.trim() || undefined,
+          ...(formRole === "Student"
+            ? { ictVerificationStatus: formIctVerification }
+            : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -152,6 +158,9 @@ export default function AdminUsersPage() {
           status: formStatus,
           studentId: formStudentId.trim() ? formStudentId.trim() : null,
           newPassword: formNewPassword.trim() || undefined,
+          ...(formRole === "Student"
+            ? { ictVerificationStatus: formIctVerification }
+            : {}),
         }),
       });
       const data = (await res.json()) as {
@@ -224,8 +233,8 @@ export default function AdminUsersPage() {
               >
                 <option>All roles</option>
                 <option>ICT Admin</option>
-                <option>OSA Admin</option>
-                <option>Owner</option>
+                <option>OSA/SAS Admin</option>
+                <option>Landlord</option>
                 <option>Student</option>
               </select>
               <select
@@ -258,6 +267,7 @@ export default function AdminUsersPage() {
                 <TableHead>Student ID</TableHead>
                 <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>ICT verify</TableHead>
                   <TableHead className="text-right pr-4 font-semibold text-slate-600">
                     Actions
                   </TableHead>
@@ -267,7 +277,7 @@ export default function AdminUsersPage() {
                 {filteredUsers.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="py-8 text-center text-xs text-muted-foreground"
                     >
                       No users match your filters.
@@ -314,6 +324,11 @@ export default function AdminUsersPage() {
                           {user.status}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-[0.65rem] text-slate-600">
+                        {user.role === "Student"
+                          ? user.ictVerificationStatus
+                          : "—"}
+                      </TableCell>
                       <TableCell className="pr-4">
                         <div className="flex justify-end gap-2">
                           <Button
@@ -327,6 +342,7 @@ export default function AdminUsersPage() {
                               setFormEmail(user.email);
                               setFormRole(user.role);
                               setFormStatus(user.status);
+                              setFormIctVerification(user.ictVerificationStatus);
                               setFormStudentId(user.studentId ?? "");
                               setFormNewPassword("");
                               setShowEditDialog(true);
@@ -408,9 +424,9 @@ export default function AdminUsersPage() {
                   disabled={saving}
                 >
                   <option value="Student">Student</option>
-                  <option value="Owner">Owner</option>
+                  <option value="Landlord">Landlord</option>
                   <option value="ICT Admin">ICT Admin</option>
-                  <option value="OSA Admin">OSA Admin</option>
+                  <option value="OSA/SAS Admin">OSA/SAS Admin</option>
                 </select>
                 <span className="text-[0.7rem]">Status</span>
                 <select
@@ -423,6 +439,23 @@ export default function AdminUsersPage() {
                   <option value="Pending">Pending</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+                {formRole === "Student" && (
+                  <>
+                    <span className="text-[0.7rem]">ICT verification</span>
+                    <select
+                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      value={formIctVerification}
+                      onChange={(e) => setFormIctVerification(e.target.value)}
+                      disabled={saving}
+                    >
+                      <option value="Pending Verification">
+                        Pending Verification
+                      </option>
+                      <option value="Verified">Verified</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+                  </>
+                )}
                 <span className="text-[0.7rem]">Student ID</span>
                 <Input
                   value={formStudentId}
@@ -535,9 +568,9 @@ export default function AdminUsersPage() {
                   disabled={saving}
                 >
                   <option value="Student">Student</option>
-                  <option value="Owner">Owner</option>
+                  <option value="Landlord">Landlord</option>
                   <option value="ICT Admin">ICT Admin</option>
-                  <option value="OSA Admin">OSA Admin</option>
+                  <option value="OSA/SAS Admin">OSA/SAS Admin</option>
                 </select>
                 <span className="text-[0.7rem]">Status</span>
                 <select
@@ -550,6 +583,23 @@ export default function AdminUsersPage() {
                   <option value="Pending">Pending</option>
                   <option value="Inactive">Inactive</option>
                 </select>
+                {formRole === "Student" && (
+                  <>
+                    <span className="text-[0.7rem]">ICT verification</span>
+                    <select
+                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      value={formIctVerification}
+                      onChange={(e) => setFormIctVerification(e.target.value)}
+                      disabled={saving}
+                    >
+                      <option value="Pending Verification">
+                        Pending Verification
+                      </option>
+                      <option value="Verified">Verified</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+                  </>
+                )}
                 <span className="text-[0.7rem]">Student ID</span>
                 <Input
                   value={formStudentId}
@@ -668,6 +718,16 @@ export default function AdminUsersPage() {
                   readOnly
                   className="h-8 text-xs"
                 />
+                {selectedUser.role === "Student" && (
+                  <>
+                    <span className="text-[0.7rem]">ICT verification</span>
+                    <Input
+                      value={selectedUser.ictVerificationStatus}
+                      readOnly
+                      className="h-8 text-xs"
+                    />
+                  </>
+                )}
                 <span className="text-[0.7rem]">Status</span>
                 <div className="flex items-center gap-2">
                   <Badge

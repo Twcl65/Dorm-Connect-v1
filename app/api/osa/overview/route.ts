@@ -26,10 +26,15 @@ export async function GET() {
     }>(
       `SELECT
          (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests
-          WHERE status IN ('Submitted', 'In Review', 'Needs Documents')) AS pending,
+          WHERE status IN (
+            'Pending',
+            'Scheduled for Inspection',
+            'Recommended for Approval',
+            'Hold'
+          )) AS pending,
          (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests WHERE status = 'Approved') AS approved,
          (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests WHERE status = 'Rejected') AS rejected,
-         (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests WHERE status = 'Needs Documents') AS needs_docs,
+         (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests WHERE status = 'Hold') AS needs_docs,
          (SELECT COUNT(*)::text FROM public.landlord_properties WHERE operational_status = 'Not Operating') AS not_operating,
          (SELECT COUNT(*)::text FROM public.landlord_properties
           WHERE compliance_status IN ('Warning', 'Non-Compliant')) AS compliance_alerts`
@@ -58,8 +63,10 @@ export async function GET() {
          CASE a.status
            WHEN 'Approved' THEN 'Accreditation approved: '
            WHEN 'Rejected' THEN 'Accreditation rejected: '
-           WHEN 'Needs Documents' THEN 'Additional documents requested: '
-           WHEN 'In Review' THEN 'Under review: '
+           WHEN 'Hold' THEN 'On hold: '
+           WHEN 'Scheduled for Inspection' THEN 'Inspection scheduled: '
+           WHEN 'Recommended for Approval' THEN 'Recommended for approval: '
+           WHEN 'Expired' THEN 'Accreditation expired: '
            ELSE 'Updated: '
          END || a.dorm_name AS line
        FROM public.landlord_accreditation_requests a

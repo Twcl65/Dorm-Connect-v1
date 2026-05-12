@@ -64,7 +64,12 @@ export async function GET() {
         }>(
           `SELECT
              COUNT(*) FILTER (WHERE status = 'Approved')::text AS approved,
-             COUNT(*) FILTER (WHERE status IN ('Submitted','In Review','Needs Documents'))::text AS pending
+             COUNT(*) FILTER (WHERE status IN (
+               'Pending',
+               'Scheduled for Inspection',
+               'Recommended for Approval',
+               'Hold'
+             ))::text AS pending
            FROM public.landlord_accreditation_requests WHERE owner_user_id = $1::uuid`,
           [ownerId]
         ),

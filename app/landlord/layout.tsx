@@ -9,6 +9,7 @@ export default function LandlordLayout({ children }: { children: ReactNode }) {
       roleLabel="Landlord / Dorm Owner"
       sidebarItems={[
         { label: "Dashboard", href: "/landlord", icon: RoleIcons.dashboard },
+        { label: "Properties", href: "/landlord/properties", icon: RoleIcons.dorms },
         { label: "Rooms", href: "/landlord/rooms", icon: RoleIcons.rooms },
         { label: "Tenants", href: "/landlord/tenants", icon: RoleIcons.tenants },
         { label: "Reservations", href: "/landlord/reservations", icon: RoleIcons.reservations },

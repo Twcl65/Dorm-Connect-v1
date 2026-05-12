@@ -78,12 +78,7 @@ export async function GET() {
         address: r.address,
         documentsCount: r.documents_count,
         submittedDate: new Date(r.submitted_at).toISOString().slice(0, 10),
-        status: r.status as
-          | "Submitted"
-          | "In Review"
-          | "Approved"
-          | "Rejected"
-          | "Needs Documents",
+        status: r.status,
       })),
     });
   } catch (e) {
@@ -170,7 +165,7 @@ export async function POST(req: Request) {
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_accreditation_requests
         (owner_user_id, property_id, dorm_name, address, documents_count, form_data, status)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'Submitted')
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'Pending')
        RETURNING id`,
       [ownerId, propertyId, dormName, address, docsCount, JSON.stringify(formData)]
     );

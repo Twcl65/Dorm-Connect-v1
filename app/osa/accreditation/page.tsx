@@ -47,6 +47,7 @@ type OsaRequestRow = {
   dateSubmitted: string;
   status: string;
   documentsCount?: number;
+  inspectionScheduledFor?: string | null;
 };
 
 type OsaAccreditedRow = {
@@ -59,17 +60,21 @@ type OsaAccreditedRow = {
 
 function RequestStatusBadge({ status }: { status: string }) {
   const colorClasses =
-    status === "Submitted"
+    status === "Pending"
       ? "bg-amber-100 text-amber-800"
-      : status === "In Review"
+      : status === "Scheduled for Inspection"
         ? "bg-sky-100 text-sky-800"
-        : status === "Needs Documents"
-          ? "bg-amber-100 text-amber-900"
-          : status === "Rejected"
-            ? "bg-red-100 text-red-800"
-            : status === "Approved"
-              ? "bg-emerald-100 text-emerald-800"
-              : "bg-slate-100 text-slate-800";
+        : status === "Recommended for Approval"
+          ? "bg-emerald-50 text-emerald-900"
+          : status === "Hold"
+            ? "bg-amber-100 text-amber-900"
+            : status === "Rejected"
+              ? "bg-red-100 text-red-800"
+              : status === "Approved"
+                ? "bg-emerald-100 text-emerald-800"
+                : status === "Expired"
+                  ? "bg-slate-200 text-slate-800"
+                  : "bg-slate-100 text-slate-800";
 
   return (
     <Badge
@@ -146,6 +151,14 @@ export default function OsaAccreditationPage() {
   const [showNeedsDocsDialog, setShowNeedsDocsDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [needsDocsNote, setNeedsDocsNote] = useState("");
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [inspectionDate, setInspectionDate] = useState("");
+  const [showInspectionResultDialog, setShowInspectionResultDialog] =
+    useState(false);
+  const [inspectionResult, setInspectionResult] = useState(
+    "Recommended for Approval"
+  );
+  const [inspectionNotes, setInspectionNotes] = useState("");
 
   const [selectedDorm, setSelectedDorm] = useState<OsaAccreditedRow | null>(
     null
@@ -370,9 +383,14 @@ export default function OsaAccreditationPage() {
                 }
               >
                 <option value="all">All statuses</option>
-                <option value="Submitted">Submitted</option>
-                <option value="In Review">In Review</option>
-                <option value="Needs Documents">Needs Documents</option>
+                <option value="Pending">Pending</option>
+                <option value="Scheduled for Inspection">
+                  Scheduled for Inspection
+                </option>
+                <option value="Recommended for Approval">
+                  Recommended for Approval
+                </option>
+                <option value="Hold">Hold</option>
                 <option value="Rejected">Rejected</option>
               </select>
             </div>
@@ -384,7 +402,7 @@ export default function OsaAccreditationPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Dorm Name</TableHead>
-                <TableHead>Owner</TableHead>
+                <TableHead>Landlord</TableHead>
                 <TableHead>Date Submitted</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right pr-4 font-semibold text-slate-600">
@@ -661,7 +679,7 @@ export default function OsaAccreditationPage() {
                 <div className="grid gap-2 md:grid-cols-[130px,1fr] items-center">
                   <span className="text-[0.7rem]">Dorm Name:</span>
                   <Input value={selectedRequest.dormName} readOnly className="h-8 text-xs" />
-                  <span className="text-[0.7rem]">Owner:</span>
+                  <span className="text-[0.7rem]">Landlord:</span>
                   <Input value={selectedRequest.owner} readOnly className="h-8 text-xs" />
                   <span className="text-[0.7rem]">Property (landlord):</span>
                   <Input
@@ -725,12 +743,37 @@ export default function OsaAccreditationPage() {
                   size="sm"
                   className="h-8 px-3 text-xs"
                   onClick={() => {
+                    setInspectionDate("");
+                    setShowScheduleDialog(true);
+                  }}
+                >
+                  Schedule inspection
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => {
+                    setInspectionResult("Recommended for Approval");
+                    setInspectionNotes("");
+                    setShowInspectionResultDialog(true);
+                  }}
+                >
+                  Inspection result
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => {
                     setShowRequestDialog(false);
                     setNeedsDocsNote("");
                     setShowNeedsDocsDialog(true);
                   }}
                 >
-                  Request documents
+                  Hold / request docs
                 </Button>
                 <Button
                   type="button"
@@ -761,6 +804,170 @@ export default function OsaAccreditationPage() {
           </Card>
         </div>
       )}
+
+      {showScheduleDialog && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="w-full max-w-md border border-gray-300 bg-white">
+            <CardHeader className="pb-2 border-b bg-muted/40">
+              <CardTitle className="text-base font-semibold text-slate-900">
+                Schedule on-site inspection
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
+              <p>
+                Set the inspection date for{" "}
+                <span className="font-semibold">{selectedRequest.dormName}</span>.
+                The landlord will be notified.
+              </p>
+              <Input
+                type="date"
+                className="h-9 text-xs"
+                value={inspectionDate}
+                onChange={(e) => setInspectionDate(e.target.value)}
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setShowScheduleDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={!inspectionDate || actionSaving}
+                  onClick={async () => {
+                    if (!selectedRequest || !inspectionDate) return;
+                    setActionSaving(true);
+                    setLoadError(null);
+                    try {
+                      const res = await fetch(
+                        `/api/osa/accreditation/${selectedRequest.id}`,
+                        {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            status: "Scheduled for Inspection",
+                            inspectionScheduledFor: inspectionDate,
+                          }),
+                        }
+                      );
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
+                      setShowScheduleDialog(false);
+                      setShowRequestDialog(false);
+                      await loadData();
+                    } catch (e) {
+                      setLoadError(
+                        e instanceof Error ? e.message : "Failed to schedule"
+                      );
+                    } finally {
+                      setActionSaving(false);
+                    }
+                  }}
+                >
+                  {actionSaving ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showInspectionResultDialog && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="w-full max-w-md border border-gray-300 bg-white">
+            <CardHeader className="pb-2 border-b bg-muted/40">
+              <CardTitle className="text-base font-semibold text-slate-900">
+                Inspection checklist result
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
+              <p>
+                Encode results for{" "}
+                <span className="font-semibold">{selectedRequest.dormName}</span>.
+              </p>
+              <select
+                className="h-9 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                value={inspectionResult}
+                onChange={(e) => setInspectionResult(e.target.value)}
+              >
+                <option value="Recommended for Approval">
+                  Recommended for Approval
+                </option>
+                <option value="Hold">Hold</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+              <textarea
+                className="w-full min-h-[72px] rounded-md border border-slate-300 px-2 py-1 text-xs"
+                value={inspectionNotes}
+                onChange={(e) => setInspectionNotes(e.target.value)}
+                placeholder="Notes (fire extinguisher, exits, sanitation, etc.)…"
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setShowInspectionResultDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={actionSaving}
+                  onClick={async () => {
+                    if (!selectedRequest) return;
+                    setActionSaving(true);
+                    setLoadError(null);
+                    try {
+                      const res = await fetch("/api/osa/inspections", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          accreditationRequestId: selectedRequest.id,
+                          result: inspectionResult,
+                          notes: inspectionNotes.trim(),
+                          checklist: {
+                            fireExtinguisher: true,
+                            emergencyExits: true,
+                            sanitation: true,
+                            electricalSafety: true,
+                            occupancyCompliance: true,
+                          },
+                        }),
+                      });
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
+                      setShowInspectionResultDialog(false);
+                      setShowRequestDialog(false);
+                      await loadData();
+                    } catch (e) {
+                      setLoadError(
+                        e instanceof Error ? e.message : "Failed to save"
+                      );
+                    } finally {
+                      setActionSaving(false);
+                    }
+                  }}
+                >
+                  {actionSaving ? "Saving…" : "Submit"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Approve confirmation dialog */}
       {showApproveConfirm && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
@@ -912,7 +1119,7 @@ export default function OsaAccreditationPage() {
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <CardTitle className="text-base font-semibold text-slate-900">
-                Request additional documents
+                Place application on hold
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
@@ -953,7 +1160,7 @@ export default function OsaAccreditationPage() {
                           credentials: "include",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
-                            status: "Needs Documents",
+                            status: "Hold",
                             remarks: needsDocsNote.trim(),
                           }),
                         }

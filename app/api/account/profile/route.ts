@@ -7,9 +7,9 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_ROLES = new Set([
   "Student",
-  "Owner",
+  "Landlord",
   "ICT Admin",
-  "OSA Admin",
+  "OSA/SAS Admin",
 ]);
 
 function isSafeProfileImageUrl(v: string): boolean {
@@ -53,7 +53,7 @@ export async function GET() {
       formData: unknown;
     } | null = null;
 
-    if (u.role === "Owner") {
+    if (u.role === "Landlord") {
       const { rows: arows } = await pool.query<{
         id: string;
         dorm_name: string;

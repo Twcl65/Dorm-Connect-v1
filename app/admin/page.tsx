@@ -316,8 +316,8 @@ export default function AdminDashboardPage() {
               >
                 <option>All roles</option>
                 <option>ICT Admin</option>
-                <option>OSA Admin</option>
-                <option value="Owner">Landlord (Owner)</option>
+                <option>OSA/SAS Admin</option>
+                <option value="Landlord">Landlord</option>
                 <option>Student</option>
               </select>
               <select
@@ -390,7 +390,7 @@ export default function AdminDashboardPage() {
                         {user.studentId ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
-                        {user.role === "Owner" ? "Landlord" : user.role}
+                        {user.role}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -518,9 +518,9 @@ export default function AdminDashboardPage() {
                   disabled={saving}
                 >
                   <option value="Student">Student</option>
-                  <option value="Owner">Landlord (Owner)</option>
+                  <option value="Landlord">Landlord</option>
                   <option value="ICT Admin">ICT Admin</option>
-                  <option value="OSA Admin">OSA Admin</option>
+                  <option value="OSA/SAS Admin">OSA/SAS Admin</option>
                 </select>
                 <span className="text-[0.7rem]">Status</span>
                 <select

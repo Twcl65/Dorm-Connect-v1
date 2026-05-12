@@ -78,20 +78,39 @@ export function formatLeasePeriod(start: Date, end: Date): string {
   return `${a} - ${b}`;
 }
 
-/** After student reservation status changes, set room Occupied if any Confirmed booking exists, else Available. */
+/**
+ * Sync room listing status from student reservations:
+ * Confirmed → Occupied; Pending only → Reserved; none → Available.
+ * Does not override Maintenance (landlord manual).
+ */
 export async function refreshRoomFromStudentReservations(
   pool: Pool,
   roomId: string
 ): Promise<void> {
-  const { rows } = await pool.query<{ n: string }>(
-    `SELECT COUNT(*)::text AS n FROM public.student_dorm_reservations
-     WHERE room_id = $1::uuid AND status = 'Confirmed'`,
+  const { rows: st } = await pool.query<{ cur: string }>(
+    `SELECT status AS cur FROM public.landlord_rooms WHERE id = $1::uuid`,
     [roomId]
   );
-  const occupied = Number(rows[0]?.n ?? 0) > 0;
+  if (st[0]?.cur === "Maintenance") return;
+
+  const { rows } = await pool.query<{ confirmed: string; pending: string }>(
+    `SELECT
+       COUNT(*) FILTER (WHERE status = 'Confirmed')::text AS confirmed,
+       COUNT(*) FILTER (WHERE status = 'Pending')::text AS pending
+     FROM public.student_dorm_reservations
+     WHERE room_id = $1::uuid`,
+    [roomId]
+  );
+  const confirmed = Number(rows[0]?.confirmed ?? 0);
+  const pending = Number(rows[0]?.pending ?? 0);
+
+  let next: "Occupied" | "Reserved" | "Available" = "Available";
+  if (confirmed > 0) next = "Occupied";
+  else if (pending > 0) next = "Reserved";
+
   await pool.query(
     `UPDATE public.landlord_rooms SET status = $2, updated_at = now() WHERE id = $1::uuid`,
-    [roomId, occupied ? "Occupied" : "Available"]
+    [roomId, next]
   );
 }
 

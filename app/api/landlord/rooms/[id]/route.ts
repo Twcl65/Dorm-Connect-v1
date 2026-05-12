@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
-import { requireOwner } from "@/lib/require-owner";
+import { requireLandlord } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: { id: string } };
 
 export async function PATCH(req: Request, context: Ctx) {
-  const session = await requireOwner();
+  const session = await requireLandlord();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -70,6 +70,7 @@ export async function PATCH(req: Request, context: Ctx) {
     if (
       body.status === "Occupied" ||
       body.status === "Available" ||
+      body.status === "Reserved" ||
       body.status === "Maintenance"
     ) {
       status = body.status;
@@ -156,6 +157,48 @@ export async function PATCH(req: Request, context: Ctx) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to update room";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: Request, context: Ctx) {
+  const session = await requireLandlord();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  const ownerId = session.sub;
+  const { id } = context.params;
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ error: "Invalid room id." }, { status: 400 });
+  }
+
+  try {
+    const pool = await getPool();
+    const { rows: block } = await pool.query<{ b: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM public.student_dorm_reservations
+         WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
+       ) AS b`,
+      [id]
+    );
+    if (block[0]?.b) {
+      return NextResponse.json(
+        { error: "Cannot delete a room with active or pending reservations." },
+        { status: 400 }
+      );
+    }
+    const { rowCount } = await pool.query(
+      `DELETE FROM public.landlord_rooms
+       WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+      [id, ownerId]
+    );
+    if (!rowCount) {
+      return NextResponse.json({ error: "Room not found." }, { status: 404 });
+    }
+    await landlordLog(pool, ownerId, `Deleted room ${id}`);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to delete";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

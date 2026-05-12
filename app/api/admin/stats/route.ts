@@ -29,7 +29,12 @@ export async function GET() {
          (SELECT COUNT(*)::text FROM public.landlord_reservations) AS landlord_reservations,
          (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests WHERE status = 'Approved') AS accredited,
          (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests
-          WHERE status IN ('Submitted', 'In Review', 'Needs Documents')) AS pending_accreditation`
+          WHERE status IN (
+            'Pending',
+            'Scheduled for Inspection',
+            'Recommended for Approval',
+            'Hold'
+          )) AS pending_accreditation`
     );
     const r = rows[0];
     return NextResponse.json({

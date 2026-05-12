@@ -1,11 +1,30 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, X } from "lucide-react";
+import { spreadOverlappingMarkers } from "@/lib/spread-map-markers";
+import type { StudentMapMarker } from "@/components/maps/student-properties-map";
+
+const StudentDormMap = dynamic(
+  () =>
+    import("@/components/maps/student-properties-map").then((m) => ({
+      default: m.StudentDormMap,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[min(55vh,420px)] w-full items-center justify-center rounded-lg border bg-muted text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Loading map…
+      </div>
+    ),
+  }
+);
 
 function normWs(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -44,10 +63,30 @@ type Dorm = {
   images: string[];
   reviewSummary: { avg: number | null; count: number };
   myReservationStatus?: "Pending" | "Confirmed" | null;
+  propertyId: string;
+  propertyName: string;
+  propertyAddress: string | null;
+  propertyCity: string | null;
+  propertyContactPhone: string | null;
+  propertyDescription: string | null;
+  propertyCoverImageUrl: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+/** Same source as /api/student/map-properties — one row per bookable property (not UI-filtered). */
+type MapPropertyPin = {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  coverImageUrl: string | null;
 };
 
 export default function StudentBrowseDormsPage() {
   const [listings, setListings] = useState<Dorm[]>([]);
+  const [mapPins, setMapPins] = useState<MapPropertyPin[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(true);
 
@@ -57,6 +96,10 @@ export default function StudentBrowseDormsPage() {
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [showPriceDialog, setShowPriceDialog] = useState(false);
   const [draftMaxPrice, setDraftMaxPrice] = useState("6000");
+  /** Property whose rooms are shown in the map-click dialog (null = closed). */
+  const [roomsDialogPropertyId, setRoomsDialogPropertyId] = useState<
+    string | null
+  >(null);
   const [selectedDorm, setSelectedDorm] = useState<Dorm | null>(null);
   const [showDormDialog, setShowDormDialog] = useState(false);
   const [showTermsDialog, setShowTermsDialog] = useState(false);
@@ -67,23 +110,64 @@ export default function StudentBrowseDormsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [ictVerificationStatus, setIctVerificationStatus] = useState<
+    string | null
+  >(null);
 
   const loadListings = useCallback(async () => {
     setListError(null);
     setListLoading(true);
     try {
-      const res = await fetch("/api/student/listings", {
-        credentials: "include",
-      });
-      const json = (await res.json()) as {
+      const [resList, resMap] = await Promise.all([
+        fetch("/api/student/listings", {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/student/map-properties", {
+          credentials: "include",
+          cache: "no-store",
+        }),
+      ]);
+      const listJson = (await resList.json()) as {
         listings?: Dorm[];
         error?: string;
       };
-      if (!res.ok) throw new Error(json.error ?? "Failed to load");
-      setListings(json.listings ?? []);
+      const mapJson = (await resMap.json()) as {
+        properties?: {
+          id: string;
+          name: string;
+          address: string;
+          latitude: number;
+          longitude: number;
+          coverImageUrl: string | null;
+        }[];
+        error?: string;
+      };
+      if (!resList.ok) throw new Error(listJson.error ?? "Failed to load");
+      setListings(listJson.listings ?? []);
+      if (resMap.ok && Array.isArray(mapJson.properties)) {
+        const pins: MapPropertyPin[] = [];
+        for (const p of mapJson.properties) {
+          const latitude = Number(p.latitude);
+          const longitude = Number(p.longitude);
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+          pins.push({
+            id: p.id,
+            name: p.name,
+            address: p.address,
+            latitude,
+            longitude,
+            coverImageUrl: p.coverImageUrl?.trim() || null,
+          });
+        }
+        setMapPins(pins);
+      } else {
+        setMapPins([]);
+      }
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load");
       setListings([]);
+      setMapPins([]);
     } finally {
       setListLoading(false);
     }
@@ -92,6 +176,30 @@ export default function StudentBrowseDormsPage() {
   useEffect(() => {
     void loadListings();
   }, [loadListings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const json = (await res.json()) as {
+          user?: { ictVerificationStatus?: string | null };
+        };
+        if (!cancelled) {
+          setIctVerificationStatus(
+            json.user?.ictVerificationStatus ?? null
+          );
+        }
+      } catch {
+        if (!cancelled) setIctVerificationStatus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canBook = ictVerificationStatus === "Verified";
 
   useEffect(() => {
     if (!showDormDialog || !selectedDorm) {
@@ -134,6 +242,24 @@ export default function StudentBrowseDormsPage() {
     };
   }, [lightboxUrl]);
 
+  useEffect(() => {
+    if (!roomsDialogPropertyId) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [roomsDialogPropertyId]);
+
+  useEffect(() => {
+    if (!roomsDialogPropertyId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRoomsDialogPropertyId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [roomsDialogPropertyId]);
+
   const filteredDorms = useMemo(
     () =>
       listings.filter((dorm) => {
@@ -141,6 +267,7 @@ export default function StudentBrowseDormsPage() {
         const matchesSearch =
           q.length === 0 ||
           dorm.name.toLowerCase().includes(q) ||
+          dorm.propertyName.toLowerCase().includes(q) ||
           dorm.location.toLowerCase().includes(q);
 
         const loc = dorm.location.toLowerCase();
@@ -157,36 +284,77 @@ export default function StudentBrowseDormsPage() {
         const matchesPrice =
           maxPrice == null || dorm.price <= maxPrice;
 
-        return matchesSearch && matchesLocation && matchesDoc && matchesPrice;
+        return (
+          matchesSearch && matchesLocation && matchesDoc && matchesPrice
+        );
       }),
     [listings, search, locationFilter, docTypeFilter, maxPrice]
   );
 
+  /** Pins from map-properties API (accredited + coords + has listed room). Not narrowed by browse UI filters. */
+  const mapMarkers = useMemo((): StudentMapMarker[] => {
+    const raw: StudentMapMarker[] = mapPins.map((p) => ({
+      id: p.id,
+      name: p.name,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      coverImageUrl: p.coverImageUrl,
+    }));
+    return spreadOverlappingMarkers(raw);
+  }, [mapPins]);
+
+  /** All listed rooms for the clicked property (full listings), so filters do not hide dialog content. */
+  const roomsInPropertyDialog = useMemo(() => {
+    const pid = roomsDialogPropertyId?.trim();
+    if (!pid) return [];
+    return listings.filter((d) => d.propertyId === pid);
+  }, [listings, roomsDialogPropertyId]);
+
+  const dialogPropertyPin = useMemo(() => {
+    const pid = roomsDialogPropertyId?.trim();
+    if (!pid) return null;
+    return mapPins.find((p) => p.id === pid) ?? null;
+  }, [mapPins, roomsDialogPropertyId]);
+
   return (
     <div className="space-y-6">
+      {ictVerificationStatus &&
+        ictVerificationStatus !== "Verified" && (
+          <div
+            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+            role="status"
+          >
+            {ictVerificationStatus === "Pending Verification"
+              ? "Your account is pending ICT verification. You can browse listings, but reservation is available only after verification."
+              : "Your registration was not approved by ICT. You can browse, but you cannot reserve a room."}
+          </div>
+        )}
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Browse Dormitories
           </h1>
           <p className="text-sm text-muted-foreground">
-            Explore listed rooms from accredited and pending properties.
+            Each <span className="font-medium text-slate-800">Show all properties</span> button refreshes the list of available rooms. Click a property to see its rooms.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs"
-          onClick={() => void loadListings()}
-          disabled={listLoading}
-        >
-          {listLoading ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            "Refresh"
-          )}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => void loadListings()}
+            disabled={listLoading}
+          >
+            {listLoading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              "Refresh"
+            )}
+          </Button>
+        </div>
       </div>
 
       {listError && (
@@ -254,94 +422,220 @@ export default function StudentBrowseDormsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {listLoading && filteredDorms.length === 0 ? (
-          <p className="text-sm text-muted-foreground col-span-full">
-            Loading listings…
+      <Card className="border border-gray-300 bg-white overflow-hidden">
+        <CardHeader className="pb-2 border-b bg-muted/40">
+          <CardTitle className="text-sm font-semibold text-slate-800">
+            Dorm locations
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Show accredited properties with listed rooms and a map location.
           </p>
-        ) : null}
-        {!listLoading && filteredDorms.length === 0 ? (
-          <p className="text-sm text-muted-foreground col-span-full">
-            No listed rooms match your filters. Landlords must post listings from
-            their Rooms page.
-          </p>
-        ) : null}
-        {filteredDorms.map((dorm) => (
-          <Card key={dorm.id} className="flex flex-col overflow-hidden">
-            <div className="h-28 w-full overflow-hidden bg-slate-200">
-              <img
-                src={dorm.images[0]}
-                alt={dorm.name}
-                className="h-full w-full object-cover"
+        </CardHeader>
+        <CardContent className="relative space-y-3 pt-3">
+          {listLoading ? (
+            <div className="flex h-[min(65vh,560px)] w-full items-center justify-center rounded-lg border bg-muted/30">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : mapMarkers.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/40 px-4 py-10 text-center text-sm text-muted-foreground">
+              {listings.length === 0 ? (
+                <>
+                  No listed rooms yet. Landlords post listings from{" "}
+                  <span className="font-medium text-slate-700">Rooms</span>; each
+                  property needs accreditation and a map pin under{" "}
+                  <span className="font-medium text-slate-700">Properties</span>.
+                </>
+              ) : (
+                <>
+                  No map pins returned. Each property needs coordinates in{" "}
+                  <span className="font-medium text-slate-700">
+                    Property &amp; map settings
+                  </span>
+                  , accreditation approved, and at least one listed available room.
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="h-[min(50vh,560px)] w-full">
+              <StudentDormMap
+                markers={mapMarkers}
+                onMarkerClick={(propertyId) => {
+                  setRoomsDialogPropertyId(propertyId);
+                }}
               />
             </div>
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-sm">{dorm.name}</CardTitle>
-              <p className="text-xs text-muted-foreground">{dorm.location}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {roomsDialogPropertyId ? (
+        <div
+          className="fixed inset-0 z-[40] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="browse-property-dialog-title"
+          aria-describedby={
+            roomsInPropertyDialog[0] || dialogPropertyPin
+              ? "browse-property-dialog-location"
+              : undefined
+          }
+          onClick={() => setRoomsDialogPropertyId(null)}
+        >
+          <Card
+            className="my-auto w-full max-w-4xl border border-gray-300 bg-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader className="border-b bg-muted/40">
+              <div className="flex items-start justify-between gap-0 mb-0 pb-0">
+                <CardTitle
+                  id="browse-property-dialog-title"
+                  className="text-base font-semibold leading-snug text-slate-900"
+                ><p className="text-xs font-normal leading-snug text-slate-900">Dormitory Name:</p>
+                  {roomsInPropertyDialog[0]?.propertyName ??
+                    dialogPropertyPin?.name ??
+                    "Dormitory"}
+                             <div className="mt-0 space-y-1">
+                <p
+                  id="browse-property-dialog-location"
+                  className="text-xs leading-relaxed text-slate-700"
+                >
+                  {roomsInPropertyDialog[0]
+                    ? [
+                        roomsInPropertyDialog[0].propertyAddress,
+                        roomsInPropertyDialog[0].propertyCity,
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || roomsInPropertyDialog[0].location
+                    : dialogPropertyPin?.address && dialogPropertyPin.address !== "—"
+                      ? dialogPropertyPin.address
+                      : "—"}
+                </p>
+              </div>
+                </CardTitle>
+                
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0 text-xs"
+                  onClick={() => setRoomsDialogPropertyId(null)}
+                >
+                  Close
+                </Button>
+              </div>
+     
             </CardHeader>
-            <CardContent className="flex flex-1 flex-col justify-between gap-3">
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-primary">
-                  ₱{dorm.price.toLocaleString()} / month
+            <CardContent className="max-h-[min(60vh,800px)] space-y-2 overflow-y-auto pt-2 text-xs">
+              
+              {roomsInPropertyDialog.length === 0 ? (
+                <p className="rounded-md border border-dashed border-slate-200 bg-muted/30 px-3 py-6 text-center text-muted-foreground">
+                  No listed rooms for this property in browse results yet. The
+                  landlord can post a room listing from{" "}
+                  <span className="font-medium text-slate-700">Rooms</span> for this
+                  building.
                 </p>
-                {dorm.reviewSummary.count > 0 && dorm.reviewSummary.avg != null && (
-                  <p className="text-[0.7rem] text-amber-700">
-                    ★ {dorm.reviewSummary.avg.toFixed(1)} (
-                    {dorm.reviewSummary.count} reviews)
-                  </p>
-                )}
-                <p className="text-[0.7rem] text-muted-foreground">
-                  Document type:{" "}
-                  <span className="font-medium text-slate-800">
-                    {dorm.documentType}
-                  </span>
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {dorm.amenities.map((amenity) => (
-                    <Badge key={amenity} variant="muted" className="text-[0.7rem]">
-                      {amenity}
-                    </Badge>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {roomsInPropertyDialog.map((dorm) => (
+                    <Card
+                      key={dorm.id}
+                      className="flex flex-col overflow-hidden border border-gray-300 bg-white"
+                    >
+                      <div className="relative aspect-[4/2] w-full shrink-0 overflow-hidden bg-slate-200">
+                        {dorm.images[0] || dorm.propertyCoverImageUrl ? (
+                          <img
+                            src={
+                              dorm.images[0] ??
+                              dorm.propertyCoverImageUrl ??
+                              ""
+                            }
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-[4.5rem] w-full items-center justify-center text-[0.65rem] text-muted-foreground">
+                            No photo
+                          </div>
+                        )}
+                      </div>
+                      <CardContent className="flex flex-1 flex-col gap-0 p-3 pt-2">
+                        <p className="line-clamp-2 font-semibold leading-tight text-slate-900">
+                          {dorm.name}
+                        </p>
+                        <p className="line-clamp-2 text-[0.65rem] leading-snug text-muted-foreground">
+                          {dorm.location}
+                        </p>
+                        <p className="font-semibold tabular-nums text-orange-600">
+                          ₱{dorm.price.toLocaleString()}
+                          <span className="text-[0.65rem] font-normal text-slate-600">
+                            {" "}
+                            / month
+                          </span>
+                        </p>
+                        {dorm.reviewSummary.count > 0 &&
+                        dorm.reviewSummary.avg != null ? (
+                          <p className="text-[0.65rem] text-amber-700">
+                            ★ {dorm.reviewSummary.avg.toFixed(1)} (
+                            {dorm.reviewSummary.count})
+                          </p>
+                        ) : null}
+                        <div className="flex flex-wrap gap-1">
+                          {dorm.amenities.slice(0, 4).map((amenity) => (
+                            <Badge
+                              key={amenity}
+                              variant="muted"
+                              className="px-1.5 py-0 text-[0.6rem]"
+                            >
+                              {amenity}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="mt-auto flex flex-col gap-2 border-t border-slate-200 pt-3">
+                          {dorm.myReservationStatus === "Pending" ? (
+                            <Button
+                              type="button"
+                              className="h-8 w-full text-xs"
+                              size="sm"
+                              variant="secondary"
+                              disabled
+                            >
+                              Sent booking request
+                            </Button>
+                          ) : dorm.myReservationStatus === "Confirmed" ? (
+                            <Button
+                              type="button"
+                              className="h-8 w-full text-xs"
+                              size="sm"
+                              variant="secondary"
+                              disabled
+                            >
+                              Booking confirmed
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              className="h-8 w-full bg-orange-500 text-xs font-semibold text-white hover:bg-orange-600"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedDorm(dorm);
+                                setSubmitError(null);
+                                setRoomsDialogPropertyId(null);
+                                setShowTermsDialog(true);
+                              }}
+                            >
+                              Book Now
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
-              </div>
-              {dorm.myReservationStatus === "Pending" ? (
-                <Button
-                  type="button"
-                  className="w-full mt-2"
-                  size="sm"
-                  variant="secondary"
-                  disabled
-                >
-                  Sent booking request
-                </Button>
-              ) : dorm.myReservationStatus === "Confirmed" ? (
-                <Button
-                  type="button"
-                  className="w-full mt-2"
-                  size="sm"
-                  variant="secondary"
-                  disabled
-                >
-                  Booking confirmed
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  className="w-full mt-2"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedDorm(dorm);
-                    setSubmitError(null);
-                    setShowTermsDialog(true);
-                  }}
-                >
-                  Book Now
-                </Button>
               )}
             </CardContent>
           </Card>
-        ))}
-      </section>
+        </div>
+      ) : null}
 
       {showTermsDialog && selectedDorm && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
@@ -371,6 +665,11 @@ export default function StudentBrowseDormsPage() {
                   DormConnect facilitates booking; the lease is between you and the
                   landlord.
                 </li>
+                <li>
+            Tenants may be removed <strong>five (5) calendar days</strong> after a
+            payment due date if the balance remains unpaid, subject to applicable
+            school rules and written notice where required.
+          </li>
                 <li>
                   By continuing you agree to follow house rules and quiet hours as
                   posted on site.
@@ -525,15 +824,30 @@ export default function StudentBrowseDormsPage() {
                         type="button"
                         className="group relative h-52 w-full overflow-hidden rounded-md bg-slate-200 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary"
                         onClick={() =>
-                          setLightboxUrl(selectedDorm.images[0] ?? null)
+                          setLightboxUrl(
+                            selectedDorm.images[0] ??
+                              selectedDorm.propertyCoverImageUrl ??
+                              null
+                          )
                         }
                         aria-label="View cover photo larger"
                       >
-                        <img
-                          src={selectedDorm.images[0]}
-                          alt={selectedDorm.name}
-                          className="h-full w-full object-cover transition duration-200 group-hover:brightness-[0.97]"
-                        />
+                        {selectedDorm.images[0] ||
+                        selectedDorm.propertyCoverImageUrl ? (
+                          <img
+                            src={
+                              selectedDorm.images[0] ??
+                              selectedDorm.propertyCoverImageUrl ??
+                              ""
+                            }
+                            alt={selectedDorm.name}
+                            className="h-full w-full object-cover transition duration-200 group-hover:brightness-[0.97]"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                            No photo
+                          </div>
+                        )}
                         <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent px-2 py-2 text-[0.65rem] font-medium text-white opacity-0 transition group-hover:opacity-100">
                           Click to enlarge
                         </span>
@@ -572,6 +886,38 @@ export default function StudentBrowseDormsPage() {
                           {selectedDorm.landlord}
                         </span>
                       </p>
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1.5">
+                        <p className="font-semibold text-slate-800">
+                          Property (from landlord)
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">Building: </span>
+                          {selectedDorm.propertyName}
+                        </p>
+                        {(selectedDorm.propertyAddress ||
+                          selectedDorm.propertyCity) && (
+                          <p>
+                            <span className="text-muted-foreground">Address: </span>
+                            {[
+                              selectedDorm.propertyAddress,
+                              selectedDorm.propertyCity,
+                            ]
+                              .filter(Boolean)
+                              .join(", ")}
+                          </p>
+                        )}
+                        {selectedDorm.propertyContactPhone ? (
+                          <p>
+                            <span className="text-muted-foreground">Contact: </span>
+                            {selectedDorm.propertyContactPhone}
+                          </p>
+                        ) : null}
+                        {selectedDorm.propertyDescription ? (
+                          <p className="whitespace-pre-line border-t border-slate-200 pt-2 text-[0.7rem] leading-relaxed">
+                            {selectedDorm.propertyDescription}
+                          </p>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         Room type:{" "}
                         <span className="font-medium text-slate-900">
@@ -774,6 +1120,7 @@ export default function StudentBrowseDormsPage() {
                     type="button"
                     size="sm"
                     className="h-8 px-3 text-xs"
+                    disabled={reservationStep === 1 && !canBook}
                     onClick={() =>
                       setReservationStep(
                         (prev) => (prev + 1) as typeof reservationStep
@@ -787,7 +1134,7 @@ export default function StudentBrowseDormsPage() {
                     type="button"
                     size="sm"
                     className="h-8 px-3 text-xs"
-                    disabled={!moveInDate || submitting}
+                    disabled={!moveInDate || submitting || !canBook}
                     onClick={async () => {
                       if (!selectedDorm || !moveInDate) return;
                       setSubmitError(null);

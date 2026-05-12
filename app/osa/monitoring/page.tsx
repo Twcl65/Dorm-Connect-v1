@@ -347,7 +347,7 @@ export default function OsaMonitoringPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Dorm</TableHead>
-                    <TableHead>Owner</TableHead>
+                    <TableHead>Landlord</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Tenants</TableHead>
                     <TableHead>Rooms (occ./total)</TableHead>
@@ -485,7 +485,7 @@ export default function OsaMonitoringPage() {
                   readOnly
                   className="h-8 text-xs"
                 />
-                <span className="text-[0.7rem]">Owner</span>
+                <span className="text-[0.7rem]">Landlord</span>
                 <Input
                   value={selectedDorm.ownerName}
                   readOnly

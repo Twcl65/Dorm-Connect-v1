@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
-import { requireOwner } from "@/lib/require-owner";
+import { requireLandlord } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const session = await requireOwner();
+  const session = await requireLandlord();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -14,6 +14,7 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json()) as {
+      propertyId?: string;
       roomNo?: string;
       capacity?: number;
       rate?: number;
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
     const status =
       body.status === "Occupied" ||
       body.status === "Available" ||
+      body.status === "Reserved" ||
       body.status === "Maintenance"
         ? body.status
         : "Available";
@@ -45,7 +47,21 @@ export async function POST(req: Request) {
       : [];
 
     const pool = await getPool();
-    const propertyId = await ensureLandlordProperty(pool, ownerId);
+    let propertyId: string;
+    const rawPid = (body.propertyId ?? "").trim();
+    if (rawPid && /^[0-9a-f-]{36}$/i.test(rawPid)) {
+      const { rows: pr } = await pool.query<{ id: string }>(
+        `SELECT id FROM public.landlord_properties
+         WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+        [rawPid, ownerId]
+      );
+      if (!pr[0]) {
+        return NextResponse.json({ error: "Invalid property." }, { status: 400 });
+      }
+      propertyId = rawPid;
+    } else {
+      propertyId = await ensureLandlordProperty(pool, ownerId);
+    }
 
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_rooms

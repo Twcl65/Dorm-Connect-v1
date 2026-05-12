@@ -4,14 +4,14 @@ import {
   landlordLog,
   refreshRoomFromStudentReservations,
 } from "@/lib/landlord-db";
-import { requireOwner } from "@/lib/require-owner";
+import { requireLandlord } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: { id: string } };
 
 export async function PATCH(req: Request, context: Ctx) {
-  const session = await requireOwner();
+  const session = await requireLandlord();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -29,6 +29,10 @@ export async function PATCH(req: Request, context: Ctx) {
       amountPaid?: number;
       referenceNo?: string;
       proofUrl?: string;
+      depositAmount?: number;
+      advanceAmount?: number;
+      balanceRemaining?: number;
+      nextPaymentDueDate?: string | null;
     };
 
     const pool = await getPool();
@@ -97,11 +101,45 @@ export async function PATCH(req: Request, context: Ctx) {
       );
     }
 
+    const dep =
+      body.depositAmount != null ? Math.max(0, Number(body.depositAmount)) : null;
+    const adv =
+      body.advanceAmount != null ? Math.max(0, Number(body.advanceAmount)) : null;
+    const bal =
+      body.balanceRemaining != null ? Math.max(0, Number(body.balanceRemaining)) : null;
+    const due =
+      body.nextPaymentDueDate !== undefined
+        ? body.nextPaymentDueDate?.trim()
+          ? body.nextPaymentDueDate.trim().slice(0, 10)
+          : null
+        : undefined;
+
+    const setParts = ["status = $1", "rent_payment_status = $2", "updated_at = now()"];
+    const vals: unknown[] = [status, rentPaymentStatus];
+    let q = 3;
+    if (dep !== null) {
+      setParts.push(`deposit_amount = $${q++}`);
+      vals.push(dep);
+    }
+    if (adv !== null) {
+      setParts.push(`advance_amount = $${q++}`);
+      vals.push(adv);
+    }
+    if (bal !== null) {
+      setParts.push(`balance_remaining = $${q++}`);
+      vals.push(bal);
+    }
+    if (due !== undefined) {
+      setParts.push(`next_payment_due_date = $${q++}::date`);
+      vals.push(due);
+    }
+    vals.push(id);
+
     await pool.query(
       `UPDATE public.student_dorm_reservations
-       SET status = $1, rent_payment_status = $2, updated_at = now()
-       WHERE id = $3::uuid`,
-      [status, rentPaymentStatus, id]
+       SET ${setParts.join(", ")}
+       WHERE id = $${q}::uuid`,
+      vals
     );
 
     await refreshRoomFromStudentReservations(pool, row.room_id);
