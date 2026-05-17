@@ -88,7 +88,6 @@ function collectFormAttachmentUrls(formData: unknown): string[] {
       "fireSafetyCertificate",
       "occupancyPermit",
       "sanitaryPermit",
-      "signature",
     ]) {
       const v = d[key];
       if (v && typeof v === "object") {
@@ -108,6 +107,19 @@ function collectFormAttachmentUrls(formData: unknown): string[] {
   return Array.from(new Set(urls));
 }
 
+type Property = {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  contactPhone: string;
+  contactEmail: string;
+  propertyType: string;
+  operationalStatus: string;
+  totalRooms: number | null;
+  maxOccupancyCapacity: number | null;
+};
+
 export default function LandlordDocumentsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -117,6 +129,12 @@ export default function LandlordDocumentsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+
+  // Properties list for dropdown (eligible for new accreditation only)
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
+  const [ineligiblePropertyCount, setIneligiblePropertyCount] = useState(0);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
 
   // Step A – Dorm information
   const [dormName, setDormName] = useState("");
@@ -162,7 +180,6 @@ export default function LandlordDocumentsPage() {
 
   // Step E – Declaration
   const [declName, setDeclName] = useState("");
-  const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [wizardErrors, setWizardErrors] = useState<string[]>([]);
   const [selectedRequest, setSelectedRequest] =
     useState<AccreditationRow | null>(null);
@@ -194,6 +211,44 @@ export default function LandlordDocumentsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Load properties when wizard opens
+  useEffect(() => {
+    if (!showWizard) return;
+    setPropertiesLoading(true);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          "/api/landlord/properties?forAccreditation=true",
+          { credentials: "include" }
+        );
+        const json = (await res.json()) as {
+          properties?: Property[];
+          ineligibleCount?: number;
+          error?: string;
+        };
+        if (!cancelled && res.ok) {
+          const eligible = json.properties ?? [];
+          setProperties(eligible);
+          setIneligiblePropertyCount(json.ineligibleCount ?? 0);
+          setSelectedPropertyId((current) =>
+            eligible.some((p) => p.id === current) ? current : ""
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setProperties([]);
+          setIneligiblePropertyCount(0);
+        }
+      } finally {
+        if (!cancelled) setPropertiesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showWizard]);
 
   const filteredRequests = useMemo(
     () =>
@@ -278,7 +333,8 @@ export default function LandlordDocumentsPage() {
     (step: 1 | 2 | 3 | 4 | 5): string[] => {
       const errors: string[] = [];
       if (step === 1) {
-        if (!dormName.trim()) errors.push("Dorm name is required.");
+        if (!selectedPropertyId.trim())
+          errors.push("Please select a dorm from your properties.");
         if (!dormAddress.trim()) errors.push("Dorm address is required.");
         if (!dormCity.trim()) errors.push("City / municipality is required.");
         if (!dormContact.trim()) errors.push("Contact number is required.");
@@ -318,12 +374,11 @@ export default function LandlordDocumentsPage() {
       }
       if (step === 5) {
         if (!declName.trim()) errors.push("Applicant name is required.");
-        if (!signatureFile) errors.push("Applicant signature upload is required.");
       }
       return errors;
     },
     [
-      dormName,
+      selectedPropertyId,
       dormAddress,
       dormCity,
       dormContact,
@@ -347,7 +402,6 @@ export default function LandlordDocumentsPage() {
       safetyContacts,
       safetyRooms,
       declName,
-      signatureFile,
     ]
   );
 
@@ -400,6 +454,16 @@ export default function LandlordDocumentsPage() {
             type="button"
             onClick={() => {
               setWizardStep(1);
+              setSelectedPropertyId("");
+              setIneligiblePropertyCount(0);
+              setDormName("");
+              setDormAddress("");
+              setDormCity("");
+              setDormContact("");
+              setDormEmail("");
+              setDormType("Co-ed");
+              setDormRooms("");
+              setDormCapacity("");
               setOwnerIdFrontFile(null);
               setOwnerIdBackFile(null);
               setBusinessPermitFile(null);
@@ -409,7 +473,6 @@ export default function LandlordDocumentsPage() {
               setSanitaryApplicable(false);
               setSanitaryPermitFile(null);
               setSupportingDocFiles([]);
-              setSignatureFile(null);
               setWizardErrors([]);
               setShowWizard(true);
             }}
@@ -601,11 +664,67 @@ export default function LandlordDocumentsPage() {
                     <span className="text-[0.7rem] text-slate-700">
                       Dorm Name:
                     </span>
-                    <Input
-                      value={dormName}
-                      onChange={(e) => setDormName(e.target.value)}
-                      className="h-8 text-xs"
-                    />
+                    <select
+                      value={selectedPropertyId}
+                      onChange={(e) => {
+                        const propId = e.target.value;
+                        setSelectedPropertyId(propId);
+                        const prop = properties.find((p) => p.id === propId);
+                        if (prop) {
+                          setDormName(prop.name);
+                          setDormAddress(prop.address ?? "");
+                          setDormCity(prop.city ?? "");
+                          setDormContact(prop.contactPhone ?? "");
+                          setDormEmail(prop.contactEmail ?? "");
+                          setDormType(prop.propertyType || "Co-ed");
+                          setDormRooms(
+                            prop.totalRooms != null
+                              ? String(prop.totalRooms)
+                              : ""
+                          );
+                          setDormCapacity(
+                            prop.maxOccupancyCapacity != null
+                              ? String(prop.maxOccupancyCapacity)
+                              : ""
+                          );
+                        } else {
+                          setDormName("");
+                          setDormAddress("");
+                          setDormCity("");
+                          setDormContact("");
+                          setDormEmail("");
+                          setDormType("Co-ed");
+                          setDormRooms("");
+                          setDormCapacity("");
+                        }
+                      }}
+                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      disabled={propertiesLoading}
+                    >
+                      <option value="">
+                        {propertiesLoading
+                          ? "Loading properties…"
+                          : properties.length === 0
+                            ? ineligiblePropertyCount > 0
+                              ? "No dorms available — approved until renewal window"
+                              : "No properties — add one in Properties first"
+                            : "Select a dorm…"}
+                      </option>
+                      {properties.map((prop) => (
+                        <option key={prop.id} value={prop.id}>
+                          {prop.name}
+                        </option>
+                      ))}
+                    </select>
+                    {!propertiesLoading && ineligiblePropertyCount > 0 && (
+                      <p className="md:col-span-2 text-[0.65rem] text-muted-foreground">
+                        {ineligiblePropertyCount === 1
+                          ? "1 property is hidden"
+                          : `${ineligiblePropertyCount} properties are hidden`}{" "}
+                        (active application or approved accreditation). Approved
+                        dorms can apply again within 3 months of expiry.
+                      </p>
+                    )}
                     <span className="text-[0.7rem] text-slate-700">
                       Dorm Address:
                     </span>
@@ -835,7 +954,7 @@ export default function LandlordDocumentsPage() {
                           </p>
                           <Input
                             type="file"
-                            accept="image/*,application/pdf"
+                            accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                             className="h-8 cursor-pointer text-xs"
                             onChange={(e) => x.set(e.target.files?.[0] ?? null)}
                           />
@@ -871,7 +990,7 @@ export default function LandlordDocumentsPage() {
                         </p>
                         <Input
                           type="file"
-                          accept="image/*,application/pdf"
+                          accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                           className="h-8 cursor-pointer text-xs"
                           disabled={!sanitaryApplicable}
                           onChange={(e) =>
@@ -895,7 +1014,7 @@ export default function LandlordDocumentsPage() {
                       </p>
                       <Input
                         type="file"
-                        accept="image/*,application/pdf"
+                        accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         multiple
                         className="h-8 cursor-pointer text-xs"
                         onChange={(e) =>
@@ -1034,20 +1153,6 @@ export default function LandlordDocumentsPage() {
                       onChange={(e) => setDeclName(e.target.value)}
                       className="h-8 text-xs"
                     />
-                    <span className="text-[0.7rem] text-slate-700">
-                      Signature (upload):
-                    </span>
-                    <Input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="h-8 cursor-pointer text-xs"
-                      onChange={(e) => setSignatureFile(e.target.files?.[0] ?? null)}
-                    />
-                    {signatureFile && (
-                      <div className="md:col-start-2 text-[0.65rem] text-muted-foreground">
-                        {signatureFile.name}
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex justify-between gap-2 pt-3">
@@ -1095,7 +1200,6 @@ export default function LandlordDocumentsPage() {
                               fireSafetyCertificateUrl,
                               occupancyPermitUrl,
                               sanitaryPermitUrl,
-                              signatureUrl,
                               supportingUrls,
                             ] = await (async () => {
                               const idFront = await uploadDormConnectFile(
@@ -1119,7 +1223,6 @@ export default function LandlordDocumentsPage() {
                               const sp = sanitaryApplicable
                                 ? await uploadDormConnectFile(sanitaryPermitFile!)
                                 : undefined;
-                              const sig = await uploadDormConnectFile(signatureFile!);
                               const supporting =
                                 supportingDocFiles.length > 0
                                   ? await uploadDormConnectFiles(supportingDocFiles)
@@ -1132,7 +1235,6 @@ export default function LandlordDocumentsPage() {
                                 fs,
                                 op,
                                 sp,
-                                sig,
                                 supporting,
                               ] as const;
                             })();
@@ -1145,7 +1247,6 @@ export default function LandlordDocumentsPage() {
                               fireSafetyCertificateUrl,
                               occupancyPermitUrl,
                               ...(sanitaryPermitUrl ? [sanitaryPermitUrl] : []),
-                              signatureUrl,
                               ...supportingUrls,
                             ];
 
@@ -1154,6 +1255,7 @@ export default function LandlordDocumentsPage() {
                               credentials: "include",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
+                                propertyId: selectedPropertyId,
                                 dormName: dormName.trim(),
                                 address,
                                 formData: {
@@ -1204,10 +1306,6 @@ export default function LandlordDocumentsPage() {
                                       fileNames: supportingDocFiles.map((f) => f.name),
                                       urls: supportingUrls,
                                     },
-                                    signature: {
-                                      fileName: signatureFile?.name,
-                                      url: signatureUrl,
-                                    },
                                   },
                                   // Back-compat convenience array for previews
                                   attachmentUrls: allAttachmentUrls,
@@ -1235,13 +1333,13 @@ export default function LandlordDocumentsPage() {
                             setSanitaryApplicable(false);
                             setSanitaryPermitFile(null);
                             setSupportingDocFiles([]);
-                            setSignatureFile(null);
                             setWizardErrors([]);
                             await loadData();
                           } catch (e) {
-                            setLoadError(
-                              e instanceof Error ? e.message : "Submit failed"
-                            );
+                            const msg =
+                              e instanceof Error ? e.message : "Submit failed";
+                            setWizardErrors([msg]);
+                            setLoadError(msg);
                           } finally {
                             setSubmitting(false);
                           }

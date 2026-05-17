@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
+import { filterAllowedStoredFileUrls } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +41,7 @@ export async function POST(req: Request) {
     const remarks = (body.remarks ?? "").trim() || null;
     const roomSizeLabel = (body.roomSizeLabel ?? "").trim() || null;
     const roomDetails = (body.roomDetails ?? "").trim() || null;
-    const roomImageUrls = Array.isArray(body.roomImageUrls)
-      ? body.roomImageUrls.filter(
-          (u) => typeof u === "string" && u.startsWith("/uploads/")
-        )
-      : [];
+    const roomImageUrls = filterAllowedStoredFileUrls(body.roomImageUrls);
 
     const pool = await getPool();
     let propertyId: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, RotateCw } from "lucide-react";
 
 type Tenant = {
   studentId: string;
@@ -30,28 +30,43 @@ type Tenant = {
 
 export default function OsaTenantsPage() {
   const [q, setQ] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [allTenants, setAllTenants] = useState<Tenant[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const search = useCallback(async () => {
+  const loadAllTenants = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/osa/tenants?q=${encodeURIComponent(q.trim())}`,
-        { credentials: "include" }
-      );
+      const res = await fetch(`/api/osa/tenants`, { credentials: "include" });
       const data = (await res.json()) as { tenants?: Tenant[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Search failed");
-      setTenants(data.tenants ?? []);
+      if (!res.ok) throw new Error(data.error ?? "Failed to load tenants");
+      setAllTenants(data.tenants ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Search failed");
-      setTenants([]);
+      setError(e instanceof Error ? e.message : "Failed to load tenants");
+      setAllTenants([]);
     } finally {
       setLoading(false);
     }
-  }, [q]);
+  }, []);
+
+  useEffect(() => {
+    void loadAllTenants();
+  }, [loadAllTenants]);
+
+  const filteredTenants = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (query.length === 0) return allTenants;
+
+    return allTenants.filter((t) =>
+      t.name.toLowerCase().includes(query) ||
+      t.email.toLowerCase().includes(query) ||
+      (t.schoolId && t.schoolId.toLowerCase().includes(query)) ||
+      t.dormName.toLowerCase().includes(query) ||
+      t.roomNo.toLowerCase().includes(query) ||
+      t.landlordName.toLowerCase().includes(query)
+    );
+  }, [allTenants, q]);
 
   return (
     <div className="space-y-6">
@@ -65,29 +80,27 @@ export default function OsaTenantsPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Search</CardTitle>
+          <div className="flex items-end justify-between gap-2">
+            <CardTitle className="text-sm">Search</CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1"
+              onClick={() => void loadAllTenants()}
+              disabled={loading}
+            >
+              <RotateCw className="h-3 w-3" />
+              {loading ? "Loading..." : "Refresh"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Input
             className="max-w-md h-9 text-sm"
-            placeholder="At least 2 characters…"
+            placeholder="Search by name, email, school ID, dorm, room, or landlord…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void search()}
           />
-          <Button
-            size="sm"
-            className="h-9 gap-1"
-            onClick={() => void search()}
-            disabled={loading || q.trim().length < 2}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Search className="h-4 w-4" />
-            )}
-            Search
-          </Button>
         </CardContent>
       </Card>
 
@@ -99,53 +112,60 @@ export default function OsaTenantsPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <Table bordered={false}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tenant</TableHead>
-                <TableHead>Boarding house</TableHead>
-                <TableHead>Room</TableHead>
-                <TableHead>Landlord</TableHead>
-                <TableHead>Stay</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tenants.length === 0 ? (
+          {loading && allTenants.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading tenants…
+            </div>
+          ) : (
+            <Table bordered={false}>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="py-8 text-center text-xs text-muted-foreground"
-                  >
-                    {q.trim().length < 2
-                      ? "Enter a search to see results."
-                      : "No matching tenants."}
-                  </TableCell>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Boarding house</TableHead>
+                  <TableHead>Room</TableHead>
+                  <TableHead>Landlord</TableHead>
+                  <TableHead>Stay</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
-              ) : (
-                tenants.map((t) => (
-                  <TableRow key={`${t.studentId}-${t.dormName}-${t.roomNo}`}>
-                    <TableCell className="text-sm">
-                      <div className="font-medium">{t.name}</div>
-                      <div className="text-[0.65rem] text-muted-foreground">
-                        {t.email}
-                      </div>
-                      <div className="text-[0.65rem]">
-                        ID: {t.schoolId ?? "—"} · {t.course ?? "—"}
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {filteredTenants.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      {q.trim().length === 0 && allTenants.length === 0
+                        ? "No tenants found."
+                        : "No matching tenants."}
                     </TableCell>
-                    <TableCell className="text-xs">{t.dormName}</TableCell>
-                    <TableCell className="text-xs font-mono">{t.roomNo}</TableCell>
-                    <TableCell className="text-xs">{t.landlordName}</TableCell>
-                    <TableCell className="text-xs">
-                      {t.leaseStart} → {t.leaseEnd}
-                    </TableCell>
-                    <TableCell className="text-xs">{t.occupancy}</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  filteredTenants.map((t) => (
+                    <TableRow key={`${t.studentId}-${t.dormName}-${t.roomNo}`}>
+                      <TableCell className="text-sm">
+                        <div className="font-medium">{t.name}</div>
+                        <div className="text-[0.65rem] text-muted-foreground">
+                          {t.email}
+                        </div>
+                        <div className="text-[0.65rem]">
+                          ID: {t.schoolId ?? "—"} · {t.course ?? "—"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">{t.dormName}</TableCell>
+                      <TableCell className="text-xs font-mono">{t.roomNo}</TableCell>
+                      <TableCell className="text-xs">{t.landlordName}</TableCell>
+                      <TableCell className="text-xs">
+                        {t.leaseStart} → {t.leaseEnd}
+                      </TableCell>
+                      <TableCell className="text-xs">{t.occupancy}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
+import {
+  filterAllowedStoredFileUrls,
+  isAllowedStoredFileUrl,
+} from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
@@ -89,26 +93,22 @@ export async function PATCH(req: Request, context: Ctx) {
         : cur.listing_description;
     const listingImageUrls =
       body.listingImageUrls !== undefined
-        ? body.listingImageUrls.filter(
-            (u) => typeof u === "string" && u.startsWith("/uploads/")
-          )
+        ? filterAllowedStoredFileUrls(body.listingImageUrls)
         : Array.isArray(cur.listing_image_urls)
           ? (cur.listing_image_urls as string[])
           : [];
 
     const listingBackgroundUrl =
       body.listingBackgroundUrl !== undefined
-        ? body.listingBackgroundUrl &&
-          body.listingBackgroundUrl.startsWith("/uploads/")
-          ? body.listingBackgroundUrl
-          : null
+        ? (() => {
+            const bg = body.listingBackgroundUrl?.trim() ?? "";
+            return bg && isAllowedStoredFileUrl(bg) ? bg : null;
+          })()
         : cur.listing_background_url;
 
     const roomImageUrls =
       body.roomImageUrls !== undefined
-        ? body.roomImageUrls.filter(
-            (u) => typeof u === "string" && u.startsWith("/uploads/")
-          )
+        ? filterAllowedStoredFileUrls(body.roomImageUrls)
         : Array.isArray(cur.room_image_urls)
           ? (cur.room_image_urls as string[])
           : [];

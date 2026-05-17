@@ -10,6 +10,7 @@ import {
   resolveDormDisplayName,
   syncReservationAndLeaseFromStudentPaymentStatus,
 } from "@/lib/landlord-db";
+import { isAllowedStoredFileUrl } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
@@ -333,7 +334,7 @@ export async function POST(req: Request) {
 
     const proofImage = (body.proofImageUrl ?? "").trim();
     const proofOk =
-      proofImage.length === 0 || proofImage.startsWith("/uploads/");
+      proofImage.length === 0 || isAllowedStoredFileUrl(proofImage);
     if (!proofOk) {
       return NextResponse.json(
         { error: "Proof image must be a valid uploaded file URL." },

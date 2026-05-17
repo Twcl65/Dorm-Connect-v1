@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
+import { filterAllowedStoredFileUrls } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
@@ -73,11 +74,7 @@ export async function POST(req: Request) {
       body.roomId && /^[0-9a-f-]{36}$/i.test(body.roomId) ? body.roomId : null;
     const title = (body.title ?? "").trim();
     const description = (body.description ?? "").trim();
-    const imageUrls = Array.isArray(body.imageUrls)
-      ? body.imageUrls.filter(
-          (u) => typeof u === "string" && u.startsWith("/uploads/")
-        )
-      : [];
+    const imageUrls = filterAllowedStoredFileUrls(body.imageUrls);
 
     if (!title || !description) {
       return NextResponse.json(

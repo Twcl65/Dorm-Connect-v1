@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, Marker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -21,24 +21,45 @@ function escapeAttr(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function escapeText(s: string): string {
+  return s.replace(/[<>]/g, "");
+}
+
+const CIRCLE_SIZE = 52;
+const LABEL_GAP = 6;
+/** Room for label + gap + circle (anchor at circle center). */
+const ICON_WIDTH = 140;
+const LABEL_BLOCK = 32;
+const ICON_HEIGHT = LABEL_BLOCK + LABEL_GAP + CIRCLE_SIZE;
+
 function markerIcon(p: StudentMapMarker): L.DivIcon {
+  const name = (p.name || "Dorm").trim();
+  const label =
+    name.length > 32 ? `${escapeText(name.slice(0, 30))}…` : escapeText(name);
+  const titleAttr = escapeAttr(name);
+
   const url = p.coverImageUrl?.trim() ?? "";
-  const safeUrl = url.startsWith("/uploads/") ? url.replace(/"/g, "") : "";
-  const img = safeUrl
+  const safeUrl =
+    url.startsWith("/uploads/") ||
+    url.startsWith("https://") ||
+    url.startsWith("http://")
+      ? url.replace(/"/g, "")
+      : "";
+  const circleInner = safeUrl
     ? `<img src="${safeUrl}" alt="" />`
-    : `<div class="dc-student-marker-fallback">${escapeText(p.name).slice(0, 3)}</div>`;
-  const titleAttr = escapeAttr(p.name);
-  const html = `<div class="dc-student-marker" title="${titleAttr}">${img}</div>`;
+    : `<div class="dc-student-marker-fallback">${escapeText(name).slice(0, 3)}</div>`;
+
+  const html = `<div class="dc-student-marker-wrap" title="${titleAttr}">
+    <div class="dc-student-marker-label-above">${label}</div>
+    <div class="dc-student-marker">${circleInner}</div>
+  </div>`;
+
   return L.divIcon({
     className: "dc-map-div-icon",
     html,
-    iconSize: [52, 52],
-    iconAnchor: [26, 26],
+    iconSize: [ICON_WIDTH, ICON_HEIGHT],
+    iconAnchor: [ICON_WIDTH / 2, LABEL_BLOCK + LABEL_GAP + CIRCLE_SIZE / 2],
   });
-}
-
-function escapeText(s: string): string {
-  return s.replace(/[<>]/g, "");
 }
 
 type Props = {
@@ -59,7 +80,7 @@ function MapFitBounds({ markers }: { markers: StudentMapMarker[] }) {
     const bounds = L.latLngBounds(
       markers.map((m) => [m.latitude, m.longitude] as [number, number])
     );
-    map.fitBounds(bounds, { padding: [56, 56], maxZoom: 16, animate: false });
+    map.fitBounds(bounds, { padding: [72, 72], maxZoom: 16, animate: false });
   }, [map, markers]);
   return null;
 }
@@ -95,16 +116,7 @@ export function StudentDormMap({ markers, onMarkerClick }: Props) {
           eventHandlers={{
             click: () => onMarkerClick(p.id),
           }}
-        >
-          <Tooltip
-            direction="top"
-            offset={[0, -28]}
-            opacity={1}
-            className="dc-map-dorm-tooltip"
-          >
-            {p.name}
-          </Tooltip>
-        </Marker>
+        />
       ))}
     </MapContainer>
   );

@@ -1,3 +1,5 @@
+import { isAllowedStoredFileUrl } from "@/lib/upload-url";
+
 /** Normalize whitespace for substring checks. */
 function normalizeWs(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -79,7 +81,7 @@ export function buildRoomListingGallery(
   const mergedGallery = [...new Set([...listingImgs, ...roomImgs])];
   const bg =
     listing_background_url &&
-    listing_background_url.startsWith("/uploads/")
+    isAllowedStoredFileUrl(listing_background_url)
       ? listing_background_url
       : null;
   const rest = mergedGallery.filter((u) => u !== bg);

@@ -24,11 +24,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing file." }, { status: 400 });
     }
 
-    const mime =
-      (file as File).type ||
-      "application/octet-stream";
+    const uploadFile = file as File;
     const buf = Buffer.from(await file.arrayBuffer());
-    const url = await savePublicUpload(buf, mime);
+    const url = await savePublicUpload(
+      buf,
+      uploadFile.type || "application/octet-stream",
+      uploadFile.name || "upload"
+    );
     return NextResponse.json({ url });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Upload failed";

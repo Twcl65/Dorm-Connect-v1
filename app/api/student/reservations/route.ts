@@ -12,6 +12,7 @@ import {
 import { assertStudentCanReserve } from "@/lib/student-can-reserve";
 import { insertNotification } from "@/lib/notify-user";
 import { refreshRoomFromStudentReservations } from "@/lib/landlord-db";
+import { isAllowedStoredFileUrl } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
@@ -185,7 +186,7 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      if (!proof || !proof.startsWith("/uploads/")) {
+      if (!proof || !isAllowedStoredFileUrl(proof)) {
         return NextResponse.json(
           { error: "Student ID proof upload is required." },
           { status: 400 }

@@ -21,6 +21,7 @@ export async function GET() {
       total_rooms: string;
       occupied_rooms: string;
       tenant_students: string;
+      students: any;
     }>(
       `SELECT p.id AS property_id, p.name AS dorm_name, u.full_name AS owner_name,
               p.operational_status, p.compliance_status,
@@ -30,7 +31,19 @@ export async function GET() {
               (SELECT COUNT(DISTINCT s.student_user_id)::text
                FROM public.student_dorm_reservations s
                JOIN public.landlord_rooms r ON r.id = s.room_id
-               WHERE r.property_id = p.id AND s.status = 'Confirmed') AS tenant_students
+               WHERE r.property_id = p.id AND s.status = 'Confirmed') AS tenant_students,
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                  'studentId', u2.id,
+                  'name', u2.full_name,
+                  'email', u2.email,
+                  'schoolId', u2.student_id,
+                  'roomNo', r2.room_no,
+                  'occupancy', CASE WHEN s2.status = 'Confirmed' THEN 'Active' ELSE s2.status END
+                ) ORDER BY u2.full_name), '[]'::jsonb)
+               FROM public.student_dorm_reservations s2
+               JOIN public.boarding_house_app_users u2 ON u2.id = s2.student_user_id
+               JOIN public.landlord_rooms r2 ON r2.id = s2.room_id
+               WHERE r2.property_id = p.id AND s2.status = 'Confirmed') AS students
        FROM public.landlord_properties p
        JOIN public.boarding_house_app_users u ON u.id = p.owner_user_id
        WHERE EXISTS (
@@ -48,12 +61,23 @@ export async function GET() {
           : op === "Under Inspection"
             ? "Under Inspection"
             : "Operating";
+
+      // students may come back as JSON (parsed) or as a string depending on pg config
+      let studentsList: any[] = [];
+      try {
+        if (Array.isArray(r.students)) studentsList = r.students;
+        else if (typeof r.students === "string") studentsList = JSON.parse(r.students || "[]");
+      } catch (e) {
+        studentsList = [];
+      }
+
       return {
         propertyId: r.property_id,
         dormName: r.dorm_name,
         ownerName: r.owner_name,
         status: statusLabel,
         students: Number(r.tenant_students ?? 0),
+        studentsList,
         compliance: r.compliance_status as "Compliant" | "Warning" | "Non-Compliant",
         totalRooms: Number(r.total_rooms ?? 0),
         occupiedRooms: Number(r.occupied_rooms ?? 0),

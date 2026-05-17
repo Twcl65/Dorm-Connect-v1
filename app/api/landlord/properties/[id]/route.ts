@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
+import {
+  filterAllowedStoredFileUrls,
+  isAllowedStoredFileUrl,
+} from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
 function parseGallery(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x) => typeof x === "string" && x.startsWith("/uploads/"));
+  return filterAllowedStoredFileUrls(v);
 }
 
 type Ctx = { params: { id: string } };
@@ -129,7 +132,7 @@ export async function PATCH(req: Request, context: Ctx) {
     if (body.coverImageUrl !== undefined) {
       const c = body.coverImageUrl?.trim();
       updates.push(`cover_image_url = $${i++}`);
-      vals.push(c && c.startsWith("/uploads/") ? c : null);
+      vals.push(c && isAllowedStoredFileUrl(c) ? c : null);
     }
     if (body.galleryImageUrls !== undefined) {
       updates.push(`gallery_image_urls = $${i++}::jsonb`);

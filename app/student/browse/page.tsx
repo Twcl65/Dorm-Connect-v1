@@ -423,21 +423,21 @@ export default function StudentBrowseDormsPage() {
       </Card>
 
       <Card className="border border-gray-300 bg-white overflow-hidden">
-        <CardHeader className="pb-2 border-b bg-muted/40">
-          <CardTitle className="text-sm font-semibold text-slate-800">
+        <CardHeader className="pb-3 border-b bg-muted/40">
+          <CardTitle className="text-base font-semibold text-slate-800">
             Dorm locations
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Show accredited properties with listed rooms and a map location.
+          <p className="text-sm text-muted-foreground">
+            Tap a pin to view rooms at that property. Names are shown on each pin.
           </p>
         </CardHeader>
-        <CardContent className="relative space-y-3 pt-3">
+        <CardContent className="relative space-y-3 p-4 pt-4 sm:p-5">
           {listLoading ? (
-            <div className="flex h-[min(65vh,560px)] w-full items-center justify-center rounded-lg border bg-muted/30">
+            <div className="flex h-[min(75vh,820px)] min-h-[480px] w-full items-center justify-center rounded-lg border bg-muted/30">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : mapMarkers.length === 0 ? (
-            <div className="rounded-lg border border-dashed bg-muted/40 px-4 py-10 text-center text-sm text-muted-foreground">
+            <div className="flex min-h-[480px] h-[min(75vh,820px)] items-center justify-center rounded-lg border border-dashed bg-muted/40 px-4 py-10 text-center text-sm text-muted-foreground">
               {listings.length === 0 ? (
                 <>
                   No listed rooms yet. Landlords post listings from{" "}
@@ -456,7 +456,7 @@ export default function StudentBrowseDormsPage() {
               )}
             </div>
           ) : (
-            <div className="h-[min(50vh,560px)] w-full">
+            <div className="h-[min(75vh,820px)] min-h-[480px] w-full">
               <StudentDormMap
                 markers={mapMarkers}
                 onMarkerClick={(propertyId) => {
@@ -887,9 +887,7 @@ export default function StudentBrowseDormsPage() {
                         </span>
                       </p>
                       <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1.5">
-                        <p className="font-semibold text-slate-800">
-                          Property (from landlord)
-                        </p>
+                        
                         <p>
                           <span className="text-muted-foreground">Building: </span>
                           {selectedDorm.propertyName}

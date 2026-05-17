@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import {
+  accreditationApplicationBlockReason,
+  canApplyForPropertyAccreditation,
+} from "@/lib/accreditation-eligibility";
+import { expireAccreditationsIfNeeded } from "@/lib/accreditation-expiry";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
@@ -24,7 +29,6 @@ function collectAttachmentUrls(formData: unknown): string[] {
       "fireSafetyCertificate",
       "occupancyPermit",
       "sanitaryPermit",
-      "signature",
     ]) {
       const v = d[key];
       if (v && typeof v === "object") {
@@ -96,6 +100,7 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json()) as {
+      propertyId?: string;
       dormName?: string;
       address?: string;
       formData?: Record<string, unknown>;
@@ -127,7 +132,6 @@ export async function POST(req: Request) {
       "barangayClearance",
       "fireSafetyCertificate",
       "occupancyPermit",
-      "signature",
     ] as const;
     for (const k of requiredDocKeys) {
       const v = docs[k];
@@ -160,7 +164,54 @@ export async function POST(req: Request) {
     }
 
     const pool = await getPool();
-    const propertyId = await ensureLandlordProperty(pool, ownerId);
+    await expireAccreditationsIfNeeded(pool);
+
+    let propertyId: string;
+    const rawPid = (body.propertyId ?? "").trim();
+    if (rawPid && /^[0-9a-f-]{36}$/i.test(rawPid)) {
+      const { rows: pr } = await pool.query<{ id: string }>(
+        `SELECT id FROM public.landlord_properties
+         WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+        [rawPid, ownerId]
+      );
+      if (!pr[0]) {
+        return NextResponse.json({ error: "Invalid property." }, { status: 400 });
+      }
+
+      const { rows: accRows } = await pool.query<{
+        status: string;
+        submitted_at: Date;
+        accreditation_expires_at: Date | null;
+      }>(
+        `SELECT status, submitted_at, accreditation_expires_at
+         FROM public.landlord_accreditation_requests
+         WHERE owner_user_id = $1::uuid AND property_id = $2::uuid
+         ORDER BY submitted_at DESC
+         LIMIT 1`,
+        [ownerId, rawPid]
+      );
+      const latest = accRows[0]
+        ? {
+            status: accRows[0].status,
+            submittedAt: accRows[0].submitted_at,
+            accreditationExpiresAt: accRows[0].accreditation_expires_at,
+          }
+        : null;
+      if (!canApplyForPropertyAccreditation(latest)) {
+        return NextResponse.json(
+          {
+            error:
+              accreditationApplicationBlockReason(latest) ??
+              "This property is not eligible for a new accreditation application.",
+          },
+          { status: 400 }
+        );
+      }
+
+      propertyId = rawPid;
+    } else {
+      propertyId = await ensureLandlordProperty(pool, ownerId);
+    }
 
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_accreditation_requests

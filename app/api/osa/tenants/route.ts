@@ -13,12 +13,33 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") ?? "").trim().toLowerCase();
-  if (q.length < 2) {
-    return NextResponse.json({ tenants: [] });
-  }
 
   try {
     const pool = await getPool();
+
+    let query = `SELECT u.id AS student_id, u.full_name, u.email, u.student_id AS school_id, u.course,
+              p.name AS dorm_name, r.room_no, lu.full_name AS landlord_name,
+              s.lease_start::text, s.lease_end::text,
+              CASE WHEN s.status = 'Confirmed' THEN 'Active' ELSE s.status END AS occupancy
+       FROM public.student_dorm_reservations s
+       JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
+       JOIN public.landlord_rooms r ON r.id = s.room_id
+       JOIN public.landlord_properties p ON p.id = r.property_id
+       JOIN public.boarding_house_app_users lu ON lu.id = r.owner_user_id
+       WHERE s.status = 'Confirmed'`;
+
+    const params: string[] = [];
+    if (q.length >= 2) {
+      query += ` AND (
+           lower(u.full_name) LIKE '%' || $1 || '%'
+           OR lower(u.email) LIKE '%' || $1 || '%'
+           OR lower(trim(coalesce(u.student_id, ''))) LIKE '%' || $1 || '%'
+         )`;
+      params.push(q);
+    }
+
+    query += ` ORDER BY u.full_name`;
+
     const { rows } = await pool.query<{
       student_id: string;
       full_name: string;
@@ -31,26 +52,7 @@ export async function GET(req: Request) {
       lease_start: string;
       lease_end: string;
       occupancy: string;
-    }>(
-      `SELECT u.id AS student_id, u.full_name, u.email, u.student_id AS school_id, u.course,
-              p.name AS dorm_name, r.room_no, lu.full_name AS landlord_name,
-              s.lease_start::text, s.lease_end::text,
-              CASE WHEN s.status = 'Confirmed' THEN 'Active' ELSE s.status END AS occupancy
-       FROM public.student_dorm_reservations s
-       JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
-       JOIN public.landlord_rooms r ON r.id = s.room_id
-       JOIN public.landlord_properties p ON p.id = r.property_id
-       JOIN public.boarding_house_app_users lu ON lu.id = r.owner_user_id
-       WHERE s.status = 'Confirmed'
-         AND (
-           lower(u.full_name) LIKE '%' || $1 || '%'
-           OR lower(u.email) LIKE '%' || $1 || '%'
-           OR lower(trim(coalesce(u.student_id, ''))) LIKE '%' || $1 || '%'
-         )
-       ORDER BY u.full_name
-       LIMIT 50`,
-      [q]
-    );
+    }>(query, params);
 
     return NextResponse.json({
       tenants: rows.map((r) => ({
@@ -68,7 +70,7 @@ export async function GET(req: Request) {
       })),
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Failed to search";
+    const msg = e instanceof Error ? e.message : "Failed to load tenants";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

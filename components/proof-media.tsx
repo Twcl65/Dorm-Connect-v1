@@ -9,8 +9,9 @@ export function ProofMedia({
 }) {
   const lower = url.split("?")[0]?.toLowerCase() ?? "";
   const isPdf = lower.endsWith(".pdf");
+  const isWord = lower.endsWith(".doc") || lower.endsWith(".docx");
 
-  if (isPdf) {
+  if (isPdf || isWord) {
     return (
       <a
         href={url}
@@ -21,7 +22,7 @@ export function ProofMedia({
           "text-xs text-sky-600 underline hover:text-sky-800 break-all"
         }
       >
-        View PDF document
+        {isPdf ? "View PDF document" : "View Word document"}
       </a>
     );
   }

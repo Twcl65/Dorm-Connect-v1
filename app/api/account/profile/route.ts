@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getSession } from "@/lib/require-session";
 import { setSessionCookieOnResponse } from "@/lib/auth-cookie";
+import { isAllowedStoredFileUrl } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ const ALLOWED_ROLES = new Set([
 function isSafeProfileImageUrl(v: string): boolean {
   const s = v.trim();
   if (!s) return true;
-  return s.startsWith("/uploads/dormconnect/");
+  return isAllowedStoredFileUrl(s);
 }
 
 export async function GET() {

@@ -18,10 +18,13 @@
     "db:migrate:thesis-modules": "node scripts/apply-sql-migration.cjs db/migrations/011_thesis_modules.sql",
     "db:migrate:dormconnect-features": "node scripts/apply-sql-migration.cjs db/migrations/008_dormconnect_features.sql",
     "db:migrate:landlord-tenant-announcements": "node scripts/apply-sql-migration.cjs db/migrations/009_landlord_tenant_announcements.sql",
-    "db:probe-pooler": "node scripts/probe-pooler-region.cjs"
+    "db:probe-pooler": "node scripts/probe-pooler-region.cjs",
+    "storage:setup": "node scripts/setup-supabase-storage.cjs",
+    "storage:fix": "node scripts/fix-supabase-storage-bucket.cjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",
+    "@supabase/supabase-js": "^2.105.4",
     "@types/leaflet": "^1.9.21",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",

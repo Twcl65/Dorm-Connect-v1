@@ -78,6 +78,30 @@ body {
   align-items: center;
   justify-content: center;
 }
+.dc-student-marker-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 140px;
+  margin-left: -70px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.dc-student-marker-label-above {
+  margin-bottom: 6px;
+  max-width: 140px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #14532d;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  word-break: break-word;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
 .dc-student-marker img {
   width: 100%;
   height: 100%;
@@ -91,19 +115,4 @@ body {
   text-align: center;
   line-height: 1.1;
   padding: 2px;
-}
-
-/* Dorm name on map marker hover (Leaflet tooltip) */
-.leaflet-tooltip.dc-map-dorm-tooltip {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #bbf7d0;
-  background: #f0fdf4;
-  color: #14532d;
-  font-size: 0.75rem;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-}
-.leaflet-tooltip.dc-map-dorm-tooltip::before {
-  border-top-color: #bbf7d0;
 }
