@@ -1,12 +1,25 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
+import {
+  ensurePaymentDueDatesForReservation,
+  fetchMonthlySchedule,
+  formatReservationRentStatus,
+  reconcileScheduleWithPaidPayments,
+} from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
+import { fetchStudentUnpaidStaysElsewhere } from "@/lib/student-outstanding-balance";
 
 export const dynamic = "force-dynamic";
 
 function period(a: string, b: string) {
   return `${new Date(a).toLocaleDateString("en-US", { month: "short", year: "numeric" })} - ${new Date(b).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
+}
+
+function legacyRentLabel(status: string): string {
+  if (status === "Paid") return "This month: Paid";
+  if (status === "Overdue") return "This month: Overdue";
+  return "This month: Not Yet Paid";
 }
 
 export async function GET() {
@@ -54,15 +67,19 @@ export async function GET() {
       room_no: string;
       guest_name: string;
       student_email: string;
+      student_user_id: string;
+      property_id: string;
       lease_start: string;
       lease_end: string;
       status: string;
       rent_payment_status: string;
       property_name: string;
+      notes: string | null;
     }>(
       `SELECT s.id, s.created_at, r.room_no, stu.full_name AS guest_name, stu.email AS student_email,
+              s.student_user_id, p.id AS property_id,
               s.lease_start::text, s.lease_end::text, s.status, s.rent_payment_status,
-              p.name AS property_name
+              p.name AS property_name, s.notes
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -85,19 +102,52 @@ export async function GET() {
       createdAt: r.created_at.toISOString(),
     }));
 
-    const studentList = fromStudents.map((s) => ({
-      id: s.id,
-      source: "student" as const,
-      roomNo: s.room_no ?? "—",
-      name: s.guest_name,
-      leasePeriod: period(s.lease_start, s.lease_end),
-      reservationStatus: s.status as "Confirmed" | "Pending" | "Cancelled",
-      dormName: s.property_name,
-      email: s.student_email,
-      contact: undefined as string | undefined,
-      rentPaymentStatus: s.rent_payment_status,
-      createdAt: s.created_at.toISOString(),
-    }));
+    const studentList = await Promise.all(
+      fromStudents.map(async (s) => {
+        let rentPaymentStatus: string | undefined;
+        if (s.status === "Confirmed") {
+          await ensurePaymentDueDatesForReservation(pool, s.id);
+          await reconcileScheduleWithPaidPayments(pool, { reservationId: s.id });
+          const schedule = await fetchMonthlySchedule(pool, {
+            reservationId: s.id,
+          });
+          rentPaymentStatus =
+            formatReservationRentStatus(schedule) ??
+            legacyRentLabel(s.rent_payment_status);
+        } else if (s.status !== "Cancelled") {
+          rentPaymentStatus = legacyRentLabel(s.rent_payment_status);
+        }
+
+        const unpaidElsewhere = await fetchStudentUnpaidStaysElsewhere(
+          pool,
+          s.student_user_id,
+          s.property_id
+        );
+
+        return {
+          id: s.id,
+          source: "student" as const,
+          roomNo: s.room_no ?? "—",
+          name: s.guest_name,
+          leasePeriod: period(s.lease_start, s.lease_end),
+          reservationStatus: s.status as "Confirmed" | "Pending" | "Cancelled",
+          dormName: s.property_name,
+          email: s.student_email,
+          contact: undefined as string | undefined,
+          rentPaymentStatus,
+          notes: s.notes ?? undefined,
+          hasUnpaidElsewhere: unpaidElsewhere.length > 0,
+          unpaidElsewhere: unpaidElsewhere.map((u) => ({
+            dormName: u.dormName,
+            roomNo: u.roomNo,
+            leasePeriod: period(u.leaseStart, u.leaseEnd),
+            balanceRemaining: u.balanceRemaining,
+            rentPaymentStatus: u.rentPaymentStatus,
+          })),
+          createdAt: s.created_at.toISOString(),
+        };
+      })
+    );
 
     const list = [...manualList, ...studentList].sort(
       (a, b) =>
@@ -109,6 +159,10 @@ export async function GET() {
       confirmed: list.filter((x) => x.reservationStatus === "Confirmed").length,
       pending: list.filter((x) => x.reservationStatus === "Pending").length,
       cancelled: list.filter((x) => x.reservationStatus === "Cancelled").length,
+      unpaidElsewhere: studentList.filter(
+        (x) =>
+          x.reservationStatus === "Pending" && x.hasUnpaidElsewhere === true
+      ).length,
     };
 
     return NextResponse.json({ reservations: list, stats });

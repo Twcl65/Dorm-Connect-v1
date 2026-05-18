@@ -3,7 +3,9 @@ import { getPool } from "@/lib/db";
 import {
   ensureLandlordProperty,
   formatLeasePeriod,
+  mapRentPaymentStatus,
   resolveDormDisplayName,
+  resolveRoomListingStatus,
 } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
 
@@ -113,13 +115,12 @@ export async function GET(req: Request) {
       id: string;
       room_id: string;
       room_no: string;
-      room_status: string;
       tenant_name: string;
       lease_start: Date;
       lease_end: Date;
       payment_status: string;
     }>(
-      `SELECT l.id, l.room_id, r.room_no, r.status AS room_status, l.tenant_name,
+      `SELECT l.id, l.room_id, r.room_no, l.tenant_name,
               l.lease_start, l.lease_end, l.payment_status
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
@@ -128,11 +129,223 @@ export async function GET(req: Request) {
       [ownerId, propertyId]
     );
 
+    const { rows: studentReservations } = await pool.query<{
+      id: string;
+      room_id: string;
+      room_no: string;
+      guest_name: string;
+      lease_start: Date;
+      lease_end: Date;
+      status: string;
+      rent_payment_status: string;
+    }>(
+      `SELECT DISTINCT ON (s.room_id)
+              s.id, s.room_id, r.room_no, s.guest_name,
+              s.lease_start, s.lease_end, s.status, s.rent_payment_status
+       FROM public.student_dorm_reservations s
+       JOIN public.landlord_rooms r ON r.id = s.room_id
+       WHERE r.owner_user_id = $1::uuid AND r.property_id = $2::uuid
+         AND s.status IN ('Pending', 'Confirmed')
+       ORDER BY s.room_id,
+                CASE s.status WHEN 'Confirmed' THEN 0 ELSE 1 END,
+                s.created_at DESC`,
+      [ownerId, propertyId]
+    );
+
+    const { rows: manualReservations } = await pool.query<{
+      id: string;
+      room_id: string | null;
+      room_no: string | null;
+      guest_name: string;
+      lease_start: Date;
+      lease_end: Date;
+      status: string;
+      amount_paid: string;
+    }>(
+      `SELECT DISTINCT ON (lr.room_id)
+              lr.id, lr.room_id, rm.room_no, lr.guest_name,
+              lr.lease_start, lr.lease_end, lr.status, lr.amount_paid::text
+       FROM public.landlord_reservations lr
+       LEFT JOIN public.landlord_rooms rm ON rm.id = lr.room_id
+       WHERE lr.owner_user_id = $1::uuid AND lr.property_id = $2::uuid
+         AND lr.room_id IS NOT NULL
+         AND lr.status IN ('Pending', 'Confirmed')
+       ORDER BY lr.room_id,
+                CASE lr.status WHEN 'Confirmed' THEN 0 ELSE 1 END,
+                lr.created_at DESC`,
+      [ownerId, propertyId]
+    );
+
+    const leaseByRoom = new Map(leases.map((l) => [l.room_id, l]));
+    const studentByRoom = new Map(
+      studentReservations.map((s) => [s.room_id, s])
+    );
+    const manualByRoom = new Map(
+      manualReservations
+        .filter((m) => m.room_id)
+        .map((m) => [m.room_id as string, m])
+    );
+
+    const roomStatuses: (
+      | "Occupied"
+      | "Available"
+      | "Reserved"
+      | "Maintenance"
+    )[] = [];
+
+    const mappedRooms = rooms.map((r) => {
+      const lease = leaseByRoom.get(r.id);
+      const studentRes = studentByRoom.get(r.id);
+      const manualRes = manualByRoom.get(r.id);
+
+      const effectiveStatus = resolveRoomListingStatus({
+        dbRoomStatus: r.status,
+        hasLease: Boolean(lease),
+        studentReservationStatus:
+          studentRes?.status === "Confirmed" || studentRes?.status === "Pending"
+            ? studentRes.status
+            : null,
+        manualReservationStatus:
+          manualRes?.status === "Confirmed" || manualRes?.status === "Pending"
+            ? manualRes.status
+            : null,
+      });
+      roomStatuses.push(effectiveStatus);
+
+      const imgs = Array.isArray(r.listing_image_urls)
+        ? (r.listing_image_urls as string[])
+        : [];
+      const roomImgs = Array.isArray(r.room_image_urls)
+        ? (r.room_image_urls as string[])
+        : [];
+
+      return {
+        id: r.id,
+        propertyId: r.property_id,
+        roomNo: r.room_no,
+        capacity: r.capacity,
+        rate: Number(r.monthly_rate),
+        status: effectiveStatus,
+        remarks: r.remarks ?? undefined,
+        isListed: r.is_listed,
+        listingLocation: r.listing_location ?? undefined,
+        listingDescription: r.listing_description ?? undefined,
+        listingImageUrls: imgs,
+        listingBackgroundUrl: r.listing_background_url ?? undefined,
+        roomImageUrls: roomImgs,
+        roomSizeLabel: r.room_size_label ?? undefined,
+        roomDetails: r.room_details ?? undefined,
+      };
+    });
+
+    await Promise.all(
+      rooms.map(async (r, i) => {
+        const next = roomStatuses[i];
+        if (r.status === "Maintenance" || r.status === next) return;
+        await pool.query(
+          `UPDATE public.landlord_rooms SET status = $2, updated_at = now() WHERE id = $1::uuid`,
+          [r.id, next]
+        );
+      })
+    );
+
+    const leaseRows = rooms
+      .map((r) => {
+        const lease = leaseByRoom.get(r.id);
+        const studentRes = studentByRoom.get(r.id);
+        const manualRes = manualByRoom.get(r.id);
+        const effectiveStatus = resolveRoomListingStatus({
+          dbRoomStatus: r.status,
+          hasLease: Boolean(lease),
+          studentReservationStatus:
+            studentRes?.status === "Confirmed" ||
+            studentRes?.status === "Pending"
+              ? studentRes.status
+              : null,
+          manualReservationStatus:
+            manualRes?.status === "Confirmed" ||
+            manualRes?.status === "Pending"
+              ? manualRes.status
+              : null,
+        });
+
+        if (lease) {
+          return {
+            id: lease.id,
+            roomId: lease.room_id,
+            roomNo: lease.room_no,
+            name: lease.tenant_name,
+            leaseStart: new Date(lease.lease_start).toISOString().slice(0, 10),
+            leaseEnd: new Date(lease.lease_end).toISOString().slice(0, 10),
+            leasePeriod: formatLeasePeriod(
+              new Date(lease.lease_start),
+              new Date(lease.lease_end)
+            ),
+            paymentStatus: lease.payment_status as
+              | "Paid"
+              | "Pending"
+              | "Overdue",
+            status: effectiveStatus,
+            reservationStatus:
+              studentRes?.status === "Confirmed" ||
+              studentRes?.status === "Pending"
+                ? studentRes.status
+                : undefined,
+          };
+        }
+
+        if (studentRes) {
+          return {
+            id: studentRes.id,
+            roomId: studentRes.room_id,
+            roomNo: studentRes.room_no,
+            name: studentRes.guest_name,
+            leaseStart: new Date(studentRes.lease_start)
+              .toISOString()
+              .slice(0, 10),
+            leaseEnd: new Date(studentRes.lease_end).toISOString().slice(0, 10),
+            leasePeriod: formatLeasePeriod(
+              new Date(studentRes.lease_start),
+              new Date(studentRes.lease_end)
+            ),
+            paymentStatus: mapRentPaymentStatus(studentRes.rent_payment_status),
+            status: effectiveStatus,
+            reservationStatus: studentRes.status as "Pending" | "Confirmed",
+          };
+        }
+
+        if (manualRes?.room_id) {
+          const paid =
+            manualRes.status === "Confirmed" &&
+            Number(manualRes.amount_paid) > 0;
+          return {
+            id: manualRes.id,
+            roomId: manualRes.room_id,
+            roomNo: manualRes.room_no ?? r.room_no,
+            name: manualRes.guest_name,
+            leaseStart: new Date(manualRes.lease_start)
+              .toISOString()
+              .slice(0, 10),
+            leaseEnd: new Date(manualRes.lease_end).toISOString().slice(0, 10),
+            leasePeriod: formatLeasePeriod(
+              new Date(manualRes.lease_start),
+              new Date(manualRes.lease_end)
+            ),
+            paymentStatus: paid ? ("Paid" as const) : ("Pending" as const),
+            status: effectiveStatus,
+            reservationStatus: manualRes.status as "Pending" | "Confirmed",
+          };
+        }
+
+        return null;
+      })
+      .filter((row): row is NonNullable<typeof row> => row != null);
+
     const total = rooms.length;
-    const occupied = rooms.filter((r) => r.status === "Occupied").length;
-    const available = rooms.filter((r) => r.status === "Available").length;
-    const reserved = rooms.filter((r) => r.status === "Reserved").length;
-    const maintenance = rooms.filter((r) => r.status === "Maintenance").length;
+    const occupied = roomStatuses.filter((s) => s === "Occupied").length;
+    const available = roomStatuses.filter((s) => s === "Available").length;
+    const reserved = roomStatuses.filter((s) => s === "Reserved").length;
+    const maintenance = roomStatuses.filter((s) => s === "Maintenance").length;
 
     const propertyName = resolveDormDisplayName(
       prop[0]?.name,
@@ -156,49 +369,8 @@ export async function GET(req: Request) {
       selectedPropertyId: propertyId,
       propertyName,
       stats: { total, occupied, available, reserved, maintenance },
-      rooms: rooms.map((r) => {
-        const imgs = Array.isArray(r.listing_image_urls)
-          ? (r.listing_image_urls as string[])
-          : [];
-        const roomImgs = Array.isArray(r.room_image_urls)
-          ? (r.room_image_urls as string[])
-          : [];
-        return {
-          id: r.id,
-          propertyId: r.property_id,
-          roomNo: r.room_no,
-          capacity: r.capacity,
-          rate: Number(r.monthly_rate),
-          status: r.status,
-          remarks: r.remarks ?? undefined,
-          isListed: r.is_listed,
-          listingLocation: r.listing_location ?? undefined,
-          listingDescription: r.listing_description ?? undefined,
-          listingImageUrls: imgs,
-          listingBackgroundUrl: r.listing_background_url ?? undefined,
-          roomImageUrls: roomImgs,
-          roomSizeLabel: r.room_size_label ?? undefined,
-          roomDetails: r.room_details ?? undefined,
-        };
-      }),
-      leaseRows: leases.map((l) => ({
-        id: l.id,
-        roomId: l.room_id,
-        roomNo: l.room_no,
-        name: l.tenant_name,
-        leaseStart: new Date(l.lease_start).toISOString().slice(0, 10),
-        leaseEnd: new Date(l.lease_end).toISOString().slice(0, 10),
-        leasePeriod: formatLeasePeriod(
-          new Date(l.lease_start),
-          new Date(l.lease_end)
-        ),
-        paymentStatus: l.payment_status as "Paid" | "Pending" | "Overdue",
-        status: l.room_status as
-          | "Occupied"
-          | "Available"
-          | "Reserved"
-          | "Maintenance",
-      })),
+      rooms: mappedRooms,
+      leaseRows,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load rooms";

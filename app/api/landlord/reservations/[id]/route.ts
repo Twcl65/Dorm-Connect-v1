@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { landlordLog } from "@/lib/landlord-db";
+import { landlordLog, refreshRoomFromStudentReservations } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -35,8 +35,9 @@ export async function PATCH(req: Request, context: Ctx) {
       reference_no: string | null;
       proof_url: string | null;
       guest_name: string;
+      room_id: string | null;
     }>(
-      `SELECT status, payment_method, amount_paid::text, reference_no, proof_url, guest_name
+      `SELECT status, payment_method, amount_paid::text, reference_no, proof_url, guest_name, room_id
        FROM public.landlord_reservations
        WHERE owner_user_id = $1::uuid AND id = $2::uuid`,
       [ownerId, id]
@@ -85,6 +86,9 @@ export async function PATCH(req: Request, context: Ctx) {
         id,
       ]
     );
+    if (c.room_id) {
+      await refreshRoomFromStudentReservations(pool, c.room_id);
+    }
     await landlordLog(
       pool,
       ownerId,

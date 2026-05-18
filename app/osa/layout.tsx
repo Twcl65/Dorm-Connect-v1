@@ -11,7 +11,7 @@ export default function OsaLayout({ children }: { children: ReactNode }) {
         { label: "Dashboard", href: "/osa", icon: RoleIcons.dashboard },
         { label: "Accreditation", href: "/osa/accreditation", icon: RoleIcons.accreditation },
         { label: "Tenant Monitoring", href: "/osa/tenants", icon: RoleIcons.users },
-        { label: "Safety & Compliance", href: "/osa/safety", icon: RoleIcons.safety },
+        { label: "Inspections", href: "/osa/inspections", icon: RoleIcons.safety },
         { label: "Dorm Monitoring", href: "/osa/monitoring", icon: RoleIcons.monitoring },
         {
           label: "Accreditation monitoring",

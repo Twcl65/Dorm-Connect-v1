@@ -13,9 +13,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, Loader2 } from "lucide-react";
+import { Bell, Eye, Loader2 } from "lucide-react";
 import { ProofMedia } from "@/components/proof-media";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
+import { LeasePaymentMonitoringCard } from "@/components/landlord/lease-payment-monitoring-card";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
 type PaymentMethod = "GCash" | "Cash" | "Bank Transfer";
@@ -35,6 +36,29 @@ type Payment = {
   proofOfPaymentUrl?: string;
   date?: string;
   periodLabel?: string;
+};
+
+type LeasePaymentMonitoring = {
+  id: string;
+  tenantName: string;
+  roomNumber: string;
+  leaseDuration: string;
+  monthlyRent: number;
+  leaseStartDate: string;
+  leaseEndDate: string;
+  remainingBalance: number;
+  advancePayments: number;
+  deposits: number;
+  monthlySchedule: {
+    id: string;
+    monthNumber: number;
+    dueDate: string;
+    status: "Paid" | "Not Yet Paid";
+    amount: number;
+    paidDate?: string;
+  }[];
+  studentUserId?: string | null;
+  source?: "reservation" | "lease";
 };
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
@@ -62,6 +86,7 @@ export default function LandlordPaymentsPage() {
     "all"
   );
   const [paymentsList, setPaymentsList] = useState<Payment[]>([]);
+  const [leaseMonitoringList, setLeaseMonitoringList] = useState<LeasePaymentMonitoring[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,13 +112,33 @@ export default function LandlordPaymentsPage() {
   const [onsiteSaving, setOnsiteSaving] = useState(false);
   const [showOnsiteDialog, setShowOnsiteDialog] = useState(false);
 
+  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  const [showLeaseDetailsDialog, setShowLeaseDetailsDialog] = useState(false);
+  const [selectedLeaseTenant, setSelectedLeaseTenant] =
+    useState<LeasePaymentMonitoring | null>(null);
+  const [notifyMessage, setNotifyMessage] = useState("");
+  const [notifySending, setNotifySending] = useState(false);
+  const [editingScheduleMonth, setEditingScheduleMonth] = useState<number | null>(
+    null
+  );
+  const [editScheduleStatus, setEditScheduleStatus] = useState<
+    "Paid" | "Not Yet Paid"
+  >("Paid");
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [editPaymentSource, setEditPaymentSource] = useState<
+    "none" | "advance" | "deposit"
+  >("none");
+
   const loadData = useCallback(async () => {
     setLoadError(null);
     setLoading(true);
     try {
-      const [payRes, hintsRes] = await Promise.all([
+      const [payRes, hintsRes, leaseRes] = await Promise.all([
         fetch("/api/landlord/payments", { credentials: "include" }),
         fetch("/api/landlord/payments/onsite-hints", {
+          credentials: "include",
+        }),
+        fetch("/api/landlord/lease-payment-monitoring", {
           credentials: "include",
         }),
       ]);
@@ -105,8 +150,17 @@ export default function LandlordPaymentsPage() {
         rooms?: { roomNo: string; suggestedTenantName: string | null }[];
         error?: string;
       };
+      const lj = (await leaseRes.json()) as {
+        leasePaymentMonitoring?: LeasePaymentMonitoring[];
+        error?: string;
+      };
       if (!payRes.ok) throw new Error(json.error ?? "Failed to load");
       setPaymentsList(json.payments ?? []);
+      if (leaseRes.ok && lj.leasePaymentMonitoring) {
+        setLeaseMonitoringList(lj.leasePaymentMonitoring);
+      } else {
+        setLeaseMonitoringList([]);
+      }
       if (hintsRes.ok && hj.rooms) {
         setOnsiteRoomHints(hj.rooms);
       } else {
@@ -115,6 +169,7 @@ export default function LandlordPaymentsPage() {
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
       setPaymentsList([]);
+      setLeaseMonitoringList([]);
       setOnsiteRoomHints([]);
     } finally {
       setLoading(false);
@@ -124,6 +179,78 @@ export default function LandlordPaymentsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!showLeaseDetailsDialog || !selectedLeaseTenant) return;
+    const updated = leaseMonitoringList.find(
+      (l) => l.id === selectedLeaseTenant.id
+    );
+    if (updated) setSelectedLeaseTenant(updated);
+  }, [leaseMonitoringList, showLeaseDetailsDialog, selectedLeaseTenant?.id]);
+
+  const saveScheduleMonthStatus = async (monthNumber: number) => {
+    if (!selectedLeaseTenant) return;
+    const month = selectedLeaseTenant.monthlySchedule.find(
+      (m) => m.monthNumber === monthNumber
+    );
+    if (!month) return;
+
+    setScheduleSaving(true);
+    setLoadError(null);
+    const leaseRef =
+      selectedLeaseTenant.source === "reservation"
+        ? { reservationId: selectedLeaseTenant.id }
+        : { leaseId: selectedLeaseTenant.id };
+    const paidOn = new Date().toISOString().slice(0, 10);
+
+    try {
+      if (
+        editPaymentSource === "advance" ||
+        editPaymentSource === "deposit"
+      ) {
+        const res = await fetch(
+          "/api/landlord/lease-payment-monitoring/apply-credit",
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              monthNumber,
+              fundSource: editPaymentSource,
+              paidOn,
+              ...leaseRef,
+            }),
+          }
+        );
+        const j = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(j.error ?? "Failed to apply payment");
+      } else {
+        const res = await fetch(
+          "/api/landlord/lease-payment-monitoring/schedule",
+          {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              monthNumber,
+              status: editScheduleStatus,
+              paidOn: editScheduleStatus === "Paid" ? paidOn : null,
+              ...leaseRef,
+            }),
+          }
+        );
+        const j = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(j.error ?? "Failed to update");
+      }
+      setEditingScheduleMonth(null);
+      setEditPaymentSource("none");
+      await loadData();
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to update status");
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
 
   const filteredPayments = useMemo(
     () =>
@@ -149,6 +276,34 @@ export default function LandlordPaymentsPage() {
     const end = start + ROWS_PER_PAGE;
     return filteredPayments.slice(start, end);
   }, [filteredPayments, page]);
+
+  const leaseTenantTransactions = useMemo(() => {
+    if (!selectedLeaseTenant) return [];
+    const room = selectedLeaseTenant.roomNumber.trim().toLowerCase();
+    const name = selectedLeaseTenant.tenantName.trim().toLowerCase();
+    return paymentsList
+      .filter(
+        (p) =>
+          p.roomNo.trim().toLowerCase() === room &&
+          p.name.trim().toLowerCase() === name
+      )
+      .sort((a, b) => {
+        const da = a.date ? new Date(a.date).getTime() : 0;
+        const db = b.date ? new Date(b.date).getTime() : 0;
+        return db - da;
+      });
+  }, [paymentsList, selectedLeaseTenant]);
+
+  const openNotifyForLease = (lease: LeasePaymentMonitoring) => {
+    setSelectedLeaseTenant(lease);
+    const nextUnpaid = lease.monthlySchedule.find((m) => m.status === "Not Yet Paid");
+    setNotifyMessage(
+      nextUnpaid
+        ? `Reminder: your rent of ₱${lease.monthlyRent.toLocaleString()} for Room ${lease.roomNumber} is due on ${new Date(nextUnpaid.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`
+        : `Reminder regarding your lease for Room ${lease.roomNumber}.`
+    );
+    setShowNotifyDialog(true);
+  };
 
   const from =
     filteredPayments.length === 0 ? 0 : (page - 1) * ROWS_PER_PAGE + 1;
@@ -373,6 +528,42 @@ export default function LandlordPaymentsPage() {
               </Button>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border border-gray-300 bg-white">
+        <CardHeader className="pb-3 border-b bg-muted/40">
+          <CardTitle className="text-sm font-semibold text-slate-800">
+            Lease payment monitoring
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Monthly rent schedule per tenant. Paid months update when payments are
+            recorded or approved.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-3">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : leaseMonitoringList.length === 0 ? (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              No active leases with payment schedules yet. Confirm a student
+              reservation or add a tenant under Tenants.
+            </p>
+          ) : (
+            leaseMonitoringList.map((lease) => (
+              <LeasePaymentMonitoringCard
+                key={lease.id}
+                {...lease}
+                onViewDetails={() => {
+                  setSelectedLeaseTenant(lease);
+                  setShowLeaseDetailsDialog(true);
+                }}
+                onNotifyTenant={() => openNotifyForLease(lease)}
+              />
+            ))
+          )}
         </CardContent>
       </Card>
 
@@ -816,6 +1007,335 @@ export default function LandlordPaymentsPage() {
                   }}
                 >
                   {saving ? "Saving…" : "Save changes"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showLeaseDetailsDialog && selectedLeaseTenant && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-8">
+          <Card className="w-full max-w-2xl border border-gray-300 bg-white">
+            <CardHeader className="border-b bg-muted/40 pb-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-semibold">
+                    {selectedLeaseTenant.tenantName}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Room {selectedLeaseTenant.roomNumber} ·{" "}
+                    {selectedLeaseTenant.leaseDuration} · ₱
+                    {selectedLeaseTenant.monthlyRent.toLocaleString()} / month
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[0.7rem] bg-red-500 text-white hover:bg-red-600"
+                    onClick={() => {
+                      setShowLeaseDetailsDialog(false);
+                      openNotifyForLease(selectedLeaseTenant);
+                    }}
+                  >
+                    <Bell className="h-3 w-3" />
+                    Notify
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[0.7rem]"
+                    onClick={() => {
+                      setEditingScheduleMonth(null);
+                      setShowLeaseDetailsDialog(false);
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4 text-xs">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <p className="text-muted-foreground">Remaining balance</p>
+                  <p className="font-semibold">₱{selectedLeaseTenant.remainingBalance.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Advance payments</p>
+                  <p className="font-semibold">₱{selectedLeaseTenant.advancePayments.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Deposits</p>
+                  <p className="font-semibold">₱{selectedLeaseTenant.deposits.toLocaleString()}</p>
+                </div>
+              </div>
+              <p className="text-[0.65rem] text-muted-foreground">
+                Click <span className="font-medium">Edit Status</span> on any month.
+                Use <span className="font-medium">Use this as payment</span> to pay
+                from advance or security deposit when balance is still available.
+              </p>
+              <div>
+                <p className="mb-2 font-semibold text-slate-800">Monthly payment records</p>
+                <Table bordered={false}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Month</TableHead>
+                      <TableHead>Due date</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedLeaseTenant.monthlySchedule.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell>Month {m.monthNumber}</TableCell>
+                        <TableCell>
+                          {new Date(m.dueDate).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </TableCell>
+                        <TableCell>₱{m.amount.toLocaleString()}</TableCell>
+                        <TableCell
+                          className={
+                            m.status === "Paid"
+                              ? "text-emerald-700"
+                              : "text-amber-700"
+                          }
+                        >
+                          {m.status}
+                        </TableCell>
+                        <TableCell className="min-w-[200px] text-right align-top">
+                          {editingScheduleMonth === m.monthNumber ? (
+                            <div className="flex flex-col items-end gap-2">
+                              <div className="flex w-full min-w-[180px] flex-col gap-1 text-left">
+                                <label className="text-[0.6rem] font-medium text-slate-600">
+                                  Status
+                                </label>
+                                <select
+                                  className="h-7 w-full rounded-md border border-gray-300 bg-white px-1.5 text-[0.65rem]"
+                                  value={editScheduleStatus}
+                                  onChange={(e) =>
+                                    setEditScheduleStatus(
+                                      e.target.value as "Paid" | "Not Yet Paid"
+                                    )
+                                  }
+                                  disabled={scheduleSaving}
+                                >
+                                  <option value="Paid">Paid</option>
+                                  <option value="Not Yet Paid">
+                                    Not Yet Paid
+                                  </option>
+                                </select>
+                              </div>
+                              <div className="flex w-full flex-col gap-1 text-left">
+                                <label className="text-[0.6rem] font-medium text-slate-600">
+                                  Use this as payment
+                                </label>
+                                <select
+                                  className="h-7 w-full rounded-md border border-gray-300 bg-white px-1.5 text-[0.65rem]"
+                                  value={editPaymentSource}
+                                  onChange={(e) => {
+                                    const src = e.target.value as
+                                      | "none"
+                                      | "advance"
+                                      | "deposit";
+                                    setEditPaymentSource(src);
+                                    if (src === "advance" || src === "deposit") {
+                                      setEditScheduleStatus("Paid");
+                                    }
+                                  }}
+                                  disabled={scheduleSaving}
+                                >
+                                  <option value="none">
+                                    {editScheduleStatus === "Paid"
+                                      ? "None (mark paid only)"
+                                      : "None"}
+                                  </option>
+                                  <option
+                                    value="advance"
+                                    disabled={
+                                      m.status === "Paid" ||
+                                      selectedLeaseTenant.advancePayments <
+                                        m.amount
+                                    }
+                                  >
+                                    {selectedLeaseTenant.advancePayments <
+                                    m.amount
+                                      ? "Advance payment (already used)"
+                                      : `Advance payment (₱${selectedLeaseTenant.advancePayments.toLocaleString()} available)`}
+                                  </option>
+                                  <option
+                                    value="deposit"
+                                    disabled={
+                                      m.status === "Paid" ||
+                                      selectedLeaseTenant.deposits < m.amount
+                                    }
+                                  >
+                                    {selectedLeaseTenant.deposits < m.amount
+                                      ? "Security deposit (already used)"
+                                      : `Security deposit (₱${selectedLeaseTenant.deposits.toLocaleString()} available)`}
+                                  </option>
+                                </select>
+                              </div>
+                              <div className="flex gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="h-7 px-2 text-[0.65rem]"
+                                  disabled={scheduleSaving}
+                                  onClick={() =>
+                                    void saveScheduleMonthStatus(m.monthNumber)
+                                  }
+                                >
+                                  {scheduleSaving ? "Saving…" : "Save"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-[0.65rem]"
+                                  disabled={scheduleSaving}
+                                  onClick={() => {
+                                    setEditingScheduleMonth(null);
+                                    setEditPaymentSource("none");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-[0.65rem]"
+                              disabled={scheduleSaving}
+                              onClick={() => {
+                                setEditingScheduleMonth(m.monthNumber);
+                                setEditScheduleStatus(m.status);
+                                setEditPaymentSource("none");
+                              }}
+                            >
+                              Edit Status
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div>
+                <p className="mb-2 font-semibold text-slate-800">Transaction history</p>
+                {leaseTenantTransactions.length === 0 ? (
+                  <p className="text-muted-foreground">No recorded payments for this tenant yet.</p>
+                ) : (
+                  <Table bordered={false}>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Reference</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leaseTenantTransactions.map((p) => (
+                        <TableRow key={p.id}>
+                          <TableCell>
+                            {p.date
+                              ? new Date(p.date).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </TableCell>
+                          <TableCell>{p.amount}</TableCell>
+                          <TableCell>{p.method}</TableCell>
+                          <TableCell>
+                            <PaymentStatusBadge status={p.status} />
+                          </TableCell>
+                          <TableCell className="max-w-[120px] truncate">
+                            {p.referenceNo || "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showNotifyDialog && selectedLeaseTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <Card className="w-full max-w-md border border-gray-300 bg-white">
+            <CardHeader className="border-b pb-2">
+              <CardTitle className="text-sm font-semibold">
+                Notify {selectedLeaseTenant.tenantName}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs">
+              <textarea
+                className="min-h-[100px] w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
+                value={notifyMessage}
+                onChange={(e) => setNotifyMessage(e.target.value)}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowNotifyDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={notifySending || !notifyMessage.trim()}
+                  onClick={async () => {
+                    setNotifySending(true);
+                    try {
+                      const res = await fetch(
+                        "/api/landlord/lease-payment-monitoring/notify",
+                        {
+                          method: "POST",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            message: notifyMessage.trim(),
+                            ...(selectedLeaseTenant.source === "reservation"
+                              ? { reservationId: selectedLeaseTenant.id }
+                              : { leaseId: selectedLeaseTenant.id }),
+                          }),
+                        }
+                      );
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
+                      setShowNotifyDialog(false);
+                    } catch (e) {
+                      setLoadError(
+                        e instanceof Error ? e.message : "Notify failed"
+                      );
+                    } finally {
+                      setNotifySending(false);
+                    }
+                  }}
+                >
+                  {notifySending ? "Sending…" : "Send"}
                 </Button>
               </div>
             </CardContent>

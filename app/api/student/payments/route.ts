@@ -10,6 +10,7 @@ import {
   resolveDormDisplayName,
   syncReservationAndLeaseFromStudentPaymentStatus,
 } from "@/lib/landlord-db";
+import { insertNotification } from "@/lib/notify-user";
 import { isAllowedStoredFileUrl } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
@@ -366,21 +367,39 @@ export async function POST(req: Request) {
     );
 
     if (reservationId) {
-      const { rows: ownRows } = await pool.query<{ owner_user_id: string }>(
-        `SELECT r.owner_user_id
+      const { rows: ownRows } = await pool.query<{
+        owner_user_id: string;
+        property_name: string;
+        room_no: string;
+      }>(
+        `SELECT r.owner_user_id, p.name AS property_name, r.room_no
          FROM public.student_dorm_reservations s
          JOIN public.landlord_rooms r ON r.id = s.room_id
+         JOIN public.landlord_properties p ON p.id = r.property_id
          WHERE s.id = $1::uuid AND s.student_user_id = $2::uuid`,
         [reservationId, studentId]
       );
-      const ownerUserId = ownRows[0]?.owner_user_id;
-      if (ownerUserId) {
+      const own = ownRows[0];
+      if (own?.owner_user_id) {
         await syncReservationAndLeaseFromStudentPaymentStatus(
           pool,
-          ownerUserId,
+          own.owner_user_id,
           reservationId,
           status as "Paid" | "Pending" | "Failed"
         );
+        if (status === "Pending") {
+          try {
+            await insertNotification(
+              pool,
+              own.owner_user_id,
+              "Payment submitted",
+              `${session.name} submitted ₱${amount.toLocaleString()} for ${own.property_name} · Room ${own.room_no}. Review in Payments.`,
+              "payment"
+            );
+          } catch {
+            /* non-fatal */
+          }
+        }
       }
     }
 

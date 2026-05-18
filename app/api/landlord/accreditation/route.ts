@@ -155,6 +155,15 @@ export async function POST(req: Request) {
     const declaration = (formData.declaration ?? {}) as Record<string, unknown>;
     const declName = (declaration.name ?? "").toString().trim();
     if (!declName) errors.push("Applicant name is required.");
+    const declChecklist = (declaration.checklist ?? {}) as Record<string, unknown>;
+    for (const [k, label] of [
+      ["certify", "Declaration certification is required."],
+      ["understandSubmit", "Confirm you understand submission does not guarantee approval."],
+      ["understandRevoke", "Confirm you understand accreditation may be revoked."],
+      ["understandInspect", "Confirm you understand OSA may inspect the premises."],
+    ] as const) {
+      if (declChecklist[k] !== true) errors.push(label);
+    }
 
     if (errors.length > 0) {
       return NextResponse.json(

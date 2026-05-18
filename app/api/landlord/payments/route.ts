@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
+import {
+  reconcileScheduleWithPaidPayments,
+  resolveLeaseIdForRoom,
+} from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -198,6 +202,15 @@ export async function POST(req: Request) {
         body.paidOn?.slice(0, 10) || null,
       ]
     );
+
+    if (status === "Paid" && roomId) {
+      const leaseId = await resolveLeaseIdForRoom(pool, ownerId, roomId);
+      if (leaseId) {
+        await reconcileScheduleWithPaidPayments(pool, {
+          leaseId,
+        });
+      }
+    }
 
     await landlordLog(pool, ownerId, `Recorded payment ${payerName} ${status}`);
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });

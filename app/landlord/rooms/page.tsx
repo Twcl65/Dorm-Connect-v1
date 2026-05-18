@@ -54,6 +54,7 @@ type LeaseRow = {
   leasePeriod: string;
   paymentStatus: PaymentStatus;
   status: RoomStatus;
+  reservationStatus?: "Pending" | "Confirmed";
 };
 
 const ROWS_PER_PAGE = 5;
@@ -1704,6 +1705,25 @@ export default function LandlordRoomsPage() {
                   </span>
                   <RoomStatusBadge status={selectedTenant.status} />
                 </div>
+                {selectedTenant.reservationStatus ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[0.7rem] text-muted-foreground">
+                      Reservation:
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={
+                        selectedTenant.reservationStatus === "Confirmed"
+                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[0.65rem] text-emerald-800"
+                          : "rounded-full bg-violet-50 px-2 py-0.5 text-[0.65rem] text-violet-800"
+                      }
+                    >
+                      {selectedTenant.reservationStatus === "Confirmed"
+                        ? "Booked (confirmed)"
+                        : "Reserved (pending)"}
+                    </Badge>
+                  </div>
+                ) : null}
                 <div className="flex items-center gap-2">
                   <span className="text-[0.7rem] text-muted-foreground">
                     Payment:

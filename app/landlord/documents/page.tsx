@@ -179,6 +179,10 @@ export default function LandlordDocumentsPage() {
   const [safetyRooms, setSafetyRooms] = useState(false);
 
   // Step E – Declaration
+  const [declCertify, setDeclCertify] = useState(false);
+  const [declUnderstandSubmit, setDeclUnderstandSubmit] = useState(false);
+  const [declUnderstandRevoke, setDeclUnderstandRevoke] = useState(false);
+  const [declUnderstandInspect, setDeclUnderstandInspect] = useState(false);
   const [declName, setDeclName] = useState("");
   const [wizardErrors, setWizardErrors] = useState<string[]>([]);
   const [selectedRequest, setSelectedRequest] =
@@ -333,6 +337,15 @@ export default function LandlordDocumentsPage() {
     (step: 1 | 2 | 3 | 4 | 5): string[] => {
       const errors: string[] = [];
       if (step === 1) {
+        if (!ownerName.trim()) errors.push("Owner full name is required.");
+        if (!ownerBusinessName.trim())
+          errors.push("Business name is required.");
+        if (!ownerContact.trim()) errors.push("Owner contact number is required.");
+        if (!ownerEmail.trim()) errors.push("Owner email address is required.");
+        if (!ownerIdFrontFile) errors.push("Valid ID (front) is required.");
+        if (!ownerIdBackFile) errors.push("Valid ID (back) is required.");
+      }
+      if (step === 2) {
         if (!selectedPropertyId.trim())
           errors.push("Please select a dorm from your properties.");
         if (!dormAddress.trim()) errors.push("Dorm address is required.");
@@ -341,15 +354,6 @@ export default function LandlordDocumentsPage() {
         if (!dormEmail.trim()) errors.push("Email address is required.");
         if (!dormRooms.trim()) errors.push("Number of rooms is required.");
         if (!dormCapacity.trim()) errors.push("Total capacity is required.");
-      }
-      if (step === 2) {
-        if (!ownerName.trim()) errors.push("Owner full name is required.");
-        if (!ownerBusinessName.trim())
-          errors.push("Business name is required.");
-        if (!ownerContact.trim()) errors.push("Owner contact number is required.");
-        if (!ownerEmail.trim()) errors.push("Owner email address is required.");
-        if (!ownerIdFrontFile) errors.push("Valid ID (front) is required.");
-        if (!ownerIdBackFile) errors.push("Valid ID (back) is required.");
       }
       if (step === 3) {
         if (!businessPermitFile) errors.push("Business Permit is required.");
@@ -373,6 +377,14 @@ export default function LandlordDocumentsPage() {
           errors.push("Confirm rooms meet minimum requirements.");
       }
       if (step === 5) {
+        if (!declCertify)
+          errors.push("You must certify that the information provided is accurate.");
+        if (!declUnderstandSubmit)
+          errors.push("Confirm you understand submission does not guarantee approval.");
+        if (!declUnderstandRevoke)
+          errors.push("Confirm you understand accreditation may be revoked.");
+        if (!declUnderstandInspect)
+          errors.push("Confirm you understand OSA may inspect the premises.");
         if (!declName.trim()) errors.push("Applicant name is required.");
       }
       return errors;
@@ -402,6 +414,10 @@ export default function LandlordDocumentsPage() {
       safetyContacts,
       safetyRooms,
       declName,
+      declCertify,
+      declUnderstandSubmit,
+      declUnderstandRevoke,
+      declUnderstandInspect,
     ]
   );
 
@@ -655,10 +671,10 @@ export default function LandlordDocumentsPage() {
                   </ul>
                 </div>
               )}
-              {wizardStep === 1 && (
+              {wizardStep === 2 && (
                 <div className="space-y-3">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
-                    A. Dorm Information
+                    B. Dorm Information
                   </p>
                   <div className="grid gap-2 md:grid-cols-[140px,1fr] items-center">
                     <span className="text-[0.7rem] text-slate-700">
@@ -795,7 +811,7 @@ export default function LandlordDocumentsPage() {
                       variant="outline"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={() => setShowWizard(false)}
+                      onClick={goBack}
                     >
                       Back
                     </Button>
@@ -811,10 +827,10 @@ export default function LandlordDocumentsPage() {
                 </div>
               )}
 
-              {wizardStep === 2 && (
+              {wizardStep === 1 && (
                 <div className="space-y-3">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
-                    B. Owner / Landlord Information
+                    A. Owner / Landlord Information
                   </p>
                   <div className="grid gap-2 md:grid-cols-[160px,1fr] items-center">
                     <span className="text-[0.7rem] text-slate-700">
@@ -900,7 +916,7 @@ export default function LandlordDocumentsPage() {
                       variant="outline"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={goBack}
+                      onClick={() => setShowWizard(false)}
                     >
                       Back
                     </Button>
@@ -1127,22 +1143,58 @@ export default function LandlordDocumentsPage() {
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     E. Declaration
                   </p>
-                  <p className="text-[0.7rem] text-slate-800">
-                    I hereby certify that all information provided in this
-                    application is true, complete, and accurate to the best of
-                    my knowledge.
-                  </p>
-                  <div className="space-y-1 text-[0.7rem] text-slate-800">
-                    <p>I understand that:</p>
-                    <ul className="list-disc pl-5 space-y-1">
-                      <li>Submission does not guarantee approval.</li>
-                      <li>
+                  <div className="space-y-2 text-[0.7rem] text-slate-800">
+                    <label className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3 w-3 shrink-0"
+                        checked={declCertify}
+                        onChange={(e) => setDeclCertify(e.target.checked)}
+                      />
+                      <span>
+                        I hereby certify that all information provided in this
+                        application is true, complete, and accurate to the best
+                        of my knowledge.
+                      </span>
+                    </label>
+                    <p className="pl-5 font-medium text-slate-900">
+                      I understand that:
+                    </p>
+                    <label className="flex items-start gap-2 pl-5">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3 w-3 shrink-0"
+                        checked={declUnderstandSubmit}
+                        onChange={(e) =>
+                          setDeclUnderstandSubmit(e.target.checked)
+                        }
+                      />
+                      <span>Submission does not guarantee approval.</span>
+                    </label>
+                    <label className="flex items-start gap-2 pl-5">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3 w-3 shrink-0"
+                        checked={declUnderstandRevoke}
+                        onChange={(e) =>
+                          setDeclUnderstandRevoke(e.target.checked)
+                        }
+                      />
+                      <span>
                         Accreditation may be revoked if compliance is violated.
-                      </li>
-                      <li>
-                        OSA reserves the right to inspect the premises.
-                      </li>
-                    </ul>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 pl-5">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-3 w-3 shrink-0"
+                        checked={declUnderstandInspect}
+                        onChange={(e) =>
+                          setDeclUnderstandInspect(e.target.checked)
+                        }
+                      />
+                      <span>OSA reserves the right to inspect the premises.</span>
+                    </label>
                   </div>
                   <div className="grid gap-2 md:grid-cols-[140px,1fr] items-center">
                     <span className="text-[0.7rem] text-slate-700">
@@ -1317,6 +1369,12 @@ export default function LandlordDocumentsPage() {
                                   },
                                   declaration: {
                                     name: declName,
+                                    checklist: {
+                                      certify: declCertify,
+                                      understandSubmit: declUnderstandSubmit,
+                                      understandRevoke: declUnderstandRevoke,
+                                      understandInspect: declUnderstandInspect,
+                                    },
                                   },
                                 },
                               }),

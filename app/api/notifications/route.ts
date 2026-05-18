@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import {
+  deriveTenantPaymentStatusFromSchedule,
+  fetchMonthlySchedule,
+} from "@/lib/payment-schedule";
 import { getSession } from "@/lib/require-session";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +108,17 @@ export async function GET() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       for (const d of dueRows) {
+        const schedule = await fetchMonthlySchedule(pool, {
+          reservationId: d.id,
+        });
+        if (schedule.length > 0) {
+          const monthStatus = deriveTenantPaymentStatusFromSchedule(
+            schedule,
+            "Pending"
+          );
+          if (monthStatus === "Paid") continue;
+        }
+
         if (!d.next_payment_due_date) continue;
         const due = new Date(d.next_payment_due_date);
         due.setHours(0, 0, 0, 0);

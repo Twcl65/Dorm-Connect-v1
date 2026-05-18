@@ -13,9 +13,20 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PenSquare, Eye, UserPlus, Loader2 } from "lucide-react";
+import { PenSquare, Eye, UserPlus, Loader2, CalendarClock } from "lucide-react";
+import { cn } from "@/components/ui/utils";
+import type { DueUrgency } from "@/lib/payment-schedule";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
+type PaymentFilter = PaymentStatus | "all" | "due_soon";
+
+type MonthlyScheduleItem = {
+  monthNumber: number;
+  dueDate: string;
+  status: "Paid" | "Not Yet Paid";
+  amount: number;
+  paidDate?: string;
+};
 
 type Tenant = {
   id: string;
@@ -24,12 +35,83 @@ type Tenant = {
   leaseStart: string;
   leaseEnd: string;
   leasePeriod: string;
+  leaseDuration?: string;
   paymentStatus: PaymentStatus;
   email?: string;
   contact?: string;
+  monthlySchedule?: MonthlyScheduleItem[];
+  paidMonths?: number;
+  totalMonths?: number;
+  nextDueDate?: string | null;
+  nextDueAmount?: number | null;
+  daysUntilDue?: number | null;
+  dueUrgency?: DueUrgency;
+  dueLabel?: string | null;
 };
 
 const ROWS_PER_PAGE = 5;
+
+function DueUrgencyBadge({
+  urgency,
+  dueLabel,
+}: {
+  urgency?: DueUrgency;
+  dueLabel?: string | null;
+}) {
+  if (!urgency || urgency === "paid") {
+    return (
+      <span className="text-[0.65rem] text-muted-foreground">All paid</span>
+    );
+  }
+  const styles: Record<DueUrgency, string> = {
+    paid: "bg-emerald-100 text-emerald-800",
+    overdue: "bg-red-100 text-red-800 ring-1 ring-red-300",
+    due_today: "bg-red-100 text-red-800 ring-1 ring-red-400",
+    due_soon: "bg-amber-100 text-amber-900 ring-1 ring-amber-400",
+    due_this_week: "bg-amber-50 text-amber-800",
+    upcoming: "bg-sky-50 text-sky-800",
+  };
+  const labels: Record<DueUrgency, string> = {
+    paid: "Paid",
+    overdue: "Overdue",
+    due_today: "Due today",
+    due_soon: "Due soon",
+    due_this_week: "Due this week",
+    upcoming: "Upcoming",
+  };
+  return (
+    <div className="space-y-0.5">
+      <Badge
+        className={cn(
+          "rounded-full px-2 py-0.5 text-[0.65rem] font-semibold",
+          styles[urgency]
+        )}
+        variant="outline"
+      >
+        {labels[urgency]}
+      </Badge>
+      {dueLabel && (
+        <p className="text-[0.65rem] text-slate-600 leading-snug">{dueLabel}</p>
+      )}
+    </div>
+  );
+}
+
+function tenantRowHighlight(urgency?: DueUrgency): string {
+  if (urgency === "overdue" || urgency === "due_today") {
+    return "bg-red-50/80";
+  }
+  if (urgency === "due_soon") {
+    return "bg-amber-50/90";
+  }
+  if (urgency === "due_this_week") {
+    return "bg-amber-50/40";
+  }
+  if (urgency === "upcoming") {
+    return "bg-sky-50/30";
+  }
+  return "";
+}
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   const colorClasses =
@@ -52,8 +134,8 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
 export default function LandlordTenantsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [paymentFilter, setPaymentFilter] =
-    useState<PaymentStatus | "all">("all");
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [upcomingDue, setUpcomingDue] = useState<Tenant[]>([]);
   const [tenantsData, setTenantsData] = useState<Tenant[]>([]);
   const [propertyName, setPropertyName] = useState("");
   const [stats, setStats] = useState({
@@ -62,6 +144,8 @@ export default function LandlordTenantsPage() {
     paid: 0,
     pending: 0,
     overdue: 0,
+    dueSoon: 0,
+    upcomingCount: 0,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,12 +185,18 @@ export default function LandlordTenantsPage() {
       const json = (await res.json()) as {
         propertyName?: string;
         leases?: Tenant[];
-        stats?: typeof stats;
+        upcomingDue?: Tenant[];
+        stats?: typeof stats & {
+          dueSoon?: number;
+          dueThisWeek?: number;
+          upcomingCount?: number;
+        };
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
       setPropertyName(json.propertyName ?? "");
       setTenantsData(json.leases ?? []);
+      setUpcomingDue(json.upcomingDue ?? []);
       if (json.stats) setStats(json.stats);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
@@ -172,9 +262,9 @@ export default function LandlordTenantsPage() {
         badgeVariant: "success" as const,
       },
       {
-        label: "Pending / Overdue",
-        value: `${stats.pending} / ${stats.overdue}`,
-        badge: "Attention",
+        label: "Due soon / overdue",
+        value: `${stats.dueSoon ?? 0} / ${stats.overdue}`,
+        badge: "Rent due",
         badgeVariant: "warning" as const,
       },
     ],
@@ -189,8 +279,14 @@ export default function LandlordTenantsPage() {
           tenant.name.toLowerCase().includes(search.toLowerCase()) ||
           tenant.roomNo.toLowerCase().includes(search.toLowerCase());
         const matchesPayment =
-          paymentFilter === "all" ||
-          tenant.paymentStatus === paymentFilter;
+          paymentFilter === "all"
+            ? true
+            : paymentFilter === "due_soon"
+              ? tenant.dueUrgency === "overdue" ||
+                tenant.dueUrgency === "due_today" ||
+                tenant.dueUrgency === "due_soon" ||
+                tenant.dueUrgency === "due_this_week"
+              : tenant.paymentStatus === paymentFilter;
         return matchesSearch && matchesPayment;
       }),
     [tenantsData, search, paymentFilter]
@@ -231,7 +327,8 @@ export default function LandlordTenantsPage() {
             Tenants
           </h1>
           <p className="text-sm text-muted-foreground">
-            Track tenant details and payment status.
+            Track tenants and upcoming rent due dates (e.g. May 19, Jun 19 each
+            month).
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
@@ -299,6 +396,58 @@ export default function LandlordTenantsPage() {
         ))}
       </section>
 
+      {upcomingDue.length > 0 && (
+        <Card className="border border-amber-300 bg-amber-50/30 shadow-sm">
+          <CardHeader className="pb-2 border-b border-amber-200/80 bg-amber-50/50">
+            <div className="flex items-start gap-2">
+              <CalendarClock className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+              <div>
+                <CardTitle className="text-sm font-semibold text-slate-900">
+                  Upcoming rent due dates
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Unpaid rent sorted by deadline — highlighted when close to due
+                  (e.g. 19th of each month).
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-3">
+            <div className="space-y-2">
+              {upcomingDue.map((t) => (
+                <div
+                  key={t.id}
+                  className={cn(
+                    "flex flex-col gap-1 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
+                    tenantRowHighlight(t.dueUrgency),
+                    t.dueUrgency === "overdue" || t.dueUrgency === "due_today"
+                      ? "border-red-200"
+                      : t.dueUrgency === "due_soon"
+                        ? "border-amber-300"
+                        : "border-amber-100 bg-white/80"
+                  )}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      {t.name}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        · Room {t.roomNo}
+                      </span>
+                    </p>
+                    <p className="text-[0.65rem] text-muted-foreground">
+                      {t.dueLabel}
+                      {t.nextDueAmount != null &&
+                        ` · ₱${t.nextDueAmount.toLocaleString()}`}
+                    </p>
+                  </div>
+                  <DueUrgencyBadge urgency={t.dueUrgency} />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="border border-gray-300 bg-white">
         <CardHeader className="pb-3 border-b bg-muted/40">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -321,14 +470,11 @@ export default function LandlordTenantsPage() {
                 className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:w-40"
                 value={paymentFilter}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setPaymentFilter(
-                    e.target.value === "all"
-                      ? "all"
-                      : (e.target.value as PaymentStatus)
-                  )
+                  setPaymentFilter(e.target.value as PaymentFilter)
                 }
               >
                 <option value="all">All payments</option>
+                <option value="due_soon">Due soon / this week</option>
                 <option value="Paid">Paid</option>
                 <option value="Pending">Pending</option>
                 <option value="Overdue">Overdue</option>
@@ -344,6 +490,7 @@ export default function LandlordTenantsPage() {
                 <TableHead>Room No.</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Lease Period</TableHead>
+                <TableHead>Next rent due</TableHead>
                 <TableHead>Payment Status</TableHead>
                 <TableHead className="text-right pr-4 font-semibold text-slate-600">
                   Actions
@@ -354,7 +501,7 @@ export default function LandlordTenantsPage() {
               {paginatedTenants.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="py-8 text-center text-xs text-muted-foreground"
                   >
                     {loading
@@ -364,7 +511,10 @@ export default function LandlordTenantsPage() {
                 </TableRow>
               )}
               {paginatedTenants.map((tenant) => (
-                <TableRow key={tenant.id}>
+                <TableRow
+                  key={tenant.id}
+                  className={tenantRowHighlight(tenant.dueUrgency)}
+                >
                   <TableCell className="text-xs font-mono text-slate-500">
                     {tenant.id.slice(0, 8)}…
                   </TableCell>
@@ -376,6 +526,12 @@ export default function LandlordTenantsPage() {
                   </TableCell>
                   <TableCell className="text-xs text-slate-700">
                     {tenant.leasePeriod}
+                  </TableCell>
+                  <TableCell>
+                    <DueUrgencyBadge
+                      urgency={tenant.dueUrgency}
+                      dueLabel={tenant.dueLabel}
+                    />
                   </TableCell>
                   <TableCell>
                     <PaymentStatusBadge status={tenant.paymentStatus} />
@@ -692,6 +848,84 @@ export default function LandlordTenantsPage() {
                 )}
               </div>
 
+              {selectedTenant.monthlySchedule &&
+                selectedTenant.monthlySchedule.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[0.75rem] font-semibold text-slate-900">
+                      Monthly payments (
+                      {selectedTenant.paidMonths ?? 0} /{" "}
+                      {selectedTenant.totalMonths ??
+                        selectedTenant.monthlySchedule.length}{" "}
+                      paid)
+                    </p>
+                    <div className="max-h-48 overflow-y-auto rounded border text-[0.65rem]">
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Month</th>
+                            <th className="px-2 py-1 text-left">Due</th>
+                            <th className="px-2 py-1 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedTenant.monthlySchedule.map((m) => {
+                            const isNextUnpaid =
+                              m.status !== "Paid" &&
+                              selectedTenant.nextDueDate != null &&
+                              m.dueDate.slice(0, 10) ===
+                                selectedTenant.nextDueDate;
+                            return (
+                            <tr
+                              key={m.monthNumber}
+                              className={cn(
+                                "border-t",
+                                isNextUnpaid &&
+                                  "bg-amber-50 font-medium text-amber-900"
+                              )}
+                            >
+                              <td className="px-2 py-1">Month {m.monthNumber}</td>
+                              <td className="px-2 py-1">
+                                {new Date(m.dueDate).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </td>
+                              <td className="px-2 py-1">
+                                {m.status === "Paid" ? "Paid" : "Not Yet Paid"}
+                                {isNextUnpaid ? " · Next due" : ""}
+                              </td>
+                            </tr>
+                          );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+              {selectedTenant.dueUrgency &&
+                selectedTenant.dueUrgency !== "paid" && (
+                  <div
+                    className={cn(
+                      "rounded-md border px-3 py-2",
+                      tenantRowHighlight(selectedTenant.dueUrgency),
+                      selectedTenant.dueUrgency === "overdue" ||
+                        selectedTenant.dueUrgency === "due_today"
+                        ? "border-red-200"
+                        : "border-amber-200"
+                    )}
+                  >
+                    <p className="text-[0.75rem] font-semibold text-slate-900 mb-1">
+                      Next rent due
+                    </p>
+                    <DueUrgencyBadge
+                      urgency={selectedTenant.dueUrgency}
+                      dueLabel={selectedTenant.dueLabel}
+                    />
+                  </div>
+                )}
+
               <div className="space-y-1">
                 <p className="text-[0.75rem] font-semibold text-slate-900">
                   Payment Status
@@ -952,4 +1186,5 @@ export default function LandlordTenantsPage() {
     </div>
   );
 }
+
 

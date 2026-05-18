@@ -20,7 +20,8 @@
     "db:migrate:landlord-tenant-announcements": "node scripts/apply-sql-migration.cjs db/migrations/009_landlord_tenant_announcements.sql",
     "db:probe-pooler": "node scripts/probe-pooler-region.cjs",
     "storage:setup": "node scripts/setup-supabase-storage.cjs",
-    "storage:fix": "node scripts/fix-supabase-storage-bucket.cjs"
+    "storage:fix": "node scripts/fix-supabase-storage-bucket.cjs",
+    "db:migrate:payment-monitoring": "node scripts/apply-sql-migration.cjs db/migrations/014_payment_due_dates_lease_link.sql"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",

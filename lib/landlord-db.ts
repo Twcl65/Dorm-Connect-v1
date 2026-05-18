@@ -78,35 +78,93 @@ export function formatLeasePeriod(start: Date, end: Date): string {
   return `${a} - ${b}`;
 }
 
+export type RoomListingStatus =
+  | "Occupied"
+  | "Available"
+  | "Reserved"
+  | "Maintenance";
+
+export type LeasePaymentStatus = "Paid" | "Pending" | "Overdue";
+
+export function mapRentPaymentStatus(
+  rentStatus: string | null | undefined
+): LeasePaymentStatus {
+  if (rentStatus === "Paid") return "Paid";
+  if (rentStatus === "Overdue") return "Overdue";
+  return "Pending";
+}
+
+type BookingInputs = {
+  dbRoomStatus: string;
+  hasLease: boolean;
+  studentReservationStatus: "Pending" | "Confirmed" | null;
+  manualReservationStatus: "Pending" | "Confirmed" | null;
+};
+
+/** Room status from active lease / student or manual reservation. */
+export function resolveRoomListingStatus(
+  input: BookingInputs
+): RoomListingStatus {
+  if (input.dbRoomStatus === "Maintenance") return "Maintenance";
+  if (input.hasLease) return "Occupied";
+  if (input.studentReservationStatus === "Confirmed") return "Occupied";
+  if (input.manualReservationStatus === "Confirmed") return "Occupied";
+  if (input.studentReservationStatus === "Pending") return "Reserved";
+  if (input.manualReservationStatus === "Pending") return "Reserved";
+  return "Available";
+}
+
 /**
- * Sync room listing status from student reservations:
- * Confirmed → Occupied; Pending only → Reserved; none → Available.
- * Does not override Maintenance (landlord manual).
+ * Sync room status from leases and reservations (student + manual).
+ * Confirmed / active lease → Occupied; Pending only → Reserved.
  */
 export async function refreshRoomFromStudentReservations(
   pool: Pool,
   roomId: string
 ): Promise<void> {
-  const { rows: st } = await pool.query<{ cur: string }>(
-    `SELECT status AS cur FROM public.landlord_rooms WHERE id = $1::uuid`,
+  const { rows: roomRows } = await pool.query<{ status: string }>(
+    `SELECT status FROM public.landlord_rooms WHERE id = $1::uuid`,
     [roomId]
   );
-  if (st[0]?.cur === "Maintenance") return;
+  const dbStatus = roomRows[0]?.status ?? "Available";
+  if (dbStatus === "Maintenance") return;
 
-  const { rows } = await pool.query<{ confirmed: string; pending: string }>(
-    `SELECT
-       COUNT(*) FILTER (WHERE status = 'Confirmed')::text AS confirmed,
-       COUNT(*) FILTER (WHERE status = 'Pending')::text AS pending
-     FROM public.student_dorm_reservations
-     WHERE room_id = $1::uuid`,
+  const { rows: leaseRows } = await pool.query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM public.landlord_tenant_leases WHERE room_id = $1::uuid`,
     [roomId]
   );
-  const confirmed = Number(rows[0]?.confirmed ?? 0);
-  const pending = Number(rows[0]?.pending ?? 0);
+  const hasLease = Number(leaseRows[0]?.c ?? 0) > 0;
 
-  let next: "Occupied" | "Reserved" | "Available" = "Available";
-  if (confirmed > 0) next = "Occupied";
-  else if (pending > 0) next = "Reserved";
+  const { rows: studentRows } = await pool.query<{ status: string }>(
+    `SELECT status FROM public.student_dorm_reservations
+     WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
+     ORDER BY CASE status WHEN 'Confirmed' THEN 0 ELSE 1 END, created_at DESC
+     LIMIT 1`,
+    [roomId]
+  );
+  const studentStatus = studentRows[0]?.status as
+    | "Pending"
+    | "Confirmed"
+    | undefined;
+
+  const { rows: manualRows } = await pool.query<{ status: string }>(
+    `SELECT status FROM public.landlord_reservations
+     WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
+     ORDER BY CASE status WHEN 'Confirmed' THEN 0 ELSE 1 END, created_at DESC
+     LIMIT 1`,
+    [roomId]
+  );
+  const manualStatus = manualRows[0]?.status as
+    | "Pending"
+    | "Confirmed"
+    | undefined;
+
+  const next = resolveRoomListingStatus({
+    dbRoomStatus: dbStatus,
+    hasLease,
+    studentReservationStatus: studentStatus ?? null,
+    manualReservationStatus: manualStatus ?? null,
+  });
 
   await pool.query(
     `UPDATE public.landlord_rooms SET status = $2, updated_at = now() WHERE id = $1::uuid`,
@@ -147,11 +205,16 @@ export async function syncReservationAndLeaseFromStudentPaymentStatus(
     lease_start: Date;
     lease_end: Date;
     student_email: string | null;
+    student_user_id: string;
+    property_name: string;
+    room_no: string;
   }>(
     `SELECT s.room_id, r.property_id, s.status AS res_status, s.guest_name,
-            s.lease_start, s.lease_end, u.email AS student_email
+            s.lease_start, s.lease_end, u.email AS student_email,
+            s.student_user_id, p.name AS property_name, r.room_no
      FROM public.student_dorm_reservations s
      JOIN public.landlord_rooms r ON r.id = s.room_id
+     JOIN public.landlord_properties p ON p.id = r.property_id
      JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
      WHERE s.id = $1::uuid AND r.owner_user_id = $2::uuid`,
     [reservationId, ownerId]
@@ -212,4 +275,47 @@ export async function syncReservationAndLeaseFromStudentPaymentStatus(
   );
 
   await refreshRoomFromStudentReservations(pool, row.room_id);
+
+  const { reconcileScheduleWithPaidPayments, recomputeReservationBalances } =
+    await import("@/lib/payment-schedule");
+
+  if (resStatus === "Confirmed") {
+    await reconcileScheduleWithPaidPayments(pool, { reservationId });
+    if (paymentRecordStatus !== "Paid") {
+      await recomputeReservationBalances(pool, reservationId);
+    }
+  }
+
+  const dormLabel = `${row.property_name} · Room ${row.room_no}`;
+  try {
+    const { insertNotification } = await import("@/lib/notify-user");
+    if (row.res_status === "Pending" && resStatus === "Confirmed") {
+      await insertNotification(
+        pool,
+        row.student_user_id,
+        "Reservation confirmed",
+        `Your reservation at ${dormLabel} has been confirmed.`,
+        "reservation"
+      );
+    }
+    if (paymentRecordStatus === "Paid") {
+      await insertNotification(
+        pool,
+        row.student_user_id,
+        "Payment confirmed",
+        `Your payment for ${dormLabel} has been confirmed.`,
+        "payment"
+      );
+    } else if (paymentRecordStatus === "Failed") {
+      await insertNotification(
+        pool,
+        row.student_user_id,
+        "Payment not verified",
+        `Your payment for ${dormLabel} could not be verified. Contact your landlord or submit again.`,
+        "payment"
+      );
+    }
+  } catch {
+    /* non-fatal */
+  }
 }

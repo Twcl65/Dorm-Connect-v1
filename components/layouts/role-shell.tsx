@@ -23,12 +23,32 @@ import {
   User as UserIcon
 } from "lucide-react";
 import { cn } from "@/components/ui/utils";
+import { NotificationsBell } from "@/components/notifications-bell";
 
 export type SidebarItem = {
   label: string;
   href: string;
   icon?: React.ComponentType<{ className?: string }>;
 };
+
+function navItemMatchesPath(pathname: string, href: string): boolean {
+  const segments = href.split("/").filter(Boolean);
+  const isRootItem = segments.length === 1;
+  return isRootItem
+    ? pathname === href
+    : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** Prefer the most specific nav link (longest href) when several match. */
+function resolveActiveNavHref(pathname: string, items: SidebarItem[]): string {
+  const matches = items
+    .filter((item) => navItemMatchesPath(pathname, item.href))
+    .map((item) => item.href);
+
+  if (matches.length === 0) return items[0]?.href ?? "";
+
+  return matches.reduce((best, href) => (href.length > best.length ? href : best));
+}
 
 export type RoleShellProps = {
   roleLabel: string;
@@ -94,14 +114,9 @@ export function RoleShell({
     .join("")
     .toUpperCase() || "?";
 
+  const activeHref = resolveActiveNavHref(pathname, sidebarItems);
   const activeItem =
-    sidebarItems.find((item) => {
-      const segments = item.href.split("/").filter(Boolean);
-      const isRootItem = segments.length === 1;
-      return isRootItem
-        ? pathname === item.href
-        : pathname === item.href || pathname.startsWith(item.href + "/");
-    }) ?? sidebarItems[0];
+    sidebarItems.find((item) => item.href === activeHref) ?? sidebarItems[0];
 
   return (
     <div className="min-h-screen bg-muted">
@@ -127,12 +142,7 @@ export function RoleShell({
             <div className="space-y-1">
               {sidebarItems.map((item) => {
                 const Icon = item.icon ?? LayoutDashboard;
-                const segments = item.href.split("/").filter(Boolean);
-                const isRootItem = segments.length === 1;
-                const isActive = isRootItem
-                  ? pathname === item.href
-                  : pathname === item.href ||
-                    pathname.startsWith(item.href + "/");
+                const isActive = item.href === activeHref;
 
                 return (
                   <Link
@@ -175,6 +185,7 @@ export function RoleShell({
             </div>
 
             <div className="relative flex items-center gap-2">
+              <NotificationsBell />
               <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground text-[0.65rem] font-semibold ring-2 ring-white/10">
                 {me?.profileImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -253,11 +264,13 @@ export function RoleShell({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsProfileOpen((open) => !open)}
-              className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground ring-2 ring-white/10"
-            >
+            <div className="flex items-center gap-1">
+              <NotificationsBell />
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen((open) => !open)}
+                className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground ring-2 ring-white/10"
+              >
               {me?.profileImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -268,7 +281,8 @@ export function RoleShell({
               ) : (
                 <UserIcon className="h-4 w-4" />
               )}
-            </button>
+              </button>
+            </div>
 
             {isProfileOpen && (
               <div className="absolute right-3 top-12 z-50 w-48 rounded-md border border-slate-700 bg-[#031C2E] text-xs shadow-lg">

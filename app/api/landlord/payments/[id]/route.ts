@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
+import {
+  reconcileScheduleWithPaidPayments,
+  resolveLeaseIdForRoom,
+} from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -37,8 +41,10 @@ export async function PATCH(req: Request, context: Ctx) {
       reference_no: string | null;
       proof_url: string | null;
       paid_on: string | null;
+      room_id: string | null;
     }>(
-      `SELECT payer_name, amount::text, method, status, reference_no, proof_url, paid_on::text
+      `SELECT payer_name, amount::text, method, status, reference_no, proof_url,
+              paid_on::text, room_id
        FROM public.landlord_payments
        WHERE owner_user_id = $1::uuid AND id = $2::uuid`,
       [ownerId, id]
@@ -88,6 +94,13 @@ export async function PATCH(req: Request, context: Ctx) {
        WHERE owner_user_id = $7::uuid AND id = $8::uuid`,
       [amount, method, status, referenceNo, proofUrl, paidOn, ownerId, id]
     );
+    if (status === "Paid" && c.room_id) {
+      const leaseId = await resolveLeaseIdForRoom(pool, ownerId, c.room_id);
+      if (leaseId) {
+        await reconcileScheduleWithPaidPayments(pool, { leaseId });
+      }
+    }
+
     await landlordLog(pool, ownerId, `Updated payment ${c.payer_name}`);
     return NextResponse.json({ ok: true });
   } catch (e) {

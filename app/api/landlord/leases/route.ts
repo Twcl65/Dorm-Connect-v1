@@ -5,6 +5,16 @@ import {
   landlordLog,
   resolveDormDisplayName,
 } from "@/lib/landlord-db";
+import {
+  countLeaseMonths,
+  deriveTenantPaymentStatusFromSchedule,
+  ensurePaymentDueDatesForLease,
+  fetchMonthlySchedule,
+  isRentDueAttention,
+  isRentDueCritical,
+  reconcileScheduleWithPaidPayments,
+  resolveNextUnpaidDueFromSchedule,
+} from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -66,25 +76,78 @@ export async function GET() {
       pn[0]?.acc_dorm_name ?? null
     );
 
+    const leases = await Promise.all(
+      rows.map(async (r) => {
+        await ensurePaymentDueDatesForLease(pool, r.id);
+        await reconcileScheduleWithPaidPayments(pool, { leaseId: r.id });
+        let monthlySchedule = await fetchMonthlySchedule(pool, { leaseId: r.id });
+        if (monthlySchedule.length === 0 && r.id) {
+          const { rows: sr } = await pool.query<{ student_reservation_id: string | null }>(
+            `SELECT student_reservation_id FROM public.landlord_tenant_leases WHERE id = $1::uuid`,
+            [r.id]
+          );
+          const rid = sr[0]?.student_reservation_id;
+          if (rid) {
+            monthlySchedule = await fetchMonthlySchedule(pool, {
+              reservationId: rid,
+            });
+          }
+        }
+        const paidMonths = monthlySchedule.filter((m) => m.status === "Paid").length;
+        const totalMonths = monthlySchedule.length;
+        const paymentStatus = deriveTenantPaymentStatusFromSchedule(
+          monthlySchedule,
+          r.payment_status as "Paid" | "Pending" | "Overdue"
+        );
+        const nextDue = resolveNextUnpaidDueFromSchedule(monthlySchedule);
+        return {
+          id: r.id,
+          roomNo: r.room_no,
+          name: r.tenant_name,
+          leaseStart: r.lease_start.slice(0, 10),
+          leaseEnd: r.lease_end.slice(0, 10),
+          leasePeriod: formatPeriod(r.lease_start, r.lease_end),
+          leaseDuration:
+            countLeaseMonths(new Date(r.lease_start), new Date(r.lease_end)) === 1
+              ? "1 month"
+              : `${countLeaseMonths(new Date(r.lease_start), new Date(r.lease_end))} months`,
+          paymentStatus,
+          email: r.email ?? undefined,
+          contact: r.phone ?? undefined,
+          monthlySchedule,
+          paidMonths,
+          totalMonths,
+          nextDueDate: nextDue.nextDueDate,
+          nextDueAmount: nextDue.nextDueAmount,
+          daysUntilDue: nextDue.daysUntilDue,
+          dueUrgency: nextDue.urgency,
+          dueLabel: nextDue.dueLabel,
+        };
+      })
+    );
+
+    const upcomingDue = leases
+      .filter((t) => isRentDueAttention(t.dueUrgency))
+      .sort((a, b) => (a.daysUntilDue ?? 999) - (b.daysUntilDue ?? 999));
+
     return NextResponse.json({
       propertyName,
-      leases: rows.map((r) => ({
-        id: r.id,
-        roomNo: r.room_no,
-        name: r.tenant_name,
-        leaseStart: r.lease_start.slice(0, 10),
-        leaseEnd: r.lease_end.slice(0, 10),
-        leasePeriod: formatPeriod(r.lease_start, r.lease_end),
-        paymentStatus: r.payment_status as "Paid" | "Pending" | "Overdue",
-        email: r.email ?? undefined,
-        contact: r.phone ?? undefined,
-      })),
+      leases,
+      upcomingDue,
       stats: {
-        total: rows.length,
-        activeLeases: rows.length,
-        paid: rows.filter((x) => x.payment_status === "Paid").length,
-        pending: rows.filter((x) => x.payment_status === "Pending").length,
-        overdue: rows.filter((x) => x.payment_status === "Overdue").length,
+        total: leases.length,
+        activeLeases: leases.length,
+        paid: leases.filter((x) => x.paymentStatus === "Paid").length,
+        pending: leases.filter((x) => x.paymentStatus === "Pending").length,
+        overdue: leases.filter((x) => x.paymentStatus === "Overdue").length,
+        dueSoon: leases.filter((x) => isRentDueCritical(x.dueUrgency)).length,
+        dueThisWeek: leases.filter(
+          (x) =>
+            x.dueUrgency === "due_this_week" ||
+            x.dueUrgency === "due_soon" ||
+            x.dueUrgency === "due_today"
+        ).length,
+        upcomingCount: upcomingDue.length,
       },
     });
   } catch (e) {
@@ -176,8 +239,15 @@ export async function POST(req: Request) {
       [roomId, ownerId]
     );
 
+    const leaseId = rows[0]?.id;
+    if (leaseId) {
+      const { reconcileScheduleWithPaidPayments } =
+        await import("@/lib/payment-schedule");
+      await reconcileScheduleWithPaidPayments(pool, { leaseId });
+    }
+
     await landlordLog(pool, ownerId, `Added tenant ${tenantName} to room ${roomNo}`);
-    return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
+    return NextResponse.json({ id: leaseId }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to create lease";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -13,9 +13,15 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Edit3, Eye, Loader2 } from "lucide-react";
+import { BedDouble, Edit3, Loader2 } from "lucide-react";
+import {
+  DormOccupancyDialog,
+  type OccupancySummary,
+  type RoomOccupancy,
+} from "@/components/osa/dorm-occupancy-dialog";
 
 const DORMS_PER_PAGE = 5;
+const ROOMS_PER_PAGE = 12;
 
 type DormRow = {
   propertyId: string;
@@ -98,6 +104,17 @@ export default function OsaMonitoringPage() {
     "Compliant" | "Warning" | "Non-Compliant"
   >("Compliant");
 
+  const [occupancyRooms, setOccupancyRooms] = useState<RoomOccupancy[]>([]);
+  const [occupancySummary, setOccupancySummary] =
+    useState<OccupancySummary | null>(null);
+  const [occupancyLoading, setOccupancyLoading] = useState(false);
+  const [occupancyError, setOccupancyError] = useState<string | null>(null);
+  const [roomSearch, setRoomSearch] = useState("");
+  const [roomStatusFilter, setRoomStatusFilter] = useState<
+    "all" | RoomOccupancy["status"]
+  >("all");
+  const [roomPage, setRoomPage] = useState(1);
+
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
@@ -133,6 +150,73 @@ export default function OsaMonitoringPage() {
   useEffect(() => {
     setPage(1);
   }, [search, statusFilter, complianceFilter]);
+
+  const loadOccupancy = useCallback(async (propertyId: string) => {
+    setOccupancyError(null);
+    setOccupancyLoading(true);
+    try {
+      const res = await fetch(
+        `/api/osa/monitoring/occupancy?propertyId=${propertyId}`,
+        { credentials: "include" }
+      );
+      const json = (await res.json()) as {
+        error?: string;
+        rooms?: RoomOccupancy[];
+        summary?: OccupancySummary;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load rooms");
+      setOccupancyRooms(json.rooms ?? []);
+      setOccupancySummary(json.summary ?? null);
+    } catch (e) {
+      setOccupancyError(e instanceof Error ? e.message : "Failed to load rooms");
+      setOccupancyRooms([]);
+      setOccupancySummary(null);
+    } finally {
+      setOccupancyLoading(false);
+    }
+  }, []);
+
+  const openOccupancyView = (dorm: DormRow) => {
+    setSelectedDorm(dorm);
+    setRoomSearch("");
+    setRoomStatusFilter("all");
+    setRoomPage(1);
+    setShowDetailsDialog(true);
+    void loadOccupancy(dorm.propertyId);
+  };
+
+  useEffect(() => {
+    setRoomPage(1);
+  }, [roomSearch, roomStatusFilter]);
+
+  const filteredRooms = useMemo(() => {
+    const q = roomSearch.trim().toLowerCase();
+    return occupancyRooms.filter((room) => {
+      const matchesStatus =
+        roomStatusFilter === "all" || room.status === roomStatusFilter;
+      if (!matchesStatus) return false;
+      if (!q) return true;
+      const boarderText = room.boarders
+        .map(
+          (b) =>
+            `${b.name} ${b.email ?? ""} ${b.schoolId ?? ""} ${b.course ?? ""}`
+        )
+        .join(" ")
+        .toLowerCase();
+      return (
+        room.roomNo.toLowerCase().includes(q) || boarderText.includes(q)
+      );
+    });
+  }, [occupancyRooms, roomSearch, roomStatusFilter]);
+
+  const roomTotalPages = Math.max(
+    1,
+    Math.ceil(filteredRooms.length / ROOMS_PER_PAGE) || 1
+  );
+  const paginatedRooms = useMemo(() => {
+    const start = (roomPage - 1) * ROOMS_PER_PAGE;
+    return filteredRooms.slice(start, start + ROOMS_PER_PAGE);
+  }, [filteredRooms, roomPage]);
 
   const monitoringSummary = [
     {
@@ -233,8 +317,8 @@ export default function OsaMonitoringPage() {
             Dorm monitoring
           </h1>
           <p className="text-sm text-muted-foreground">
-            Accredited dormitories: occupancy and operational status (from live
-            data).
+            Accredited dormitories: operational status and room-by-room boarder
+            placement.
           </p>
         </div>
         <Button
@@ -289,8 +373,8 @@ export default function OsaMonitoringPage() {
                 Dorm list
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Tenant counts reflect confirmed student reservations in the
-                system.
+                Use <span className="font-medium">Rooms</span> to view occupancy
+                per room and locate each boarder.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -408,13 +492,10 @@ export default function OsaMonitoringPage() {
                             variant="outline"
                             size="sm"
                             className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
-                            onClick={() => {
-                              setSelectedDorm(dorm);
-                              setShowDetailsDialog(true);
-                            }}
+                            onClick={() => openOccupancyView(dorm)}
                           >
-                            <Eye className="h-3 w-3" />
-                            View
+                            <BedDouble className="h-3 w-3" />
+                            Rooms
                           </Button>
                         </div>
                       </TableCell>
@@ -459,66 +540,23 @@ export default function OsaMonitoringPage() {
       </Card>
 
       {showDetailsDialog && selectedDorm && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
-          <Card className="w-full max-w-xl border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base font-semibold text-slate-900">
-                  Dorm details
-                </CardTitle>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[0.7rem]"
-                  onClick={() => setShowDetailsDialog(false)}
-                >
-                  Close
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-xs text-slate-800">
-              <div className="grid gap-2 md:grid-cols-[140px,1fr] items-center">
-                <span className="text-[0.7rem]">Dorm</span>
-                <Input
-                  value={selectedDorm.dormName}
-                  readOnly
-                  className="h-8 text-xs"
-                />
-                <span className="text-[0.7rem]">Landlord</span>
-                <Input
-                  value={selectedDorm.ownerName}
-                  readOnly
-                  className="h-8 text-xs"
-                />
-                <span className="text-[0.7rem]">Operating status</span>
-                <Input
-                  value={selectedDorm.status}
-                  readOnly
-                  className="h-8 text-xs"
-                />
-                <span className="text-[0.7rem]">Compliance</span>
-                <Input
-                  value={selectedDorm.compliance}
-                  readOnly
-                  className="h-8 text-xs"
-                />
-                <span className="text-[0.7rem]">Confirmed tenants</span>
-                <Input
-                  value={String(selectedDorm.students)}
-                  readOnly
-                  className="h-8 text-xs"
-                />
-                <span className="text-[0.7rem]">Rooms occupied / total</span>
-                <Input
-                  value={`${selectedDorm.occupiedRooms} / ${selectedDorm.totalRooms}`}
-                  readOnly
-                  className="h-8 text-xs"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <DormOccupancyDialog
+          dorm={selectedDorm}
+          occupancySummary={occupancySummary}
+          occupancyLoading={occupancyLoading}
+          occupancyError={occupancyError}
+          roomSearch={roomSearch}
+          setRoomSearch={setRoomSearch}
+          roomStatusFilter={roomStatusFilter}
+          setRoomStatusFilter={setRoomStatusFilter}
+          paginatedRooms={paginatedRooms}
+          filteredRooms={filteredRooms}
+          roomPage={roomPage}
+          setRoomPage={setRoomPage}
+          roomTotalPages={roomTotalPages}
+          roomsPerPage={ROOMS_PER_PAGE}
+          onClose={() => setShowDetailsDialog(false)}
+        />
       )}
 
       {showEditDialog && selectedDorm && (

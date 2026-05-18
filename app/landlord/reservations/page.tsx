@@ -13,9 +13,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, Check, Loader2 } from "lucide-react";
+import { Eye, Check, Loader2, AlertTriangle, PauseCircle } from "lucide-react";
+import { cn } from "@/components/ui/utils";
 
 type ReservationStatus = "Confirmed" | "Pending" | "Cancelled";
+
+type UnpaidElsewhere = {
+  dormName: string;
+  roomNo: string;
+  leasePeriod: string;
+  balanceRemaining: number;
+  rentPaymentStatus: string;
+};
 
 type Reservation = {
   id: string;
@@ -28,9 +37,47 @@ type Reservation = {
   email?: string;
   contact?: string;
   rentPaymentStatus?: string;
+  notes?: string;
+  hasUnpaidElsewhere?: boolean;
+  unpaidElsewhere?: UnpaidElsewhere[];
 };
 
 const ROWS_PER_PAGE = 5;
+
+function UnpaidElsewhereAlert({
+  items,
+}: {
+  items: UnpaidElsewhere[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[0.7rem] text-amber-950">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-semibold">
+            Unpaid balance at another boarding house
+          </p>
+          <p>
+            This applicant still has outstanding dues elsewhere. You may hold
+            this application until balances are settled.
+          </p>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {items.map((u, i) => (
+              <li key={`${u.dormName}-${i}`}>
+                {u.dormName} · Room {u.roomNo} · {u.leasePeriod}
+                {u.balanceRemaining > 0 &&
+                  ` · ₱${u.balanceRemaining.toLocaleString()} remaining`}
+                {u.rentPaymentStatus !== "Paid" &&
+                  ` · Rent: ${u.rentPaymentStatus}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ReservationStatusBadge({ status }: { status: ReservationStatus }) {
   const colorClasses =
@@ -61,6 +108,7 @@ export default function LandlordReservationsPage() {
     confirmed: 0,
     pending: 0,
     cancelled: 0,
+    unpaidElsewhere: 0,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,6 +171,12 @@ export default function LandlordReservationsPage() {
         badge: "Cancelled",
         badgeVariant: "destructive" as const,
       },
+      {
+        label: "Unpaid at other BH",
+        value: String(stats.unpaidElsewhere ?? 0),
+        badge: "Review",
+        badgeVariant: "warning" as const,
+      },
     ],
     [stats]
   );
@@ -174,6 +228,32 @@ export default function LandlordReservationsPage() {
     setPage((p) => Math.min(p, Math.max(1, totalPages)));
   }, [totalPages]);
 
+  const holdApplication = async (res: Reservation) => {
+    if (res.source !== "student") return;
+    setSaving(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(
+        `/api/landlord/student-reservations/${res.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ holdApplication: true }),
+        }
+      );
+      const j = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(j.error ?? "Failed to hold application");
+      setShowDetailsDialog(false);
+      setShowConfirmDialog(false);
+      await loadData();
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to hold application");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -182,8 +262,8 @@ export default function LandlordReservationsPage() {
             Reservations
           </h1>
           <p className="text-sm text-muted-foreground">
-            Review manual entries and reservations submitted by students on your
-            listed rooms.
+            Review student applications and flag tenants who still owe rent at
+            another boarding house before confirming.
           </p>
         </div>
         <Button
@@ -211,7 +291,7 @@ export default function LandlordReservationsPage() {
         </div>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => (
           <Card
             key={card.label}
@@ -303,7 +383,14 @@ export default function LandlordReservationsPage() {
                 </TableRow>
               )}
               {paginatedReservations.map((res) => (
-                <TableRow key={`${res.source ?? "manual"}-${res.id}`}>
+                <TableRow
+                  key={`${res.source ?? "manual"}-${res.id}`}
+                  className={cn(
+                    res.hasUnpaidElsewhere &&
+                      res.reservationStatus === "Pending" &&
+                      "bg-amber-50/70"
+                  )}
+                >
                   <TableCell className="text-xs font-mono text-slate-500">
                     {res.id.slice(0, 8)}…
                   </TableCell>
@@ -324,9 +411,18 @@ export default function LandlordReservationsPage() {
                       <ReservationStatusBadge
                         status={res.reservationStatus}
                       />
+                      {res.hasUnpaidElsewhere &&
+                        res.reservationStatus === "Pending" && (
+                          <Badge
+                            variant="outline"
+                            className="w-fit rounded-full bg-amber-100 px-2 py-0 text-[0.65rem] font-semibold text-amber-900 ring-1 ring-amber-300"
+                          >
+                            Unpaid at other BH
+                          </Badge>
+                        )}
                       {res.source === "student" && res.rentPaymentStatus && (
-                        <span className="text-[0.65rem] text-muted-foreground">
-                          Rent: {res.rentPaymentStatus}
+                        <span className="text-[0.65rem] leading-snug text-muted-foreground">
+                          {res.rentPaymentStatus}
                         </span>
                       )}
                     </div>
@@ -474,13 +570,27 @@ export default function LandlordReservationsPage() {
                 {selectedReservation.source === "student" &&
                   selectedReservation.rentPaymentStatus && (
                     <p className="text-[0.7rem] text-muted-foreground">
-                      Rent payment (student):{" "}
+                      Rent (monthly schedule):{" "}
                       <span className="font-medium text-slate-900">
                         {selectedReservation.rentPaymentStatus}
                       </span>
                     </p>
                   )}
               </div>
+
+              {selectedReservation.unpaidElsewhere &&
+                selectedReservation.unpaidElsewhere.length > 0 && (
+                  <UnpaidElsewhereAlert
+                    items={selectedReservation.unpaidElsewhere}
+                  />
+                )}
+
+              {selectedReservation.notes && (
+                <p className="text-[0.7rem] text-muted-foreground rounded border bg-slate-50 px-2 py-1.5">
+                  <span className="font-semibold text-slate-800">Note: </span>
+                  {selectedReservation.notes}
+                </p>
+              )}
 
               <div className="space-y-1">
                 <p className="text-[0.75rem] font-semibold text-slate-900">
@@ -494,11 +604,27 @@ export default function LandlordReservationsPage() {
               </div>
 
               <div className="flex flex-wrap justify-end gap-2 pt-1">
+                {selectedReservation.reservationStatus === "Pending" &&
+                  selectedReservation.source === "student" &&
+                  selectedReservation.hasUnpaidElsewhere && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3 text-xs border-amber-400 text-amber-800 hover:bg-amber-50"
+                      disabled={saving}
+                      onClick={() => void holdApplication(selectedReservation)}
+                    >
+                      <PauseCircle className="mr-1 h-3 w-3" />
+                      {saving ? "Holding…" : "Hold application"}
+                    </Button>
+                  )}
                 {selectedReservation.reservationStatus === "Pending" && (
                   <Button
                     type="button"
                     size="sm"
                     className="h-8 px-3 text-xs bg-emerald-500 text-white hover:bg-emerald-600"
+                    disabled={selectedReservation.hasUnpaidElsewhere === true}
                     onClick={() => {
                       setShowDetailsDialog(false);
                       setShowConfirmDialog(true);
@@ -564,6 +690,13 @@ export default function LandlordReservationsPage() {
                   {selectedReservation.leasePeriod}
                 </p>
               </div>
+              {selectedReservation.unpaidElsewhere &&
+                selectedReservation.unpaidElsewhere.length > 0 && (
+                  <UnpaidElsewhereAlert
+                    items={selectedReservation.unpaidElsewhere}
+                  />
+                )}
+
               <div className="space-y-1 text-[0.75rem]">
                 <p className="font-semibold">After you confirm:</p>
                 <ul className="list-disc pl-5 space-y-1">
@@ -575,7 +708,21 @@ export default function LandlordReservationsPage() {
                 </ul>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex flex-wrap justify-end gap-2 pt-3">
+                {selectedReservation.source === "student" &&
+                  selectedReservation.hasUnpaidElsewhere && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs border-amber-400 text-amber-800 hover:bg-amber-50"
+                      disabled={saving}
+                      onClick={() => void holdApplication(selectedReservation)}
+                    >
+                      <PauseCircle className="mr-1 h-3 w-3" />
+                      Hold application
+                    </Button>
+                  )}
                 <Button
                   type="button"
                   variant="outline"
@@ -590,7 +737,9 @@ export default function LandlordReservationsPage() {
                   type="button"
                   size="sm"
                   className="h-8 px-3 text-xs"
-                  disabled={saving}
+                  disabled={
+                    saving || selectedReservation.hasUnpaidElsewhere === true
+                  }
                   onClick={async () => {
                     if (!selectedReservation) return;
                     setSaving(true);

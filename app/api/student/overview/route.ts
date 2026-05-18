@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import {
+  deriveTenantPaymentStatusFromSchedule,
+  fetchMonthlySchedule,
+} from "@/lib/payment-schedule";
 import { requireStudent } from "@/lib/require-student";
 import {
   formatLeasePeriod,
@@ -47,20 +51,36 @@ export async function GET() {
     );
 
     const now = new Date();
-    const reservations = rows.map((x) => {
-      const ls = new Date(x.lease_start);
-      const le = new Date(x.lease_end);
-      const reservationStatus = reservationLifecycle(x.status, le, now);
-      return {
-        id: x.id,
-        dormName: x.property_name,
-        roomNo: x.room_no,
-        leasePeriod: formatLeasePeriod(ls, le),
-        reservationStatus,
-        paymentStatus: mapRentPayment(x.rent_payment_status),
-        monthlyRent: Number(x.monthly_rent),
-      };
-    });
+    const reservations = await Promise.all(
+      rows.map(async (x) => {
+        const ls = new Date(x.lease_start);
+        const le = new Date(x.lease_end);
+        const reservationStatus = reservationLifecycle(x.status, le, now);
+        let paymentStatus = mapRentPayment(x.rent_payment_status);
+        if (x.status === "Confirmed") {
+          const schedule = await fetchMonthlySchedule(pool, {
+            reservationId: x.id,
+          });
+          if (schedule.length > 0) {
+            paymentStatus = mapRentPayment(
+              deriveTenantPaymentStatusFromSchedule(
+                schedule,
+                mapRentPayment(x.rent_payment_status)
+              )
+            );
+          }
+        }
+        return {
+          id: x.id,
+          dormName: x.property_name,
+          roomNo: x.room_no,
+          leasePeriod: formatLeasePeriod(ls, le),
+          reservationStatus,
+          paymentStatus,
+          monthlyRent: Number(x.monthly_rent),
+        };
+      })
+    );
 
     const activeReservation =
       reservations.find((r) => r.reservationStatus === "Active") ??
