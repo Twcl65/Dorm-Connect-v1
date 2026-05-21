@@ -7,6 +7,7 @@ export type MonthlyDueRow = {
   status: "Paid" | "Not Yet Paid";
   amount: number;
   paidDate?: string;
+  reminderSentAt?: string;
 };
 
 export type LeasePaymentStatus = "Paid" | "Pending" | "Overdue";
@@ -103,6 +104,60 @@ export function resolveNextUnpaidDueFromSchedule(
     monthNumber: next.monthNumber,
     dueLabel: formatRentDueLabel(dueStr, diffDays),
   };
+}
+
+export type UnpaidScheduleMonth = {
+  dueDate: string;
+  amount: number;
+  monthNumber: number;
+  monthLabel: string;
+  dueLabel: string;
+};
+
+/** All unpaid months on the schedule, earliest first (skips paid months). */
+export function resolveUpcomingUnpaidMonthsFromSchedule(
+  schedule: MonthlyDueRow[]
+): UnpaidScheduleMonth[] {
+  if (schedule.length === 0) return [];
+
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  return schedule
+    .filter((m) => m.status !== "Paid")
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .map((m) => {
+      const dueStr = m.dueDate.slice(0, 10);
+      const due = new Date(`${dueStr}T12:00:00`);
+      const diffDays = Math.round(
+        (due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
+      );
+      const monthLabel = due.toLocaleDateString(undefined, {
+        month: "long",
+        year: "numeric",
+      });
+      return {
+        dueDate: dueStr,
+        amount: m.amount,
+        monthNumber: m.monthNumber,
+        monthLabel,
+        dueLabel: formatRentDueLabel(dueStr, diffDays),
+      };
+    });
+}
+
+export function buildStudentPaymentReminderHint(
+  unpaidMonths: UnpaidScheduleMonth[],
+  dormName?: string | null
+): string {
+  if (unpaidMonths.length === 0) {
+    return "All scheduled rent months are paid. Thank you!";
+  }
+  const labels = unpaidMonths.map((m) => m.monthLabel).join(", ");
+  const prefix = dormName?.trim()
+    ? `Upcoming rent for ${dormName.trim()}`
+    : "Upcoming rent due";
+  return `${prefix}: ${labels}`;
 }
 
 export function formatRentDueLabel(dueStr: string, diffDays: number): string {
@@ -223,7 +278,7 @@ type ScheduleTarget = {
 };
 
 /** Due dates for student-linked leases live on the reservation row. */
-async function resolveScheduleTarget(
+export async function resolveScheduleTarget(
   pool: Pool,
   opts: { reservationId?: string | null; leaseId?: string | null }
 ): Promise<ScheduleTarget> {
@@ -300,6 +355,7 @@ async function fetchPaidPaymentsForTarget(
          FROM public.landlord_payments
          WHERE room_id = $1::uuid AND status = 'Paid'
            AND lower(trim(payer_name)) = lower(trim($2))
+           AND (entry_source IS NULL OR entry_source = 'manual')
          ORDER BY COALESCE(paid_on, created_at::date) ASC`,
         [res.room_id, res.guest_name]
       );
@@ -331,6 +387,7 @@ async function fetchPaidPaymentsForTarget(
          FROM public.landlord_payments
          WHERE owner_user_id = $1::uuid AND room_id = $2::uuid AND status = 'Paid'
            AND lower(trim(payer_name)) = lower(trim($3))
+           AND (entry_source IS NULL OR entry_source = 'manual')
          ORDER BY COALESCE(paid_on, created_at::date) ASC`,
         [lease.owner_user_id, lease.room_id, lease.tenant_name]
       );
@@ -624,8 +681,10 @@ export async function fetchMonthlySchedule(
     status: string;
     amount_due: string;
     paid_date: string | null;
+    reminder_sent_at: Date | null;
   }>(
-    `SELECT id, month_number, due_date::text, status, amount_due::text, paid_date::text
+    `SELECT id, month_number, due_date::text, status, amount_due::text, paid_date::text,
+            reminder_sent_at
      FROM public.payment_due_dates
      WHERE ${where}
      ORDER BY month_number ASC`,
@@ -639,6 +698,7 @@ export async function fetchMonthlySchedule(
     status: d.status as "Paid" | "Not Yet Paid",
     amount: Number(d.amount_due),
     paidDate: d.paid_date ?? undefined,
+    reminderSentAt: d.reminder_sent_at?.toISOString(),
   }));
 }
 
@@ -733,7 +793,91 @@ export async function applyScheduleCreditForMonth(
 
   await recomputeReservationBalances(pool, reservationId);
 
+  await recordCreditLandlordPayment(pool, {
+    reservationId,
+    monthNumber: opts.monthNumber,
+    fundSource: opts.fundSource,
+    amount: amountDue,
+    paidOn: opts.paidOn ?? toDateStr(new Date()),
+  });
+
   return { advanceRemaining: advance, depositRemaining: deposit };
+}
+
+/** Ledger row when rent is paid from advance or security deposit (not cash). */
+async function recordCreditLandlordPayment(
+  pool: Pool,
+  opts: {
+    reservationId: string;
+    monthNumber: number;
+    fundSource: "advance" | "deposit";
+    amount: number;
+    paidOn: string;
+  }
+): Promise<void> {
+  const { rows: ctx } = await pool.query<{
+    owner_user_id: string;
+    room_id: string;
+    tenant_lease_id: string | null;
+    payer_name: string;
+  }>(
+    `SELECT r.owner_user_id, s.room_id, ltl.id AS tenant_lease_id,
+            COALESCE(NULLIF(trim(u.full_name), ''), s.guest_name) AS payer_name
+     FROM public.student_dorm_reservations s
+     JOIN public.landlord_rooms r ON r.id = s.room_id
+     JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
+     LEFT JOIN public.landlord_tenant_leases ltl
+       ON ltl.student_reservation_id = s.id
+     WHERE s.id = $1::uuid`,
+    [opts.reservationId]
+  );
+  const row = ctx[0];
+  if (!row) return;
+
+  const { rows: existing } = await pool.query<{ id: string }>(
+    `SELECT lp.id
+     FROM public.landlord_payments lp
+     LEFT JOIN public.landlord_tenant_leases ltl ON ltl.id = lp.tenant_lease_id
+     WHERE lp.room_id = $1::uuid
+       AND lp.schedule_month_number = $2
+       AND lp.entry_source = $3
+       AND (
+         ltl.student_reservation_id = $4::uuid
+         OR (ltl.id IS NULL AND lp.owner_user_id = $5::uuid)
+       )
+     LIMIT 1`,
+    [
+      row.room_id,
+      opts.monthNumber,
+      opts.fundSource,
+      opts.reservationId,
+      row.owner_user_id,
+    ]
+  );
+  if (existing[0]) return;
+
+  const refLabel =
+    opts.fundSource === "advance"
+      ? `Advance payment · Month ${opts.monthNumber}`
+      : `Security deposit · Month ${opts.monthNumber}`;
+
+  await pool.query(
+    `INSERT INTO public.landlord_payments
+      (owner_user_id, room_id, tenant_lease_id, payer_name, amount, method, status,
+       reference_no, paid_on, entry_source, schedule_month_number)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'Cash', 'Paid', $6, $7::date, $8, $9)`,
+    [
+      row.owner_user_id,
+      row.room_id,
+      row.tenant_lease_id,
+      row.payer_name,
+      opts.amount,
+      refLabel,
+      opts.paidOn.slice(0, 10),
+      opts.fundSource,
+      opts.monthNumber,
+    ]
+  );
 }
 
 /** Landlord manual update for a single month on the rent schedule. */

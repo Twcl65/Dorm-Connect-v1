@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose/jwt/verify";
 import { pathRequiresRole, SESSION_COOKIE } from "@/lib/auth-config";
+import { applyCorsHeaders, getCorsHeaders } from "@/lib/cors";
 import { getJwtSecretKey } from "@/lib/jwt-secret";
 
 async function sessionFromCookie(token: string) {
@@ -29,6 +30,19 @@ async function sessionFromCookie(token: string) {
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (pathname.startsWith("/api/")) {
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, {
+        status: 204,
+        headers: getCorsHeaders(request),
+      });
+    }
+    const res = NextResponse.next();
+    applyCorsHeaders(res.headers, request);
+    return res;
+  }
+
   const requiredRole = pathRequiresRole(pathname);
   if (!requiredRole) {
     return NextResponse.next();
@@ -58,5 +72,5 @@ export async function middleware(request: NextRequest) {
    table is still empty (middleware cannot query Postgres on the Edge runtime). Admin APIs
    enforce ICT Admin session whenever at least one user exists. */
 export const config = {
-  matcher: ["/osa/:path*", "/landlord/:path*", "/student/:path*"],
+  matcher: ["/api/:path*", "/osa/:path*", "/landlord/:path*", "/student/:path*"],
 };

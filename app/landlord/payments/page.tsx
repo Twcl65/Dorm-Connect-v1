@@ -19,14 +19,29 @@ import { uploadDormConnectFile } from "@/lib/upload-file-client";
 import { LeasePaymentMonitoringCard } from "@/components/landlord/lease-payment-monitoring-card";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
-type PaymentMethod = "GCash" | "Cash" | "Bank Transfer";
+type PaymentMethod =
+  | "GCash"
+  | "Cash"
+  | "Bank Transfer"
+  | "Advance"
+  | "Security deposit";
 
 const ROWS_PER_PAGE = 5;
 
+type PaymentSource = "landlord" | "student" | "advance" | "deposit";
+
+function formatPaymentSourceLabel(source?: PaymentSource): string {
+  if (source === "student") return "Student app";
+  if (source === "advance") return "Advance payment";
+  if (source === "deposit") return "Security deposit";
+  return "Manual";
+}
+
 type Payment = {
   id: string;
-  source?: "landlord" | "student";
+  source?: PaymentSource;
   roomNo: string;
+  propertyName?: string;
   name: string;
   amount: string;
   amountValue: number;
@@ -36,12 +51,28 @@ type Payment = {
   proofOfPaymentUrl?: string;
   date?: string;
   periodLabel?: string;
+  tenantLeaseId?: string;
+  reservationId?: string;
+  studentUserId?: string;
+};
+
+type OnsiteRoomHint = {
+  roomId: string;
+  roomNo: string;
+  propertyId: string;
+  propertyName: string;
+  suggestedTenantName: string | null;
+  tenantLeaseId: string | null;
+  studentUserId: string | null;
+  studentReservationId: string | null;
 };
 
 type LeasePaymentMonitoring = {
   id: string;
   tenantName: string;
   roomNumber: string;
+  propertyName?: string;
+  linkedLeaseId?: string | null;
   leaseDuration: string;
   monthlyRent: number;
   leaseStartDate: string;
@@ -59,6 +90,8 @@ type LeasePaymentMonitoring = {
   }[];
   studentUserId?: string | null;
   source?: "reservation" | "lease";
+  nextUnpaidMonthNumber?: number | null;
+  nextUnpaidReminderSent?: boolean;
 };
 
 function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
@@ -100,10 +133,11 @@ export default function LandlordPaymentsPage() {
   const [editProof, setEditProof] = useState("");
   const [proofUploading, setProofUploading] = useState(false);
 
-  const [onsiteRoomNo, setOnsiteRoomNo] = useState("");
-  const [onsiteRoomHints, setOnsiteRoomHints] = useState<
-    { roomNo: string; suggestedTenantName: string | null }[]
-  >([]);
+  const [onsitePropertyId, setOnsitePropertyId] = useState("");
+  const [onsiteRoomId, setOnsiteRoomId] = useState("");
+  const [onsiteRoomHints, setOnsiteRoomHints] = useState<OnsiteRoomHint[]>([]);
+  const [onsiteTenantLeaseId, setOnsiteTenantLeaseId] = useState("");
+  const [onsiteStudentUserId, setOnsiteStudentUserId] = useState("");
   const [onsitePayerName, setOnsitePayerName] = useState("");
   const [onsiteAmount, setOnsiteAmount] = useState("");
   const [onsitePaidOn, setOnsitePaidOn] = useState("");
@@ -117,7 +151,11 @@ export default function LandlordPaymentsPage() {
   const [selectedLeaseTenant, setSelectedLeaseTenant] =
     useState<LeasePaymentMonitoring | null>(null);
   const [notifyMessage, setNotifyMessage] = useState("");
+  const [notifyMonthNumber, setNotifyMonthNumber] = useState<number | null>(
+    null
+  );
   const [notifySending, setNotifySending] = useState(false);
+  const [notifySuccess, setNotifySuccess] = useState<string | null>(null);
   const [editingScheduleMonth, setEditingScheduleMonth] = useState<number | null>(
     null
   );
@@ -147,7 +185,7 @@ export default function LandlordPaymentsPage() {
         error?: string;
       };
       const hj = (await hintsRes.json()) as {
-        rooms?: { roomNo: string; suggestedTenantName: string | null }[];
+        rooms?: OnsiteRoomHint[];
         error?: string;
       };
       const lj = (await leaseRes.json()) as {
@@ -179,6 +217,52 @@ export default function LandlordPaymentsPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const onsiteProperties = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const h of onsiteRoomHints) {
+      map.set(h.propertyId, h.propertyName);
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [onsiteRoomHints]);
+
+  const onsiteRoomsForProperty = useMemo(() => {
+    if (!onsitePropertyId) return [];
+    return onsiteRoomHints.filter((h) => h.propertyId === onsitePropertyId);
+  }, [onsiteRoomHints, onsitePropertyId]);
+
+  const selectedOnsiteHint = useMemo(
+    () => onsiteRoomHints.find((h) => h.roomId === onsiteRoomId) ?? null,
+    [onsiteRoomHints, onsiteRoomId]
+  );
+
+  const applyOnsiteRoomSelection = useCallback((hint: OnsiteRoomHint | null) => {
+    if (!hint) {
+      setOnsiteRoomId("");
+      setOnsitePayerName("");
+      setOnsiteTenantLeaseId("");
+      setOnsiteStudentUserId("");
+      return;
+    }
+    setOnsiteRoomId(hint.roomId);
+    setOnsitePayerName(hint.suggestedTenantName?.trim() ?? "");
+    setOnsiteTenantLeaseId(hint.tenantLeaseId ?? "");
+    setOnsiteStudentUserId(hint.studentUserId ?? "");
+  }, []);
+
+  const resetOnsiteForm = useCallback(() => {
+    setOnsitePropertyId("");
+    setOnsiteRoomId("");
+    setOnsitePayerName("");
+    setOnsiteTenantLeaseId("");
+    setOnsiteStudentUserId("");
+    setOnsiteAmount("");
+    setOnsitePaidOn("");
+    setOnsiteProofFile(null);
+    setOnsiteError(null);
+  }, []);
 
   useEffect(() => {
     if (!showLeaseDetailsDialog || !selectedLeaseTenant) return;
@@ -256,7 +340,7 @@ export default function LandlordPaymentsPage() {
     () =>
       paymentsList.filter((p) => {
         const srcLabel =
-          p.source === "student" ? "student app" : "manual entry";
+          formatPaymentSourceLabel(p.source).toLowerCase();
         const matchesSearch =
           search.trim().length === 0 ||
           p.id.toLowerCase().includes(search.toLowerCase()) ||
@@ -281,12 +365,31 @@ export default function LandlordPaymentsPage() {
     if (!selectedLeaseTenant) return [];
     const room = selectedLeaseTenant.roomNumber.trim().toLowerCase();
     const name = selectedLeaseTenant.tenantName.trim().toLowerCase();
+    const leaseId =
+      selectedLeaseTenant.source === "lease"
+        ? selectedLeaseTenant.id
+        : selectedLeaseTenant.linkedLeaseId ?? null;
+    const reservationId =
+      selectedLeaseTenant.source === "reservation"
+        ? selectedLeaseTenant.id
+        : null;
+
     return paymentsList
-      .filter(
-        (p) =>
+      .filter((p) => {
+        if (reservationId && p.reservationId === reservationId) return true;
+        if (leaseId && p.tenantLeaseId === leaseId) return true;
+        if (
+          selectedLeaseTenant.studentUserId &&
+          p.studentUserId === selectedLeaseTenant.studentUserId &&
+          p.roomNo.trim().toLowerCase() === room
+        ) {
+          return true;
+        }
+        return (
           p.roomNo.trim().toLowerCase() === room &&
           p.name.trim().toLowerCase() === name
-      )
+        );
+      })
       .sort((a, b) => {
         const da = a.date ? new Date(a.date).getTime() : 0;
         const db = b.date ? new Date(b.date).getTime() : 0;
@@ -295,8 +398,11 @@ export default function LandlordPaymentsPage() {
   }, [paymentsList, selectedLeaseTenant]);
 
   const openNotifyForLease = (lease: LeasePaymentMonitoring) => {
+    if (lease.nextUnpaidReminderSent) return;
     setSelectedLeaseTenant(lease);
+    setNotifySuccess(null);
     const nextUnpaid = lease.monthlySchedule.find((m) => m.status === "Not Yet Paid");
+    setNotifyMonthNumber(nextUnpaid?.monthNumber ?? null);
     setNotifyMessage(
       nextUnpaid
         ? `Reminder: your rent of ₱${lease.monthlyRent.toLocaleString()} for Room ${lease.roomNumber} is due on ${new Date(nextUnpaid.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`
@@ -346,7 +452,7 @@ export default function LandlordPaymentsPage() {
             size="sm"
             className="h-8 text-xs"
             onClick={() => {
-              setOnsiteError(null);
+              resetOnsiteForm();
               setShowOnsiteDialog(true);
             }}
           >
@@ -449,7 +555,7 @@ export default function LandlordPaymentsPage() {
                     {p.id.slice(0, 8)}…
                   </TableCell>
                   <TableCell className="text-xs text-slate-600">
-                    {p.source === "student" ? "Student app" : "Manual"}
+                    {formatPaymentSourceLabel(p.source)}
                   </TableCell>
                   <TableCell className="text-xs text-slate-700 whitespace-nowrap">
                     {p.periodLabel ?? "—"}
@@ -556,11 +662,16 @@ export default function LandlordPaymentsPage() {
               <LeasePaymentMonitoringCard
                 key={lease.id}
                 {...lease}
+                nextUnpaidReminderSent={lease.nextUnpaidReminderSent}
                 onViewDetails={() => {
                   setSelectedLeaseTenant(lease);
                   setShowLeaseDetailsDialog(true);
                 }}
-                onNotifyTenant={() => openNotifyForLease(lease)}
+                onNotifyTenant={
+                  lease.nextUnpaidReminderSent
+                    ? undefined
+                    : () => openNotifyForLease(lease)
+                }
               />
             ))
           )}
@@ -600,23 +711,46 @@ export default function LandlordPaymentsPage() {
               )}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1 md:col-span-2">
-                  <label className="font-medium text-slate-800">Room</label>
-                  {onsiteRoomHints.length > 0 ? (
+                  <label className="font-medium text-slate-800">Dorm / property</label>
+                  {onsiteProperties.length > 0 ? (
                     <select
                       className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
-                      value={onsiteRoomNo}
+                      value={onsitePropertyId}
                       onChange={(e) => {
-                        const no = e.target.value;
-                        setOnsiteRoomNo(no);
-                        const hint = onsiteRoomHints.find((h) => h.roomNo === no);
-                        setOnsitePayerName(
-                          hint?.suggestedTenantName?.trim() ?? ""
+                        setOnsitePropertyId(e.target.value);
+                        applyOnsiteRoomSelection(null);
+                      }}
+                    >
+                      <option value="">Select property</option>
+                      {onsiteProperties.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-[0.65rem] text-muted-foreground">
+                      Add a property and rooms under Rooms first.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-medium text-slate-800">Room & tenant</label>
+                  {onsitePropertyId && onsiteRoomsForProperty.length > 0 ? (
+                    <select
+                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      value={onsiteRoomId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const hint = onsiteRoomsForProperty.find(
+                          (h) => h.roomId === id
                         );
+                        applyOnsiteRoomSelection(hint ?? null);
                       }}
                     >
                       <option value="">Select room</option>
-                      {onsiteRoomHints.map((h) => (
-                        <option key={h.roomNo} value={h.roomNo}>
+                      {onsiteRoomsForProperty.map((h) => (
+                        <option key={h.roomId} value={h.roomId}>
                           Room {h.roomNo}
                           {h.suggestedTenantName
                             ? ` — ${h.suggestedTenantName}`
@@ -626,16 +760,20 @@ export default function LandlordPaymentsPage() {
                     </select>
                   ) : (
                     <Input
-                      className="h-8 text-xs"
-                      placeholder="e.g. 07"
-                      value={onsiteRoomNo}
-                      onChange={(e) => setOnsiteRoomNo(e.target.value)}
+                      className="h-8 text-xs bg-muted"
+                      disabled
+                      placeholder={
+                        onsitePropertyId
+                          ? "No rooms for this property"
+                          : "Select a property first"
+                      }
+                      value=""
+                      readOnly
                     />
                   )}
                   <p className="text-[0.65rem] text-muted-foreground">
-                    {onsiteRoomHints.length > 0
-                      ? "Tenant name fills from an active booking or lease; you can edit it."
-                      : "Add rooms under Rooms first, or type the room number."}
+                    Choosing a room fills the tenant name and links the payment to
+                    that student&apos;s account when they booked through the app.
                   </p>
                 </div>
                 <div className="space-y-1 md:col-span-2">
@@ -647,6 +785,25 @@ export default function LandlordPaymentsPage() {
                     onChange={(e) => setOnsitePayerName(e.target.value)}
                   />
                 </div>
+                {onsiteStudentUserId ? (
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="font-medium text-slate-800">Tenant ID</label>
+                    <Input
+                      className="h-8 text-xs font-mono bg-muted"
+                      value={onsiteStudentUserId}
+                      readOnly
+                      disabled
+                    />
+                    <p className="text-[0.65rem] text-muted-foreground">
+                      Student account ID — payment is credited to this tenant.
+                    </p>
+                  </div>
+                ) : selectedOnsiteHint && !onsiteStudentUserId ? (
+                  <p className="md:col-span-2 text-[0.65rem] text-amber-800">
+                    No student app account linked to this room. Payment is saved
+                    under the tenant name only.
+                  </p>
+                ) : null}
                 <div className="space-y-1">
                   <label className="font-medium text-slate-800">Amount (₱)</label>
                   <Input
@@ -696,7 +853,7 @@ export default function LandlordPaymentsPage() {
                   className="h-8 text-xs"
                   disabled={
                     onsiteSaving ||
-                    !onsiteRoomNo.trim() ||
+                    !onsiteRoomId.trim() ||
                     !onsitePayerName.trim() ||
                     !onsiteAmount ||
                     !onsitePaidOn ||
@@ -707,12 +864,16 @@ export default function LandlordPaymentsPage() {
                     setOnsiteSaving(true);
                     try {
                       const proofUrl = await uploadDormConnectFile(onsiteProofFile!);
+                      const hint = selectedOnsiteHint;
                       const res = await fetch("/api/landlord/payments", {
                         method: "POST",
                         credentials: "include",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                          roomNo: onsiteRoomNo.trim(),
+                          roomId: onsiteRoomId,
+                          roomNo: hint?.roomNo,
+                          tenantLeaseId: onsiteTenantLeaseId || undefined,
+                          studentUserId: onsiteStudentUserId || undefined,
                           payerName: onsitePayerName.trim(),
                           amount: Number(onsiteAmount),
                           method: "Cash",
@@ -723,11 +884,7 @@ export default function LandlordPaymentsPage() {
                       });
                       const j = (await res.json()) as { error?: string };
                       if (!res.ok) throw new Error(j.error ?? "Failed to save");
-                      setOnsiteRoomNo("");
-                      setOnsitePayerName("");
-                      setOnsiteAmount("");
-                      setOnsitePaidOn("");
-                      setOnsiteProofFile(null);
+                      resetOnsiteForm();
                       setShowOnsiteDialog(false);
                       await loadData();
                     } catch (e) {
@@ -1241,32 +1398,59 @@ export default function LandlordPaymentsPage() {
                   <Table bordered={false}>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Period</TableHead>
+                        <TableHead>Room No.</TableHead>
+                        <TableHead>Name</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Method</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>Reference</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {leaseTenantTransactions.map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell>
-                            {p.date
-                              ? new Date(p.date).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })
-                              : "—"}
+                        <TableRow key={`${p.source ?? "landlord"}-${p.id}`}>
+                          <TableCell className="text-xs font-mono text-slate-500">
+                            {p.id.slice(0, 8)}…
                           </TableCell>
-                          <TableCell>{p.amount}</TableCell>
-                          <TableCell>{p.method}</TableCell>
+                          <TableCell className="text-xs text-slate-600">
+                            {formatPaymentSourceLabel(p.source)}
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-700 whitespace-nowrap">
+                            {p.periodLabel ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-700">{p.roomNo}</TableCell>
+                          <TableCell className="text-sm font-medium text-slate-800">
+                            {p.name}
+                          </TableCell>
+                          <TableCell className="text-xs text-slate-700">{p.amount}</TableCell>
+                          <TableCell className="text-xs text-slate-700">{p.method}</TableCell>
                           <TableCell>
                             <PaymentStatusBadge status={p.status} />
                           </TableCell>
-                          <TableCell className="max-w-[120px] truncate">
-                            {p.referenceNo || "—"}
+                          <TableCell className="pr-4">
+                            <div className="flex justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                                onClick={() => {
+                                  setSelectedPayment(p);
+                                  setEditStatus(p.status);
+                                  setEditMethod(p.method);
+                                  setEditAmount(p.amountValue);
+                                  setEditDate(p.date ?? "");
+                                  setEditRef(p.referenceNo ?? "");
+                                  setEditProof(p.proofOfPaymentUrl ?? "");
+                                  setShowDetailsDialog(true);
+                                }}
+                              >
+                                <Eye className="h-3 w-3" />
+                                View Details
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1288,55 +1472,80 @@ export default function LandlordPaymentsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-3 text-xs">
+              {notifySuccess && (
+                <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[0.7rem] text-emerald-800">
+                  {notifySuccess}
+                </div>
+              )}
               <textarea
                 className="min-h-[100px] w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs"
                 value={notifyMessage}
                 onChange={(e) => setNotifyMessage(e.target.value)}
+                disabled={notifySending || Boolean(notifySuccess)}
               />
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setShowNotifyDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={notifySending || !notifyMessage.trim()}
-                  onClick={async () => {
-                    setNotifySending(true);
-                    try {
-                      const res = await fetch(
-                        "/api/landlord/lease-payment-monitoring/notify",
-                        {
-                          method: "POST",
-                          credentials: "include",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            message: notifyMessage.trim(),
-                            ...(selectedLeaseTenant.source === "reservation"
-                              ? { reservationId: selectedLeaseTenant.id }
-                              : { leaseId: selectedLeaseTenant.id }),
-                          }),
-                        }
-                      );
-                      const j = (await res.json()) as { error?: string };
-                      if (!res.ok) throw new Error(j.error ?? "Failed");
-                      setShowNotifyDialog(false);
-                    } catch (e) {
-                      setLoadError(
-                        e instanceof Error ? e.message : "Notify failed"
-                      );
-                    } finally {
-                      setNotifySending(false);
-                    }
+                  onClick={() => {
+                    setShowNotifyDialog(false);
+                    setNotifySuccess(null);
                   }}
                 >
-                  {notifySending ? "Sending…" : "Send"}
+                  {notifySuccess ? "Close" : "Cancel"}
                 </Button>
+                {!notifySuccess && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      notifySending ||
+                      !notifyMessage.trim() ||
+                      notifyMonthNumber == null
+                    }
+                    onClick={async () => {
+                      setNotifySending(true);
+                      setLoadError(null);
+                      try {
+                        const res = await fetch(
+                          "/api/landlord/lease-payment-monitoring/notify",
+                          {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              message: notifyMessage.trim(),
+                              monthNumber: notifyMonthNumber,
+                              ...(selectedLeaseTenant.source === "reservation"
+                                ? { reservationId: selectedLeaseTenant.id }
+                                : { leaseId: selectedLeaseTenant.id }),
+                            }),
+                          }
+                        );
+                        const j = (await res.json()) as {
+                          error?: string;
+                          alreadyNotified?: boolean;
+                        };
+                        if (!res.ok) {
+                          throw new Error(j.error ?? "Failed");
+                        }
+                        setNotifySuccess(
+                          "Notified successfully for this month"
+                        );
+                        await loadData();
+                      } catch (e) {
+                        setLoadError(
+                          e instanceof Error ? e.message : "Notify failed"
+                        );
+                      } finally {
+                        setNotifySending(false);
+                      }
+                    }}
+                  >
+                    {notifySending ? "Sending…" : "Send"}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

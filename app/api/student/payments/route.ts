@@ -11,6 +11,11 @@ import {
   syncReservationAndLeaseFromStudentPaymentStatus,
 } from "@/lib/landlord-db";
 import { insertNotification } from "@/lib/notify-user";
+import { MATCHED_STUDENT_LANDLORD_PAYMENTS_CTE } from "@/lib/student-landlord-payment-match";
+import {
+  fetchMonthlySchedule,
+  resolveUpcomingUnpaidMonthsFromSchedule,
+} from "@/lib/payment-schedule";
 import { isAllowedStoredFileUrl } from "@/lib/upload-url";
 
 export const dynamic = "force-dynamic";
@@ -46,13 +51,14 @@ export async function GET() {
       listing_description: string | null;
       remarks: string | null;
       room_details: string | null;
+      description: string | null;
       listing_image_urls: unknown;
       listing_background_url: string | null;
       room_image_urls: unknown;
       acc_dorm_name: string | null;
     }>(
       `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
-              pay.receipt_url, pay.proof_image_url, pay.reservation_id,
+              pay.receipt_url, pay.proof_image_url, pay.description, pay.reservation_id,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text AS monthly_rent,
@@ -101,9 +107,12 @@ export async function GET() {
       listing_background_url: string | null;
       room_image_urls: unknown;
       acc_dorm_name: string | null;
+      entry_source: string | null;
     }>(
-      `SELECT lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
-              lp.paid_on::text, lp.proof_url, lp.reference_no,
+      `WITH ${MATCHED_STUDENT_LANDLORD_PAYMENTS_CTE}
+       SELECT DISTINCT ON (lp.id)
+              lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
+              lp.paid_on::text, lp.proof_url, lp.reference_no, lp.entry_source,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text,
@@ -112,19 +121,37 @@ export async function GET() {
               r.listing_description, r.remarks, r.room_details,
               r.listing_image_urls, r.listing_background_url, r.room_image_urls,
               (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
-               WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+               WHERE p.id IS NOT NULL
+                 AND (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
                  AND trim(a.dorm_name) <> ''
                ORDER BY a.submitted_at DESC
                LIMIT 1) AS acc_dorm_name
        FROM public.landlord_payments lp
-       JOIN public.landlord_rooms r ON r.id = lp.room_id
-       JOIN public.landlord_properties p ON p.id = r.property_id
-       JOIN public.boarding_house_app_users ul ON ul.id = p.owner_user_id
-       JOIN public.student_dorm_reservations s ON s.room_id = r.id
-         AND s.student_user_id = $1::uuid
-         AND s.status IN ('Pending', 'Confirmed')
-       JOIN public.boarding_house_app_users stu ON stu.id = s.student_user_id
-       WHERE lower(trim(lp.payer_name)) = lower(trim(stu.full_name))`,
+       INNER JOIN matched_student_landlord_payments m ON m.id = lp.id
+       LEFT JOIN public.landlord_tenant_leases ltl ON ltl.id = lp.tenant_lease_id
+       LEFT JOIN LATERAL (
+         SELECT sr.lease_start, sr.lease_end, sr.monthly_rent, sr.room_id
+         FROM public.student_dorm_reservations sr
+         WHERE sr.student_user_id = $1::uuid
+           AND sr.status <> 'Cancelled'
+           AND (
+             (ltl.student_reservation_id IS NOT NULL AND sr.id = ltl.student_reservation_id)
+             OR (lp.room_id IS NOT NULL AND sr.room_id = lp.room_id)
+           )
+         ORDER BY
+           CASE
+             WHEN ltl.student_reservation_id IS NOT NULL
+               AND sr.id = ltl.student_reservation_id
+             THEN 0
+             ELSE 1
+           END,
+           sr.lease_end DESC
+         LIMIT 1
+       ) s ON true
+       LEFT JOIN public.landlord_rooms r ON r.id = COALESCE(lp.room_id, s.room_id)
+       LEFT JOIN public.landlord_properties p ON p.id = r.property_id
+       LEFT JOIN public.boarding_house_app_users ul ON ul.id = COALESCE(p.owner_user_id, lp.owner_user_id)
+       ORDER BY lp.id, lp.created_at DESC`,
       [studentId]
     );
 
@@ -169,6 +196,8 @@ export async function GET() {
       return {
         id: x.id,
         source: "student_app" as const,
+        channelLabel: "Student app",
+        description: x.description?.trim() || undefined,
         dormName,
         roomNo: x.room_no ?? "—",
         amount: Number(x.amount),
@@ -241,9 +270,19 @@ export async function GET() {
         st === "Overdue"
           ? ("Overdue" as const)
           : (st as "Paid" | "Pending" | "Failed");
+      const entrySource = x.entry_source;
+      const channelLabel =
+        entrySource === "advance"
+          ? "Advance payment"
+          : entrySource === "deposit"
+            ? "Security deposit"
+            : "Manual";
       return {
         id: `lp-${x.id}`,
         source: "landlord_entry" as const,
+        entrySource: entrySource ?? "manual",
+        channelLabel,
+        description: undefined as string | undefined,
         dormName,
         roomNo: x.room_no ?? "—",
         amount: Number(x.amount),
@@ -275,7 +314,48 @@ export async function GET() {
         new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
-    return NextResponse.json({ payments });
+    let unpaidMonths: ReturnType<typeof resolveUpcomingUnpaidMonthsFromSchedule> =
+      [];
+    const { rows: activeRes } = await pool.query<{
+      id: string;
+      property_name: string | null;
+      room_no: string;
+      acc_dorm_name: string | null;
+    }>(
+      `SELECT s.id, p.name AS property_name, r.room_no,
+              (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
+               WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS acc_dorm_name
+       FROM public.student_dorm_reservations s
+       JOIN public.landlord_rooms r ON r.id = s.room_id
+       JOIN public.landlord_properties p ON p.id = r.property_id
+       WHERE s.student_user_id = $1::uuid AND s.status = 'Confirmed'
+       ORDER BY s.lease_start DESC
+       LIMIT 1`,
+      [studentId]
+    );
+    const active = activeRes[0];
+    if (active) {
+      const schedule = await fetchMonthlySchedule(pool, {
+        reservationId: active.id,
+      });
+      const dormName = resolveDormDisplayName(
+        active.property_name,
+        active.acc_dorm_name,
+        "Your dorm"
+      );
+      unpaidMonths = resolveUpcomingUnpaidMonthsFromSchedule(schedule).map(
+        (m) => ({
+          ...m,
+          dormName,
+          roomNo: active.room_no,
+        })
+      );
+    }
+
+    return NextResponse.json({ payments, unpaidMonths });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load payments";
     return NextResponse.json({ error: msg }, { status: 500 });

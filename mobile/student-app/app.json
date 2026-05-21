@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "DormConnect",
+    "slug": "dormconnect",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "dormconnect-student",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#f1f5f9"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dormconnect.student",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Show dormitories near you on the browse map."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f1f5f9"
+      },
+      "package": "com.dormconnect.student",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-asset",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -141,7 +141,9 @@ export default function LandlordDashboardPage() {
       },
       {
         label: "Accreditation",
-        value: `${data.accreditation.approved} approved\n${data.accreditation.pending} in progress`,
+        value: `${data.accreditation.approved}/${data.propertiesCount} Accredited ${
+          data.propertiesCount === 1 ? "Property" : "Properties"
+        }`,
         badge: "Requests",
         badgeVariant: "muted" as const,
       },

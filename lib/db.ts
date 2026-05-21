@@ -75,7 +75,7 @@ async function buildPool(): Promise<Pool> {
   if (!shouldResolveHostname(hostname)) {
     return new Pool({
       connectionString,
-      ssl: sslForHost(connectionString),
+      ssl: sslForHost(connectionString, hostname),
     });
   }
 

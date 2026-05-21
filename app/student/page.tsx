@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -83,6 +84,15 @@ export default function StudentDashboardPage() {
     source?: "student_app" | "landlord_entry";
   } | null>(null);
   const [paymentHint, setPaymentHint] = useState("");
+  const [upcomingUnpaidMonths, setUpcomingUnpaidMonths] = useState<
+    {
+      dueDate: string;
+      amount: number;
+      monthNumber: number;
+      monthLabel: string;
+      dueLabel: string;
+    }[]
+  >([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -106,6 +116,7 @@ export default function StudentDashboardPage() {
         activeReservation?: ReservationRow | null;
         latestPayment?: typeof latestPayment;
         paymentHint?: string;
+        upcomingUnpaidMonths?: typeof upcomingUnpaidMonths;
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
@@ -113,6 +124,7 @@ export default function StudentDashboardPage() {
       setActiveReservation(json.activeReservation ?? null);
       setLatestPayment(json.latestPayment ?? null);
       setPaymentHint(json.paymentHint ?? "");
+      setUpcomingUnpaidMonths(json.upcomingUnpaidMonths ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
       setReservations([]);
@@ -273,12 +285,50 @@ export default function StudentDashboardPage() {
                 No payment records yet.
               </p>
             )}
-            {paymentHint && (
-              <p className="text-xs text-muted-foreground pt-1">{paymentHint}</p>
-            )}
           </CardContent>
         </Card>
       </section>
+
+      <Card className="w-full border border-gray-200">
+        <CardHeader className="pb-2 border-b bg-muted/30">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Pending payments
+            </CardTitle>
+            {upcomingUnpaidMonths.length > 0 && (
+              <Link
+                href="/student/payments"
+                className="text-xs font-medium text-sky-600 hover:underline"
+              >
+                View payments →
+              </Link>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {upcomingUnpaidMonths.length > 0 ? (
+            <div className="flex flex-wrap gap-3">
+              {upcomingUnpaidMonths.map((m) => (
+                <div
+                  key={`${m.dueDate}-${m.monthNumber}`}
+                  className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-slate-700"
+                >
+                  <p className="font-semibold text-slate-900 whitespace-nowrap">
+                    {m.monthLabel}
+                  </p>
+                  <p className="mt-1 text-muted-foreground whitespace-nowrap">
+                    ₱{m.amount.toLocaleString()} · {m.dueLabel}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {paymentHint || "All scheduled rent months are paid. Thank you!"}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border border-gray-300 bg-white">
         <CardHeader className="pb-3 border-b bg-muted/40">

@@ -21,10 +21,24 @@ export async function GET() {
   try {
     const pool = await getPool();
 
+    const { rows: leaseLinks } = await pool.query<{
+      id: string;
+      student_reservation_id: string;
+    }>(
+      `SELECT id, student_reservation_id
+       FROM public.landlord_tenant_leases
+       WHERE owner_user_id = $1::uuid AND student_reservation_id IS NOT NULL`,
+      [ownerId]
+    );
+    const leaseIdByReservation = new Map(
+      leaseLinks.map((l) => [l.student_reservation_id, l.id])
+    );
+
     const { rows: reservations } = await pool.query<{
       id: string;
-      guest_name: string;
+      tenant_name: string;
       room_no: string;
+      property_name: string;
       lease_start: string;
       lease_end: string;
       monthly_rent: string;
@@ -33,11 +47,16 @@ export async function GET() {
       deposit_amount: string;
       student_user_id: string;
     }>(
-      `SELECT s.id, s.guest_name, r.room_no, s.lease_start::text, s.lease_end::text,
+      `SELECT s.id,
+              COALESCE(NULLIF(trim(u.full_name), ''), s.guest_name) AS tenant_name,
+              r.room_no, p.name AS property_name,
+              s.lease_start::text, s.lease_end::text,
               s.monthly_rent::text, s.balance_remaining::text, s.advance_amount::text,
               s.deposit_amount::text, s.student_user_id
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
+       JOIN public.landlord_properties p ON p.id = r.property_id
+       JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
        WHERE r.owner_user_id = $1::uuid AND s.status = 'Confirmed'
        ORDER BY s.lease_start DESC`,
       [ownerId]
@@ -47,15 +66,18 @@ export async function GET() {
       id: string;
       tenant_name: string;
       room_no: string;
+      property_name: string;
       lease_start: string;
       lease_end: string;
       monthly_rate: string;
       student_reservation_id: string | null;
     }>(
-      `SELECT l.id, l.tenant_name, r.room_no, l.lease_start::text, l.lease_end::text,
+      `SELECT l.id, l.tenant_name, r.room_no, p.name AS property_name,
+              l.lease_start::text, l.lease_end::text,
               r.monthly_rate::text, l.student_reservation_id
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
+       JOIN public.landlord_properties p ON p.id = r.property_id
        WHERE l.owner_user_id = $1::uuid
          AND l.student_reservation_id IS NULL
        ORDER BY l.lease_start DESC`,
@@ -77,8 +99,10 @@ export async function GET() {
         );
         return buildRow({
           id: res.id,
-          tenantName: res.guest_name,
+          tenantName: res.tenant_name,
           roomNumber: res.room_no,
+          propertyName: res.property_name,
+          linkedLeaseId: leaseIdByReservation.get(res.id) ?? null,
           leaseStart: res.lease_start,
           leaseEnd: res.lease_end,
           months,
@@ -111,6 +135,8 @@ export async function GET() {
           id: l.id,
           tenantName: l.tenant_name,
           roomNumber: l.room_no,
+          propertyName: l.property_name,
+          linkedLeaseId: l.id,
           leaseStart: l.lease_start,
           leaseEnd: l.lease_end,
           months,
@@ -158,6 +184,8 @@ function buildRow(input: {
   id: string;
   tenantName: string;
   roomNumber: string;
+  propertyName: string;
+  linkedLeaseId: string | null;
   leaseStart: string;
   leaseEnd: string;
   months: number;
@@ -171,14 +199,20 @@ function buildRow(input: {
     status: "Paid" | "Not Yet Paid";
     amount: number;
     paidDate?: string;
+    reminderSentAt?: string;
   }[];
   studentUserId: string | null;
   source: "reservation" | "lease";
 }) {
+  const nextUnpaid = input.monthlySchedule.find((m) => m.status !== "Paid");
   return {
     id: input.id,
     tenantName: input.tenantName,
     roomNumber: input.roomNumber,
+    propertyName: input.propertyName,
+    linkedLeaseId: input.linkedLeaseId,
+    nextUnpaidMonthNumber: nextUnpaid?.monthNumber ?? null,
+    nextUnpaidReminderSent: Boolean(nextUnpaid?.reminderSentAt),
     leaseDuration:
       input.months === 1 ? "1 month" : `${input.months} months`,
     monthlyRent: input.monthlyRent,

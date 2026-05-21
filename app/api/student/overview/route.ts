@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import {
+  buildStudentPaymentReminderHint,
   deriveTenantPaymentStatusFromSchedule,
   fetchMonthlySchedule,
+  resolveUpcomingUnpaidMonthsFromSchedule,
 } from "@/lib/payment-schedule";
 import { requireStudent } from "@/lib/require-student";
+import { MATCHED_STUDENT_LANDLORD_PAYMENTS_CTE } from "@/lib/student-landlord-payment-match";
 import {
   formatLeasePeriod,
   reservationLifecycle,
@@ -107,14 +110,10 @@ export async function GET() {
       paid_on: string | null;
       created_at: Date;
     }>(
-      `SELECT lp.amount::text, lp.status, lp.paid_on::text, lp.created_at
+      `WITH ${MATCHED_STUDENT_LANDLORD_PAYMENTS_CTE}
+       SELECT lp.amount::text, lp.status, lp.paid_on::text, lp.created_at
        FROM public.landlord_payments lp
-       JOIN public.landlord_rooms r ON r.id = lp.room_id
-       JOIN public.student_dorm_reservations s ON s.room_id = r.id
-         AND s.student_user_id = $1::uuid
-         AND s.status IN ('Pending', 'Confirmed')
-       JOIN public.boarding_house_app_users stu ON stu.id = s.student_user_id
-       WHERE lower(trim(lp.payer_name)) = lower(trim(stu.full_name))
+       INNER JOIN matched_student_landlord_payments m ON m.id = lp.id
        ORDER BY COALESCE(lp.paid_on::date, lp.created_at::date) DESC, lp.created_at DESC
        LIMIT 1`,
       [studentId]
@@ -189,12 +188,30 @@ export async function GET() {
       };
     }
 
+    let upcomingUnpaidMonths: ReturnType<
+      typeof resolveUpcomingUnpaidMonthsFromSchedule
+    > = [];
+    if (activeReservation?.id) {
+      const activeRow = rows.find((r) => r.id === activeReservation.id);
+      if (activeRow?.status === "Confirmed") {
+        const schedule = await fetchMonthlySchedule(pool, {
+          reservationId: activeReservation.id,
+        });
+        upcomingUnpaidMonths = resolveUpcomingUnpaidMonthsFromSchedule(schedule);
+      }
+    }
+
+    const paymentHint = buildStudentPaymentReminderHint(
+      upcomingUnpaidMonths,
+      activeReservation?.dormName ?? null
+    );
+
     return NextResponse.json({
       reservations,
       activeReservation,
       latestPayment,
-      paymentHint:
-        "Pay through the Payments page or follow your landlord’s instructions.",
+      paymentHint,
+      upcomingUnpaidMonths,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load overview";
