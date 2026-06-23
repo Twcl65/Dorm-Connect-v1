@@ -118,10 +118,61 @@ export async function GET(req: Request) {
       [propertyId]
     );
 
+    const { rows: studentCounts } = await pool.query<{
+      room_id: string;
+      c: string;
+    }>(
+      `SELECT s.room_id, COUNT(*)::text AS c
+       FROM public.student_dorm_reservations s
+       WHERE s.room_id IN (
+         SELECT id FROM public.landlord_rooms WHERE property_id = $1::uuid
+       )
+         AND s.status IN ('Pending', 'Confirmed')
+         AND NOT EXISTS (
+           SELECT 1 FROM public.landlord_tenant_leases l
+           WHERE l.student_reservation_id = s.id
+         )
+       GROUP BY s.room_id`,
+      [propertyId]
+    );
+
+    const { rows: manualCounts } = await pool.query<{
+      room_id: string;
+      c: string;
+    }>(
+      `SELECT room_id, COUNT(*)::text AS c
+       FROM public.landlord_reservations
+       WHERE property_id = $1::uuid
+         AND room_id IS NOT NULL
+         AND status IN ('Pending', 'Confirmed')
+       GROUP BY room_id`,
+      [propertyId]
+    );
+
+    const { rows: leaseCounts } = await pool.query<{
+      room_id: string;
+      c: string;
+    }>(
+      `SELECT room_id, COUNT(*)::text AS c
+       FROM public.landlord_tenant_leases
+       WHERE property_id = $1::uuid
+       GROUP BY room_id`,
+      [propertyId]
+    );
+
     const leaseByRoom = new Map(leases.map((l) => [l.room_id, l]));
     const studentByRoom = new Map(studentRes.map((s) => [s.room_id, s]));
     const manualByRoom = new Map(
       manualRes.filter((m) => m.room_id).map((m) => [m.room_id as string, m])
+    );
+    const studentReservationCountByRoom = new Map(
+      studentCounts.map((row) => [row.room_id, Number(row.c)])
+    );
+    const manualReservationCountByRoom = new Map(
+      manualCounts.map((row) => [row.room_id, Number(row.c)])
+    );
+    const leaseCountByRoom = new Map(
+      leaseCounts.map((row) => [row.room_id, Number(row.c)])
     );
 
     let occupied = 0;
@@ -136,15 +187,10 @@ export async function GET(req: Request) {
 
       const status = resolveRoomListingStatus({
         dbRoomStatus: r.status,
-        hasLease: Boolean(lease),
-        studentReservationStatus:
-          student?.status === "Confirmed" || student?.status === "Pending"
-            ? student.status
-            : null,
-        manualReservationStatus:
-          manual?.status === "Confirmed" || manual?.status === "Pending"
-            ? manual.status
-            : null,
+        capacity: r.capacity,
+        leaseCount: leaseCountByRoom.get(r.id) ?? 0,
+        studentReservationCount: studentReservationCountByRoom.get(r.id) ?? 0,
+        manualReservationCount: manualReservationCountByRoom.get(r.id) ?? 0,
       });
 
       if (status === "Occupied") occupied += 1;

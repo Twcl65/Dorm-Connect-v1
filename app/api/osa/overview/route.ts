@@ -55,24 +55,19 @@ export async function GET() {
        LIMIT 8`
     );
 
-    const { rows: activity } = await pool.query<{
-      line: string;
+    const { rows: progressRows } = await pool.query<{
+      status: string;
+      count: string;
     }>(
-      `SELECT
-         to_char(a.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') || ' — ' ||
-         CASE a.status
-           WHEN 'Approved' THEN 'Accreditation approved: '
-           WHEN 'Rejected' THEN 'Accreditation rejected: '
-           WHEN 'Hold' THEN 'On hold: '
-           WHEN 'Scheduled for Inspection' THEN 'Inspection scheduled: '
-           WHEN 'Recommended for Approval' THEN 'Recommended for approval: '
-           WHEN 'Expired' THEN 'Accreditation expired: '
-           ELSE 'Updated: '
-         END || a.dorm_name AS line
-       FROM public.landlord_accreditation_requests a
-       ORDER BY a.updated_at DESC
-       LIMIT 6`
+      `SELECT status, COUNT(*)::text AS count
+       FROM public.landlord_accreditation_requests
+       GROUP BY status`
     );
+
+    const accreditationProgress = progressRows.map((r) => ({
+      status: r.status,
+      count: Number(r.count),
+    }));
 
     return NextResponse.json({
       pendingAccreditation: Number(c?.pending ?? 0),
@@ -88,7 +83,7 @@ export async function GET() {
         date: formatDate(new Date(r.submitted_at)),
         status: r.status,
       })),
-      activityLog: activity.map((a) => a.line),
+      accreditationProgress,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load overview";

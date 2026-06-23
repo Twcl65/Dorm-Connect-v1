@@ -96,9 +96,10 @@ export function mapRentPaymentStatus(
 
 type BookingInputs = {
   dbRoomStatus: string;
-  hasLease: boolean;
-  studentReservationStatus: "Pending" | "Confirmed" | null;
-  manualReservationStatus: "Pending" | "Confirmed" | null;
+  capacity: number;
+  leaseCount: number;
+  studentReservationCount: number;
+  manualReservationCount: number;
 };
 
 /** Room status from active lease / student or manual reservation. */
@@ -106,64 +107,63 @@ export function resolveRoomListingStatus(
   input: BookingInputs
 ): RoomListingStatus {
   if (input.dbRoomStatus === "Maintenance") return "Maintenance";
-  if (input.hasLease) return "Occupied";
-  if (input.studentReservationStatus === "Confirmed") return "Occupied";
-  if (input.manualReservationStatus === "Confirmed") return "Occupied";
-  if (input.studentReservationStatus === "Pending") return "Reserved";
-  if (input.manualReservationStatus === "Pending") return "Reserved";
+  const occupancy =
+    input.leaseCount + input.studentReservationCount + input.manualReservationCount;
+  if (occupancy >= input.capacity) return "Occupied";
   return "Available";
 }
 
 /**
  * Sync room status from leases and reservations (student + manual).
- * Confirmed / active lease → Occupied; Pending only → Reserved.
+ * A room is occupied only after its active occupancy reaches capacity.
  */
 export async function refreshRoomFromStudentReservations(
   pool: Pool,
   roomId: string
 ): Promise<void> {
-  const { rows: roomRows } = await pool.query<{ status: string }>(
-    `SELECT status FROM public.landlord_rooms WHERE id = $1::uuid`,
+  const { rows: roomRows } = await pool.query<{
+    status: string;
+    capacity: number;
+  }>(
+    `SELECT status, capacity FROM public.landlord_rooms WHERE id = $1::uuid`,
     [roomId]
   );
   const dbStatus = roomRows[0]?.status ?? "Available";
+  const capacity = Number(roomRows[0]?.capacity ?? 1);
   if (dbStatus === "Maintenance") return;
 
   const { rows: leaseRows } = await pool.query<{ c: string }>(
     `SELECT COUNT(*)::text AS c FROM public.landlord_tenant_leases WHERE room_id = $1::uuid`,
     [roomId]
   );
-  const hasLease = Number(leaseRows[0]?.c ?? 0) > 0;
+  const leaseCount = Number(leaseRows[0]?.c ?? 0);
 
-  const { rows: studentRows } = await pool.query<{ status: string }>(
-    `SELECT status FROM public.student_dorm_reservations
-     WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
-     ORDER BY CASE status WHEN 'Confirmed' THEN 0 ELSE 1 END, created_at DESC
-     LIMIT 1`,
+  const { rows: studentRows } = await pool.query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c
+     FROM public.student_dorm_reservations s
+     WHERE s.room_id = $1::uuid
+       AND s.status IN ('Pending', 'Confirmed')
+       AND NOT EXISTS (
+         SELECT 1 FROM public.landlord_tenant_leases l
+         WHERE l.student_reservation_id = s.id
+       )`,
     [roomId]
   );
-  const studentStatus = studentRows[0]?.status as
-    | "Pending"
-    | "Confirmed"
-    | undefined;
+  const studentReservationCount = Number(studentRows[0]?.c ?? 0);
 
-  const { rows: manualRows } = await pool.query<{ status: string }>(
-    `SELECT status FROM public.landlord_reservations
-     WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
-     ORDER BY CASE status WHEN 'Confirmed' THEN 0 ELSE 1 END, created_at DESC
-     LIMIT 1`,
+  const { rows: manualRows } = await pool.query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM public.landlord_reservations
+     WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')`,
     [roomId]
   );
-  const manualStatus = manualRows[0]?.status as
-    | "Pending"
-    | "Confirmed"
-    | undefined;
+  const manualReservationCount = Number(manualRows[0]?.c ?? 0);
 
   const next = resolveRoomListingStatus({
     dbRoomStatus: dbStatus,
-    hasLease,
-    studentReservationStatus: studentStatus ?? null,
-    manualReservationStatus: manualStatus ?? null,
+    capacity,
+    leaseCount,
+    studentReservationCount,
+    manualReservationCount,
   });
 
   await pool.query(

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
+import { packReview, unpackReview } from "@/lib/review-content";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +34,16 @@ export async function GET(req: Request) {
     );
 
     return NextResponse.json({
-      reviews: rows.map((r) => ({
-        author: r.author,
-        date: new Date(r.created_at).toISOString().slice(0, 10),
-        comment: r.comment,
-        rating: r.rating,
-      })),
+      reviews: rows.map((r) => {
+        const { title, comment } = unpackReview(r.comment);
+        return {
+          author: r.author,
+          date: new Date(r.created_at).toISOString().slice(0, 10),
+          title,
+          comment,
+          rating: r.rating,
+        };
+      }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load reviews";
@@ -57,10 +62,12 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       roomId?: string;
       rating?: number;
+      title?: string;
       comment?: string;
     };
     const roomId = (body.roomId ?? "").trim();
     const rating = Math.min(5, Math.max(1, Number(body.rating) || 0));
+    const title = (body.title ?? "").trim();
     const comment = (body.comment ?? "").trim();
     if (!roomId || !/^[0-9a-f-]{36}$/i.test(roomId)) {
       return NextResponse.json({ error: "Invalid room." }, { status: 400 });
@@ -68,14 +75,31 @@ export async function POST(req: Request) {
     if (rating < 1) {
       return NextResponse.json({ error: "Rating 1–5 required." }, { status: 400 });
     }
+    if (!comment) {
+      return NextResponse.json(
+        { error: "Review description is required." },
+        { status: 400 }
+      );
+    }
 
     const pool = await getPool();
-    const { rows: rm } = await pool.query<{ id: string }>(
-      `SELECT id FROM public.landlord_rooms WHERE id = $1::uuid AND is_listed = true`,
-      [roomId]
+    const { rows: booking } = await pool.query<{ id: string }>(
+      `SELECT s.id
+       FROM public.student_dorm_reservations s
+       WHERE s.student_user_id = $1::uuid
+         AND s.room_id = $2::uuid
+         AND s.status IN ('Pending', 'Confirmed')
+       LIMIT 1`,
+      [studentId, roomId]
     );
-    if (!rm[0]) {
-      return NextResponse.json({ error: "Room not found or not listed." }, { status: 404 });
+    if (!booking[0]) {
+      return NextResponse.json(
+        {
+          error:
+            "You can only review a dormitory you have booked (active reservation required).",
+        },
+        { status: 403 }
+      );
     }
 
     await pool.query(
@@ -85,7 +109,7 @@ export async function POST(req: Request) {
          rating = EXCLUDED.rating,
          comment = EXCLUDED.comment,
          created_at = now()`,
-      [studentId, roomId, rating, comment]
+      [studentId, roomId, rating, packReview(title, comment)]
     );
 
     return NextResponse.json({ ok: true });

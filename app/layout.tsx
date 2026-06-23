@@ -3,9 +3,9 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "DormConnect – Accredited Dormitory Management",
+  title: "DormConnect – Accredited Dormitories & Boarding Houses",
   description:
-    "DormConnect – Web-Based Accredited Dormitory and Boarding House Management System"
+    "Browse OSA-accredited dormitories and boarding houses near USTP. View landlord-posted room availability and rates on DormConnect."
 };
 
 export default function RootLayout({

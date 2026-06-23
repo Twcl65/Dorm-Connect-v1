@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,6 +15,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye } from "lucide-react";
+import {
+  AccreditationProgressChart,
+  type AccreditationProgressSegment,
+} from "@/components/osa/accreditation-progress-chart";
 
 type RecentRequest = {
   id: string;
@@ -35,7 +40,9 @@ export default function OsaDashboardPage() {
     complianceAlerts: 0,
   });
   const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([]);
-  const [activityLog, setActivityLog] = useState<string[]>([]);
+  const [accreditationProgress, setAccreditationProgress] = useState<
+    AccreditationProgressSegment[]
+  >([]);
   const [selectedRequest, setSelectedRequest] = useState<RecentRequest | null>(
     null
   );
@@ -55,7 +62,7 @@ export default function OsaDashboardPage() {
         dormsNotOperating?: number;
         complianceAlerts?: number;
         recentRequests?: RecentRequest[];
-        activityLog?: string[];
+        accreditationProgress?: AccreditationProgressSegment[];
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load overview");
       setStats({
@@ -67,7 +74,7 @@ export default function OsaDashboardPage() {
         complianceAlerts: json.complianceAlerts ?? 0,
       });
       setRecentRequests(json.recentRequests ?? []);
-      setActivityLog(json.activityLog ?? []);
+      setAccreditationProgress(json.accreditationProgress ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -174,6 +181,35 @@ export default function OsaDashboardPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
+        <Card className="border border-gray-300 bg-white">
+          <CardHeader className="pb-2 pt-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-1">
+                <CardTitle className="text-sm font-semibold text-slate-800">
+                  Accreditation monitoring progress
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Breakdown of all accreditation requests by current status.
+                </p>
+              </div>
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 text-[0.7rem]"
+              >
+                <Link href="/osa/accreditation-monitoring">View all</Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4 pb-4">
+            <AccreditationProgressChart
+              segments={accreditationProgress}
+              loading={loading}
+            />
+          </CardContent>
+        </Card>
+
         <Card className="border border-gray-300 bg-white min-h-[290px]">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-1">
@@ -186,95 +222,71 @@ export default function OsaDashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
-            <Table bordered={false}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Landlord</TableHead>
-                  <TableHead>Submitted</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right pr-4 text-slate-600">
-                    Review
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentRequests.length === 0 && (
+            <div className="max-h-[520px] overflow-auto">
+              <Table bordered={false}>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="py-8 text-center text-xs text-muted-foreground"
-                    >
-                      {loading
-                        ? "Loading…"
-                        : "No accreditation records yet."}
-                    </TableCell>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Landlord</TableHead>
+                    <TableHead>Submitted</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right pr-4 text-slate-600">
+                      Review
+                    </TableHead>
                   </TableRow>
-                )}
-                {recentRequests.map((req) => (
-                  <TableRow key={req.id}>
-                    <TableCell className="px-4 text-xs font-mono text-slate-500">
-                      {req.id.slice(0, 8)}…
-                    </TableCell>
-                    <TableCell className="px-4 text-sm font-medium text-slate-800">
-                      {req.name}
-                    </TableCell>
-                    <TableCell className="px-4 text-xs text-slate-700">
-                      {req.owner}
-                    </TableCell>
-                    <TableCell className="px-4 text-xs text-slate-600">
-                      {req.date}
-                    </TableCell>
-                    <TableCell className="px-4 text-xs text-slate-700">
-                      {req.status}
-                    </TableCell>
-                    <TableCell className="px-6 pr-4">
-                      <div className="flex justify-end">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
-                          onClick={() => {
-                            setSelectedRequest(req);
-                            setShowRequestDialog(true);
-                          }}
-                        >
-                          <Eye className="h-3 w-3" />
-                          View
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-gray-300 bg-white min-h-[290px]">
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-1">
-              <CardTitle className="text-sm font-semibold text-slate-800">
-                Activity log
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Recent updates to accreditation records.
-              </p>
+                </TableHeader>
+                <TableBody>
+                  {recentRequests.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="py-8 text-center text-xs text-muted-foreground"
+                      >
+                        {loading
+                          ? "Loading…"
+                          : "No accreditation records yet."}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {recentRequests.map((req) => (
+                    <TableRow key={req.id}>
+                      <TableCell className="px-4 text-xs font-mono text-slate-500">
+                        {req.id.slice(0, 8)}…
+                      </TableCell>
+                      <TableCell className="px-4 text-sm font-medium text-slate-800">
+                        {req.name}
+                      </TableCell>
+                      <TableCell className="px-4 text-xs text-slate-700">
+                        {req.owner}
+                      </TableCell>
+                      <TableCell className="px-4 text-xs text-slate-600">
+                        {req.date}
+                      </TableCell>
+                      <TableCell className="px-4 text-xs text-slate-700">
+                        {req.status}
+                      </TableCell>
+                      <TableCell className="px-6 pr-4">
+                        <div className="flex justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                            onClick={() => {
+                              setSelectedRequest(req);
+                              setShowRequestDialog(true);
+                            }}
+                          >
+                            <Eye className="h-3 w-3" />
+                            View
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
-          </CardHeader>
-          <CardContent className="pt-3 space-y-2 text-xs text-slate-700">
-            {activityLog.length === 0 && !loading && (
-              <p className="text-muted-foreground">No recent activity.</p>
-            )}
-            {activityLog.map((entry) => (
-              <div
-                key={entry}
-                className="rounded-md bg-muted px-3 py-2 leading-snug"
-              >
-                {entry}
-              </div>
-            ))}
           </CardContent>
         </Card>
       </section>

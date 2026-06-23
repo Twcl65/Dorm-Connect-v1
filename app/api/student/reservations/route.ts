@@ -204,6 +204,7 @@ export async function POST(req: Request) {
       id: string;
       monthly_rate: string;
       status: string;
+      capacity: number;
       is_listed: boolean;
       operational_status: string;
       accredited: boolean;
@@ -211,8 +212,9 @@ export async function POST(req: Request) {
       property_name: string;
       room_no: string;
     }>(
-      `SELECT r.id, r.room_no, r.monthly_rate::text, r.status, r.is_listed,
-              p.operational_status, p.name AS property_name, r.owner_user_id,
+      `SELECT r.id, r.room_no, r.monthly_rate::text, r.status, r.capacity,
+              r.is_listed, p.operational_status, p.name AS property_name,
+              r.owner_user_id,
               EXISTS (
                 SELECT 1 FROM public.landlord_accreditation_requests acc
                 WHERE acc.property_id = r.property_id AND acc.status = 'Approved'
@@ -226,7 +228,7 @@ export async function POST(req: Request) {
     if (
       !room ||
       !room.is_listed ||
-      room.status !== "Available" ||
+      room.status === "Maintenance" ||
       !room.accredited ||
       room.operational_status === "Not Operating"
     ) {
@@ -234,6 +236,35 @@ export async function POST(req: Request) {
         {
           error:
             "That room is not available. Only listed rooms in accredited, operating dormitories can be reserved.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const { rows: occupancyRows } = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c
+       FROM (
+         SELECT id FROM public.landlord_tenant_leases WHERE room_id = $1::uuid
+         UNION ALL
+         SELECT s.id FROM public.student_dorm_reservations s
+         WHERE s.room_id = $1::uuid
+           AND s.status IN ('Pending', 'Confirmed')
+           AND NOT EXISTS (
+             SELECT 1 FROM public.landlord_tenant_leases l
+             WHERE l.student_reservation_id = s.id
+           )
+         UNION ALL
+         SELECT id FROM public.landlord_reservations
+         WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
+       ) AS occupancy`,
+      [roomId]
+    );
+    const currentOccupancy = Number(occupancyRows[0]?.c ?? 0);
+    if (currentOccupancy >= room.capacity) {
+      return NextResponse.json(
+        {
+          error:
+            "That room is fully booked. No more students can reserve this room.",
         },
         { status: 400 }
       );

@@ -13,8 +13,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Bell, Eye, Loader2 } from "lucide-react";
+import { Bell, Eye, FileText, Loader2 } from "lucide-react";
 import { ProofMedia } from "@/components/proof-media";
+import { PaymentReceiptCard } from "@/components/payments/payment-receipt-card";
+import type { PaymentReceiptData } from "@/lib/payment-receipt-data";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 import { LeasePaymentMonitoringCard } from "@/components/landlord/lease-payment-monitoring-card";
 
@@ -125,6 +127,12 @@ export default function LandlordPaymentsPage() {
   const [saving, setSaving] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showReceiptDialog, setShowReceiptDialog] = useState(false);
+  const [receiptPayment, setReceiptPayment] = useState<PaymentReceiptData | null>(
+    null
+  );
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState<PaymentStatus>("Pending");
   const [editMethod, setEditMethod] = useState<PaymentMethod>("Cash");
   const [editAmount, setEditAmount] = useState(0);
@@ -423,18 +431,53 @@ export default function LandlordPaymentsPage() {
     setPage(newPage);
   };
 
+  const openReceipt = async (p: Payment) => {
+    setShowReceiptDialog(true);
+    setReceiptPayment(null);
+    setReceiptError(null);
+    setReceiptLoading(true);
+    try {
+      const source = p.source === "student" ? "student" : "landlord";
+      const res = await fetch(
+        `/api/landlord/payments/receipt?id=${encodeURIComponent(p.id)}&source=${source}`,
+        { credentials: "include" }
+      );
+      const json = (await res.json()) as {
+        payment?: PaymentReceiptData;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load receipt");
+      setReceiptPayment(json.payment ?? null);
+    } catch (e) {
+      setReceiptError(e instanceof Error ? e.message : "Failed to load receipt");
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
+  const openPaymentDetails = (p: Payment) => {
+    setSelectedPayment(p);
+    setEditStatus(p.status);
+    setEditMethod(p.method);
+    setEditAmount(p.amountValue);
+    setEditDate(p.date ?? "");
+    setEditRef(p.referenceNo ?? "");
+    setEditProof(p.proofOfPaymentUrl ?? "");
+    setShowDetailsDialog(true);
+  };
+
   useEffect(() => {
     setPage((p) => Math.min(p, Math.max(1, totalPages)));
   }, [totalPages]);
 
   useEffect(() => {
-    if (!showDetailsDialog && !showOnsiteDialog) return;
+    if (!showDetailsDialog && !showOnsiteDialog && !showReceiptDialog) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [showDetailsDialog, showOnsiteDialog]);
+  }, [showDetailsDialog, showOnsiteDialog, showReceiptDialog]);
 
   return (
     <div className="space-y-6">
@@ -574,17 +617,17 @@ export default function LandlordPaymentsPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
+                        onClick={() => void openReceipt(p)}
+                      >
+                        <FileText className="h-3 w-3" />
+                        View Receipt
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
-                        onClick={() => {
-                          setSelectedPayment(p);
-                          setEditStatus(p.status);
-                          setEditMethod(p.method);
-                          setEditAmount(p.amountValue);
-                          setEditDate(p.date ?? "");
-                          setEditRef(p.referenceNo ?? "");
-                          setEditProof(p.proofOfPaymentUrl ?? "");
-                          setShowDetailsDialog(true);
-                        }}
+                        onClick={() => openPaymentDetails(p)}
                       >
                         <Eye className="h-3 w-3" />
                         View Details
@@ -1431,21 +1474,21 @@ export default function LandlordPaymentsPage() {
                             <PaymentStatusBadge status={p.status} />
                           </TableCell>
                           <TableCell className="pr-4">
-                            <div className="flex justify-end">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
+                                onClick={() => void openReceipt(p)}
+                              >
+                                <FileText className="h-3 w-3" />
+                                View Receipt
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
-                                onClick={() => {
-                                  setSelectedPayment(p);
-                                  setEditStatus(p.status);
-                                  setEditMethod(p.method);
-                                  setEditAmount(p.amountValue);
-                                  setEditDate(p.date ?? "");
-                                  setEditRef(p.referenceNo ?? "");
-                                  setEditProof(p.proofOfPaymentUrl ?? "");
-                                  setShowDetailsDialog(true);
-                                }}
+                                onClick={() => openPaymentDetails(p)}
                               >
                                 <Eye className="h-3 w-3" />
                                 View Details
@@ -1549,6 +1592,55 @@ export default function LandlordPaymentsPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {showReceiptDialog && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <div className="w-full max-w-lg space-y-3">
+            <div className="flex justify-end gap-2 print:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs bg-white"
+                onClick={() => window.print()}
+                disabled={!receiptPayment}
+              >
+                Print / Save as PDF
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs bg-white"
+                onClick={() => {
+                  setShowReceiptDialog(false);
+                  setReceiptPayment(null);
+                  setReceiptError(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+            {receiptLoading && (
+              <div className="flex items-center justify-center rounded-lg border bg-white py-16 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Loading receipt…
+              </div>
+            )}
+            {receiptError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                {receiptError}
+              </div>
+            )}
+            {receiptPayment && (
+              <PaymentReceiptCard
+                payment={receiptPayment}
+                footerNote="This receipt was generated from DormConnect. Keep for your records."
+              />
+            )}
+          </div>
         </div>
       )}
     </div>

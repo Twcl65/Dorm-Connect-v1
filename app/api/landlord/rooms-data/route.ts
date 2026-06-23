@@ -176,6 +176,51 @@ export async function GET(req: Request) {
       [ownerId, propertyId]
     );
 
+    const { rows: studentCounts } = await pool.query<{
+      room_id: string;
+      c: string;
+    }>(
+      `SELECT s.room_id, COUNT(*)::text AS c
+       FROM public.student_dorm_reservations s
+       JOIN public.landlord_rooms r ON r.id = s.room_id
+       WHERE r.owner_user_id = $1::uuid
+         AND r.property_id = $2::uuid
+         AND s.status IN ('Pending', 'Confirmed')
+         AND NOT EXISTS (
+           SELECT 1 FROM public.landlord_tenant_leases l
+           WHERE l.student_reservation_id = s.id
+         )
+       GROUP BY s.room_id`,
+      [ownerId, propertyId]
+    );
+
+    const { rows: manualCounts } = await pool.query<{
+      room_id: string;
+      c: string;
+    }>(
+      `SELECT lr.room_id, COUNT(*)::text AS c
+       FROM public.landlord_reservations lr
+       WHERE lr.owner_user_id = $1::uuid
+         AND lr.property_id = $2::uuid
+         AND lr.room_id IS NOT NULL
+         AND lr.status IN ('Pending', 'Confirmed')
+       GROUP BY lr.room_id`,
+      [ownerId, propertyId]
+    );
+
+    const { rows: leaseCounts } = await pool.query<{
+      room_id: string;
+      c: string;
+    }>(
+      `SELECT l.room_id, COUNT(*)::text AS c
+       FROM public.landlord_tenant_leases l
+       JOIN public.landlord_rooms r ON r.id = l.room_id
+       WHERE l.owner_user_id = $1::uuid
+         AND l.property_id = $2::uuid
+       GROUP BY l.room_id`,
+      [ownerId, propertyId]
+    );
+
     const leaseByRoom = new Map(leases.map((l) => [l.room_id, l]));
     const studentByRoom = new Map(
       studentReservations.map((s) => [s.room_id, s])
@@ -185,6 +230,15 @@ export async function GET(req: Request) {
         .filter((m) => m.room_id)
         .map((m) => [m.room_id as string, m])
     );
+    const studentReservationCountByRoom = new Map(
+      studentCounts.map((row) => [row.room_id, Number(row.c)])
+    );
+    const manualReservationCountByRoom = new Map(
+      manualCounts.map((row) => [row.room_id, Number(row.c)])
+    );
+    const leaseCountByRoom = new Map(
+      leaseCounts.map((row) => [row.room_id, Number(row.c)])
+    );
 
     const roomStatuses: (
       | "Occupied"
@@ -193,24 +247,21 @@ export async function GET(req: Request) {
       | "Maintenance"
     )[] = [];
 
+    const roomStatusByRoom = new Map<string, RoomListingStatus>();
+
     const mappedRooms = rooms.map((r) => {
       const lease = leaseByRoom.get(r.id);
       const studentRes = studentByRoom.get(r.id);
       const manualRes = manualByRoom.get(r.id);
-
       const effectiveStatus = resolveRoomListingStatus({
         dbRoomStatus: r.status,
-        hasLease: Boolean(lease),
-        studentReservationStatus:
-          studentRes?.status === "Confirmed" || studentRes?.status === "Pending"
-            ? studentRes.status
-            : null,
-        manualReservationStatus:
-          manualRes?.status === "Confirmed" || manualRes?.status === "Pending"
-            ? manualRes.status
-            : null,
+        capacity: r.capacity,
+        leaseCount: leaseCountByRoom.get(r.id) ?? 0,
+        studentReservationCount: studentReservationCountByRoom.get(r.id) ?? 0,
+        manualReservationCount: manualReservationCountByRoom.get(r.id) ?? 0,
       });
       roomStatuses.push(effectiveStatus);
+      roomStatusByRoom.set(r.id, effectiveStatus);
 
       const imgs = Array.isArray(r.listing_image_urls)
         ? (r.listing_image_urls as string[])
@@ -254,20 +305,16 @@ export async function GET(req: Request) {
         const lease = leaseByRoom.get(r.id);
         const studentRes = studentByRoom.get(r.id);
         const manualRes = manualByRoom.get(r.id);
-        const effectiveStatus = resolveRoomListingStatus({
-          dbRoomStatus: r.status,
-          hasLease: Boolean(lease),
-          studentReservationStatus:
-            studentRes?.status === "Confirmed" ||
-            studentRes?.status === "Pending"
-              ? studentRes.status
-              : null,
-          manualReservationStatus:
-            manualRes?.status === "Confirmed" ||
-            manualRes?.status === "Pending"
-              ? manualRes.status
-              : null,
-        });
+        const effectiveStatus =
+          roomStatusByRoom.get(r.id) ??
+          resolveRoomListingStatus({
+            dbRoomStatus: r.status,
+            capacity: r.capacity,
+            leaseCount: leaseCountByRoom.get(r.id) ?? 0,
+            studentReservationCount:
+              studentReservationCountByRoom.get(r.id) ?? 0,
+            manualReservationCount: manualReservationCountByRoom.get(r.id) ?? 0,
+          });
 
         if (lease) {
           return {

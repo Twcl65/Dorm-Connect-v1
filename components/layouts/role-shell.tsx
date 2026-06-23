@@ -20,6 +20,7 @@ import {
   Bell,
   Menu,
   MoreVertical,
+  Star,
   User as UserIcon
 } from "lucide-react";
 import { cn } from "@/components/ui/utils";
@@ -238,7 +239,7 @@ export function RoleShell({
                         method: "POST",
                         credentials: "include",
                       }).finally(() => {
-                        router.push("/login");
+                        router.push("/");
                         router.refresh();
                       });
                     }}
@@ -308,7 +309,7 @@ export function RoleShell({
                       method: "POST",
                       credentials: "include",
                     }).finally(() => {
-                      router.push("/login");
+                      router.push("/");
                       router.refresh();
                     });
                   }}
@@ -344,6 +345,7 @@ export const RoleIcons = {
   reservations: CalendarClock,
   payments: WalletCards,
   documents: FileBadge,
-  bell: Bell
+  bell: Bell,
+  reviews: Star
 };
 
