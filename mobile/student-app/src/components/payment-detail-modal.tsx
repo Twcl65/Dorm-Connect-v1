@@ -10,9 +10,10 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import type { PaymentRow } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/config";
-import { Badge, Card, colors } from "@/components/ui";
+import { Badge, Button, Card, colors } from "@/components/ui";
 
 type Props = {
   visible: boolean;
@@ -102,6 +103,7 @@ function ProofAttachment({
 }
 
 export function PaymentDetailModal({ visible, payment, onClose }: Props) {
+  const router = useRouter();
   const attachments = useMemo(() => {
     if (!payment) return [];
     const list: { key: string; label: string; url: string; caption?: string }[] =
@@ -232,6 +234,18 @@ export function PaymentDetailModal({ visible, payment, onClose }: Props) {
               ) : (
                 <Text style={styles.noProof}>No proof image attached.</Text>
               )}
+              <View style={styles.receiptBtn}>
+                <Button
+                  label="View official receipt"
+                  variant="outline"
+                  onPress={() => {
+                    onClose();
+                    router.push(
+                      `/payment-receipt/${encodeURIComponent(payment.id)}`
+                    );
+                  }}
+                />
+              </View>
             </Card>
           </ScrollView>
         </View>
@@ -297,6 +311,7 @@ const styles = StyleSheet.create({
   },
   tapHint: { fontSize: 11, color: "#94a3b8", marginTop: 6 },
   noProof: { fontSize: 13, color: "#64748b", marginTop: 8 },
+  receiptBtn: { marginTop: 14 },
   docLink: {
     flexDirection: "row",
     alignItems: "center",

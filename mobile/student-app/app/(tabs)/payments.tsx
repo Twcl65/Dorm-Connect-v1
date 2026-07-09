@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   apiRequest,
   formatSignInError,
@@ -41,6 +41,7 @@ function sourceTypeLabel(item: PaymentRow): string {
 }
 
 export default function PaymentsScreen() {
+  const router = useRouter();
   const { token } = useAuth();
   const [items, setItems] = useState<PaymentRow[]>([]);
   const [unpaidMonths, setUnpaidMonths] = useState<UnpaidRentMonth[]>([]);
@@ -214,45 +215,57 @@ export default function PaymentsScreen() {
             </Card>
           }
           renderItem={({ item }) => (
-            <Pressable onPress={() => setSelected(item)}>
-              <Card>
-                <View style={styles.cardTop}>
-                  <Text style={styles.name}>
-                    {item.dormName} · Room {item.roomNo}
-                  </Text>
-                  <Badge
-                    label={sourceTypeLabel(item)}
-                    tone={isManualPayment(item) ? "default" : "success"}
-                  />
-                </View>
-                <Text style={styles.meta}>
-                  ₱{item.amount.toLocaleString()} · {item.method}
+            <Card>
+              <View style={styles.cardTop}>
+                <Text style={styles.name}>
+                  {item.dormName} · Room {item.roomNo}
                 </Text>
-                <Text style={styles.meta}>{item.date}</Text>
-                {item.leasePeriod ? (
-                  <Text style={styles.meta}>{item.leasePeriod}</Text>
-                ) : null}
-                {item.paidAt ? (
-                  <Text style={styles.meta}>Paid: {item.paidAt}</Text>
-                ) : null}
-                {item.referenceNo ? (
-                  <Text style={styles.meta}>Ref: {item.referenceNo}</Text>
-                ) : null}
-                <View style={styles.badges}>
-                  <Badge
-                    label={item.status}
-                    tone={
-                      item.status === "Paid"
-                        ? "success"
-                        : item.status === "Overdue" || item.status === "Failed"
-                          ? "danger"
-                          : "warning"
-                    }
-                  />
-                </View>
-                <Text style={styles.tapHint}>Tap for details</Text>
-              </Card>
-            </Pressable>
+                <Badge
+                  label={sourceTypeLabel(item)}
+                  tone={isManualPayment(item) ? "default" : "success"}
+                />
+              </View>
+              <Text style={styles.meta}>
+                ₱{item.amount.toLocaleString()} · {item.method}
+              </Text>
+              <Text style={styles.meta}>{item.date}</Text>
+              {item.leasePeriod ? (
+                <Text style={styles.meta}>{item.leasePeriod}</Text>
+              ) : null}
+              {item.paidAt ? (
+                <Text style={styles.meta}>Paid: {item.paidAt}</Text>
+              ) : null}
+              {item.referenceNo ? (
+                <Text style={styles.meta}>Ref: {item.referenceNo}</Text>
+              ) : null}
+              <View style={styles.badges}>
+                <Badge
+                  label={item.status}
+                  tone={
+                    item.status === "Paid"
+                      ? "success"
+                      : item.status === "Overdue" || item.status === "Failed"
+                        ? "danger"
+                        : "warning"
+                  }
+                />
+              </View>
+              <View style={styles.cardActions}>
+                <Pressable
+                  style={styles.receiptBtn}
+                  onPress={() =>
+                    router.push(
+                      `/payment-receipt/${encodeURIComponent(item.id)}`
+                    )
+                  }
+                >
+                  <Text style={styles.receiptBtnText}>Receipt</Text>
+                </Pressable>
+                <Pressable onPress={() => setSelected(item)}>
+                  <Text style={styles.detailsLink}>View details</Text>
+                </Pressable>
+              </View>
+            </Card>
           )}
         />
       )}
@@ -298,6 +311,32 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: 13, color: "#64748b", marginTop: 4 },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-  tapHint: { fontSize: 11, color: "#94a3b8", marginTop: 8 },
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    gap: 8,
+  },
+  receiptBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.sky,
+    backgroundColor: "#f0f9ff",
+  },
+  receiptBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.sky,
+  },
+  detailsLink: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.navy,
+    flex: 1,
+    textAlign: "right",
+  },
   empty: { fontSize: 13, color: "#64748b" },
 });

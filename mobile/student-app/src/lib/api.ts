@@ -271,6 +271,55 @@ export type PaymentRow = {
   monthlyRent?: number;
 };
 
+export type PaymentReceiptLineItem = { label: string; amount: number };
+
+export type PaymentReceiptData = {
+  id: string;
+  amount: number;
+  method: string;
+  status: string;
+  createdAt: string;
+  paidAt: string | null;
+  dormName: string;
+  roomNo: string;
+  landlord: string;
+  leasePeriod: string;
+  studentName: string;
+  monthlyRent: number | null;
+  lineItems: PaymentReceiptLineItem[] | null;
+  notes: string | null;
+  periodLabel?: string | null;
+  source?: "student_app" | "landlord_entry";
+};
+
+export type ReviewableRoom = {
+  roomId: string;
+  roomNo: string;
+  propertyName: string;
+  propertyAddress: string | null;
+  reservationStatus: string;
+  existingReview: {
+    id: string;
+    rating: number;
+    title: string;
+    comment: string;
+    reviewedAt: string | null;
+  } | null;
+};
+
+export type MyReview = {
+  roomId: string;
+  roomNo: string;
+  propertyName: string;
+  propertyAddress: string | null;
+  reservationStatus: string;
+  id: string;
+  rating: number;
+  title: string;
+  comment: string;
+  reviewedAt: string | null;
+};
+
 export type AnnouncementRow = {
   id: string;
   title: string;

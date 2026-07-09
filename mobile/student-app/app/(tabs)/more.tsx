@@ -27,6 +27,13 @@ export default function MoreScreen() {
       </Card>
 
       <MenuLink
+        href="/reviews"
+        label="Reviews"
+        subtitle="Rate and review your booked dormitories"
+        icon="star-outline"
+      />
+
+      <MenuLink
         href="/settings"
         label="Account & settings"
         subtitle="Profile, name, and student ID"

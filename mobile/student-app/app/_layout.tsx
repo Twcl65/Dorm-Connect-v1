@@ -34,6 +34,26 @@ export default function RootLayout() {
             headerTitle: "",
           }}
         />
+        <Stack.Screen
+          name="reviews"
+          options={{
+            headerShown: true,
+            header: () => <AppHeader showBack />,
+            headerStyle: { backgroundColor: colors.brand },
+            headerShadowVisible: false,
+            headerTitle: "",
+          }}
+        />
+        <Stack.Screen
+          name="payment-receipt/[id]"
+          options={{
+            headerShown: true,
+            header: () => <AppHeader showBack />,
+            headerStyle: { backgroundColor: colors.brand },
+            headerShadowVisible: false,
+            headerTitle: "",
+          }}
+        />
       </Stack>
     </AuthProvider>
   );
