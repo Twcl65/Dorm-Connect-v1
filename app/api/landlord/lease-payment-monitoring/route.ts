@@ -88,66 +88,88 @@ export async function GET() {
 
     const fromReservations = await Promise.all(
       reservations.map(async (res) => {
-        await ensurePaymentDueDatesForReservation(pool, res.id);
-        await reconcileScheduleWithPaidPayments(pool, { reservationId: res.id });
-        const monthlySchedule = await fetchMonthlySchedule(pool, {
-          reservationId: res.id,
-        });
-        const months = countLeaseMonths(
-          new Date(res.lease_start),
-          new Date(res.lease_end)
-        );
-        return buildRow({
-          id: res.id,
-          tenantName: res.tenant_name,
-          roomNumber: res.room_no,
-          propertyName: res.property_name,
-          linkedLeaseId: leaseIdByReservation.get(res.id) ?? null,
-          leaseStart: res.lease_start,
-          leaseEnd: res.lease_end,
-          months,
-          monthlyRent: Number(res.monthly_rent),
-          remainingBalance: Number(res.balance_remaining),
-          advancePayments: Number(res.advance_amount),
-          deposits: Number(res.deposit_amount),
-          monthlySchedule,
-          studentUserId: res.student_user_id,
-          source: "reservation" as const,
-        });
+        try {
+          await ensurePaymentDueDatesForReservation(pool, res.id);
+          await reconcileScheduleWithPaidPayments(pool, { reservationId: res.id });
+          const monthlySchedule = await fetchMonthlySchedule(pool, {
+            reservationId: res.id,
+          });
+          const { rows: freshBal } = await pool.query<{
+            balance_remaining: string;
+            advance_amount: string;
+            deposit_amount: string;
+          }>(
+            `SELECT balance_remaining::text, advance_amount::text, deposit_amount::text
+             FROM public.student_dorm_reservations WHERE id = $1::uuid`,
+            [res.id]
+          );
+          const months = countLeaseMonths(
+            new Date(res.lease_start),
+            new Date(res.lease_end)
+          );
+          return buildRow({
+            id: res.id,
+            tenantName: res.tenant_name,
+            roomNumber: res.room_no,
+            propertyName: res.property_name,
+            linkedLeaseId: leaseIdByReservation.get(res.id) ?? null,
+            leaseStart: res.lease_start,
+            leaseEnd: res.lease_end,
+            months,
+            monthlyRent: Number(res.monthly_rent),
+            remainingBalance: Number(freshBal[0]?.balance_remaining ?? 0),
+            advancePayments: Number(freshBal[0]?.advance_amount ?? 0),
+            deposits: Number(freshBal[0]?.deposit_amount ?? 0),
+            monthlySchedule,
+            studentUserId: res.student_user_id,
+            source: "reservation" as const,
+          });
+        } catch (err) {
+          console.error(
+            `Lease monitoring failed for reservation ${res.id}:`,
+            err
+          );
+          return null;
+        }
       })
     );
 
     const fromLeases = await Promise.all(
       manualLeases.map(async (l) => {
-        await ensurePaymentDueDatesForLease(pool, l.id);
-        await reconcileScheduleWithPaidPayments(pool, { leaseId: l.id });
-        const monthlySchedule = await fetchMonthlySchedule(pool, {
-          leaseId: l.id,
-        });
-        const months = countLeaseMonths(
-          new Date(l.lease_start),
-          new Date(l.lease_end)
-        );
-        const remaining = monthlySchedule
-          .filter((m) => m.status !== "Paid")
-          .reduce((s, m) => s + m.amount, 0);
-        return buildRow({
-          id: l.id,
-          tenantName: l.tenant_name,
-          roomNumber: l.room_no,
-          propertyName: l.property_name,
-          linkedLeaseId: l.id,
-          leaseStart: l.lease_start,
-          leaseEnd: l.lease_end,
-          months,
-          monthlyRent: Number(l.monthly_rate),
-          remainingBalance: remaining,
-          advancePayments: 0,
-          deposits: 0,
-          monthlySchedule,
-          studentUserId: null,
-          source: "lease" as const,
-        });
+        try {
+          await ensurePaymentDueDatesForLease(pool, l.id);
+          await reconcileScheduleWithPaidPayments(pool, { leaseId: l.id });
+          const monthlySchedule = await fetchMonthlySchedule(pool, {
+            leaseId: l.id,
+          });
+          const months = countLeaseMonths(
+            new Date(l.lease_start),
+            new Date(l.lease_end)
+          );
+          const remaining = monthlySchedule
+            .filter((m) => m.status !== "Paid")
+            .reduce((s, m) => s + m.amount, 0);
+          return buildRow({
+            id: l.id,
+            tenantName: l.tenant_name,
+            roomNumber: l.room_no,
+            propertyName: l.property_name,
+            linkedLeaseId: l.id,
+            leaseStart: l.lease_start,
+            leaseEnd: l.lease_end,
+            months,
+            monthlyRent: Number(l.monthly_rate),
+            remainingBalance: remaining,
+            advancePayments: 0,
+            deposits: 0,
+            monthlySchedule,
+            studentUserId: null,
+            source: "lease" as const,
+          });
+        } catch (err) {
+          console.error(`Lease monitoring failed for lease ${l.id}:`, err);
+          return null;
+        }
       })
     );
 
@@ -166,9 +188,10 @@ export async function GET() {
       }
     }
 
-    const leasePaymentMonitoring = [...fromReservations, ...fromLeases].sort(
-      (a, b) => a.tenantName.localeCompare(b.tenantName)
-    );
+    const leasePaymentMonitoring = [
+      ...fromReservations.filter((r): r is NonNullable<typeof r> => r != null),
+      ...fromLeases.filter((r): r is NonNullable<typeof r> => r != null),
+    ].sort((a, b) => a.tenantName.localeCompare(b.tenantName));
 
     return NextResponse.json({ leasePaymentMonitoring });
   } catch (error) {

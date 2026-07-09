@@ -9,6 +9,16 @@ export type MapMarkerData = {
   coverImageUrl?: string | null;
 };
 
+/** Match web Leaflet icon (student-properties-map.tsx). */
+export const MARKER_WIDTH = 140;
+export const MARKER_CIRCLE = 52;
+const LABEL_BLOCK = 32;
+const LABEL_GAP = 6;
+export const MARKER_HEIGHT = LABEL_BLOCK + LABEL_GAP + MARKER_CIRCLE;
+
+/** Distance from marker top to circle center (map coordinate anchor). */
+export const MARKER_ANCHOR_OFFSET_Y = LABEL_BLOCK + LABEL_GAP + MARKER_CIRCLE / 2;
+
 export function PropertyMapMarker({
   name,
   coverImageUrl,
@@ -18,17 +28,47 @@ export function PropertyMapMarker({
   coverImageUrl?: string | null;
   selected?: boolean;
 }) {
-  const label = name.length > 28 ? `${name.slice(0, 26)}…` : name;
+  const label = name.length > 32 ? `${name.slice(0, 30)}…` : name;
   const initials = name.trim().slice(0, 3).toUpperCase() || "DC";
+  const borderW = selected ? 4 : 3;
+  const innerSize = MARKER_CIRCLE - borderW * 2;
 
   return (
     <View style={styles.wrap} pointerEvents="none">
-      <Text style={styles.label} numberOfLines={2}>
-        {label}
-      </Text>
-      <View style={[styles.circle, selected && styles.circleSelected]}>
+      <View style={styles.labelBox}>
+        <Text style={styles.label} numberOfLines={2}>
+          {label}
+        </Text>
+      </View>
+      <View style={{ height: LABEL_GAP }} />
+      <View
+        style={[
+          styles.circle,
+          selected && styles.circleSelected,
+          {
+            width: MARKER_CIRCLE,
+            height: MARKER_CIRCLE,
+            borderRadius: MARKER_CIRCLE / 2,
+            borderWidth: borderW,
+          },
+        ]}
+      >
         {coverImageUrl ? (
-          <Image source={{ uri: coverImageUrl }} style={styles.image} />
+          <View
+            style={{
+              width: innerSize,
+              height: innerSize,
+              borderRadius: innerSize / 2,
+              overflow: "hidden",
+              backgroundColor: colors.white,
+            }}
+          >
+            <Image
+              source={{ uri: coverImageUrl }}
+              style={{ width: innerSize, height: innerSize }}
+              resizeMode="cover"
+            />
+          </View>
         ) : (
           <Text style={styles.initials}>{initials}</Text>
         )}
@@ -37,32 +77,34 @@ export function PropertyMapMarker({
   );
 }
 
-const CIRCLE = 52;
-
 const styles = StyleSheet.create({
   wrap: {
+    width: MARKER_WIDTH,
+    height: MARKER_HEIGHT,
     alignItems: "center",
-    width: 140,
+  },
+  labelBox: {
+    width: MARKER_WIDTH,
+    minHeight: LABEL_BLOCK,
+    maxHeight: LABEL_BLOCK,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    backgroundColor: "#f0fdf4",
+    justifyContent: "center",
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "600",
-    color: colors.navy,
+    color: "#14532d",
     textAlign: "center",
-    marginBottom: 6,
-    maxWidth: 136,
-    textShadowColor: "rgba(255,255,255,0.9)",
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 4,
+    lineHeight: 14,
   },
   circle: {
-    width: CIRCLE,
-    height: CIRCLE,
-    borderRadius: CIRCLE / 2,
-    borderWidth: 3,
     borderColor: colors.emerald,
     backgroundColor: colors.white,
-    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -73,11 +115,6 @@ const styles = StyleSheet.create({
   },
   circleSelected: {
     borderColor: colors.sky,
-    borderWidth: 4,
-  },
-  image: {
-    width: "100%",
-    height: "100%",
   },
   initials: {
     fontSize: 14,

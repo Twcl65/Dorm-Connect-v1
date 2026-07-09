@@ -311,6 +311,347 @@ export function isInitialMoveInPayment(
 
 type PaidPaymentRow = { amount: number; paidOn: string | null };
 
+type CreditPaymentRow = {
+  monthNumber: number;
+  fundSource: "advance" | "deposit";
+  amount: number;
+  paidOn: string | null;
+};
+
+/** Match a payment date to the schedule month with the same calendar year-month. */
+function matchScheduleMonthByPaidOn(
+  schedule: MonthlyDueRow[],
+  paidOn: string | null,
+  opts?: { onlyUnpaid?: boolean }
+): MonthlyDueRow | null {
+  if (!paidOn || schedule.length === 0) return null;
+  const ym = paidOn.slice(0, 7);
+  const candidates = opts?.onlyUnpaid
+    ? schedule.filter((m) => m.status !== "Paid")
+    : schedule;
+
+  const exact = candidates.find((m) => m.dueDate.slice(0, 7) === ym);
+  if (exact) return exact;
+
+  // Early payment for prior month (e.g. June rent paid on July 1).
+  const paidDay = paidOn.slice(0, 10);
+  const paidTime = new Date(`${paidDay}T12:00:00`).getTime();
+  let nearest: MonthlyDueRow | null = null;
+  let nearestDiff = Infinity;
+  for (const m of candidates) {
+    const dueDay = m.dueDate.slice(0, 10);
+    const dueTime = new Date(`${dueDay}T12:00:00`).getTime();
+    const diff = Math.abs(paidTime - dueTime);
+    if (diff < nearestDiff) {
+      nearestDiff = diff;
+      nearest = m;
+    }
+  }
+  // Within 45 days of due date counts as that billing month.
+  if (nearest && nearestDiff <= 45 * 24 * 60 * 60 * 1000) return nearest;
+  return null;
+}
+
+/** Resolve confirmed reservation for a landlord payment context. */
+export async function resolveReservationIdForPaymentContext(
+  pool: Pool,
+  opts: {
+    tenantLeaseId?: string | null;
+    roomId?: string | null;
+    studentUserId?: string | null;
+  }
+): Promise<string | null> {
+  if (opts.tenantLeaseId) {
+    const { rows } = await pool.query<{ student_reservation_id: string | null }>(
+      `SELECT student_reservation_id
+       FROM public.landlord_tenant_leases
+       WHERE id = $1::uuid`,
+      [opts.tenantLeaseId]
+    );
+    if (rows[0]?.student_reservation_id) return rows[0].student_reservation_id;
+  }
+
+  if (opts.studentUserId && opts.roomId) {
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM public.student_dorm_reservations
+       WHERE student_user_id = $1::uuid AND room_id = $2::uuid AND status = 'Confirmed'
+       ORDER BY created_at DESC LIMIT 1`,
+      [opts.studentUserId, opts.roomId]
+    );
+    if (rows[0]?.id) return rows[0].id;
+  }
+
+  if (opts.roomId) {
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM public.student_dorm_reservations
+       WHERE room_id = $1::uuid AND status = 'Confirmed'
+       ORDER BY created_at DESC LIMIT 1`,
+      [opts.roomId]
+    );
+    if (rows[0]?.id) return rows[0].id;
+  }
+
+  return null;
+}
+
+/** Which schedule month a payment date applies to (for onsite / manual entries). */
+export async function resolveScheduleMonthFromPaidOn(
+  pool: Pool,
+  opts: { reservationId?: string | null; leaseId?: string | null },
+  paidOn: string
+): Promise<number | null> {
+  const target = await resolveScheduleTarget(pool, opts);
+  if (!target.reservationId && !target.leaseId) return null;
+
+  if (target.reservationId) {
+    await ensurePaymentDueDatesForReservation(pool, target.reservationId);
+  } else if (target.leaseId) {
+    await ensurePaymentDueDatesForLease(pool, target.leaseId);
+  }
+
+  const schedule = await fetchMonthlySchedule(pool, {
+    reservationId: target.reservationId ?? undefined,
+    leaseId: target.leaseId ?? undefined,
+  });
+  return matchScheduleMonthByPaidOn(schedule, paidOn, { onlyUnpaid: true })
+    ?.monthNumber ?? null;
+}
+
+async function fetchCreditPaymentsForTarget(
+  pool: Pool,
+  target: ScheduleTarget
+): Promise<CreditPaymentRow[]> {
+  const credits: CreditPaymentRow[] = [];
+
+  if (target.reservationId) {
+    const { rows: resRows } = await pool.query<{
+      room_id: string;
+      guest_name: string;
+    }>(
+      `SELECT room_id, guest_name FROM public.student_dorm_reservations WHERE id = $1::uuid`,
+      [target.reservationId]
+    );
+    const res = resRows[0];
+    if (!res) return credits;
+
+    const { rows } = await pool.query<{
+      schedule_month_number: number;
+      entry_source: string;
+      amount: string;
+      paid_on: string | null;
+    }>(
+      `SELECT lp.schedule_month_number, lp.entry_source, lp.amount::text, lp.paid_on::text
+       FROM public.landlord_payments lp
+       LEFT JOIN public.landlord_tenant_leases ltl ON ltl.id = lp.tenant_lease_id
+       WHERE lp.room_id = $1::uuid AND lp.status = 'Paid'
+         AND lp.entry_source IN ('advance', 'deposit')
+         AND lp.schedule_month_number IS NOT NULL
+         AND (
+           ltl.student_reservation_id = $2::uuid
+           OR (
+             ltl.id IS NULL
+             AND lower(trim(lp.payer_name)) = lower(trim($3))
+           )
+         )
+       ORDER BY lp.schedule_month_number ASC`,
+      [res.room_id, target.reservationId, res.guest_name]
+    );
+    for (const r of rows) {
+      credits.push({
+        monthNumber: r.schedule_month_number,
+        fundSource: r.entry_source as "advance" | "deposit",
+        amount: Number(r.amount),
+        paidOn: r.paid_on?.slice(0, 10) ?? null,
+      });
+    }
+  } else if (target.leaseId) {
+    const { rows: leaseRows } = await pool.query<{
+      room_id: string;
+      tenant_name: string;
+      owner_user_id: string;
+    }>(
+      `SELECT room_id, tenant_name, owner_user_id
+       FROM public.landlord_tenant_leases WHERE id = $1::uuid`,
+      [target.leaseId]
+    );
+    const lease = leaseRows[0];
+    if (!lease) return credits;
+
+    const { rows } = await pool.query<{
+      schedule_month_number: number;
+      entry_source: string;
+      amount: string;
+      paid_on: string | null;
+    }>(
+      `SELECT schedule_month_number, entry_source, amount::text, paid_on::text
+       FROM public.landlord_payments
+       WHERE owner_user_id = $1::uuid AND room_id = $2::uuid AND status = 'Paid'
+         AND lower(trim(payer_name)) = lower(trim($3))
+         AND entry_source IN ('advance', 'deposit')
+         AND schedule_month_number IS NOT NULL
+         AND tenant_lease_id = $4::uuid
+       ORDER BY schedule_month_number ASC`,
+      [lease.owner_user_id, lease.room_id, lease.tenant_name, target.leaseId]
+    );
+    for (const r of rows) {
+      credits.push({
+        monthNumber: r.schedule_month_number,
+        fundSource: r.entry_source as "advance" | "deposit",
+        amount: Number(r.amount),
+        paidOn: r.paid_on?.slice(0, 10) ?? null,
+      });
+    }
+  }
+
+  return credits;
+}
+
+/** Keep advance/deposit buckets aligned with move-in seeding minus applied credits. */
+async function syncAdvanceDepositFromLedger(
+  pool: Pool,
+  reservationId: string,
+  monthlyRent: number
+): Promise<void> {
+  if (monthlyRent <= 0) return;
+
+  const payments = await fetchPaidPaymentsForTarget(pool, {
+    reservationId,
+    leaseId: null,
+  });
+  const hasMoveIn = payments.some((p) =>
+    isInitialMoveInPayment(p.amount, monthlyRent)
+  );
+  if (!hasMoveIn) return;
+
+  const credits = await fetchCreditPaymentsForTarget(pool, {
+    reservationId,
+    leaseId: null,
+  });
+  const advanceUsed = credits
+    .filter((c) => c.fundSource === "advance")
+    .reduce((s, c) => s + c.amount, 0);
+  const depositUsed = credits
+    .filter((c) => c.fundSource === "deposit")
+    .reduce((s, c) => s + c.amount, 0);
+
+  const baseline = monthlyRent;
+  const newAdvance = Math.max(
+    0,
+    Math.round((baseline - advanceUsed) * 100) / 100
+  );
+  const newDeposit = Math.max(
+    0,
+    Math.round((baseline - depositUsed) * 100) / 100
+  );
+
+  await pool.query(
+    `UPDATE public.student_dorm_reservations
+     SET advance_amount = $1,
+         deposit_amount = $2,
+         updated_at = now()
+     WHERE id = $3::uuid`,
+    [newAdvance, newDeposit, reservationId]
+  );
+}
+
+/** Mark schedule months paid from advance/deposit ledger entries. */
+async function syncScheduleFromCreditPayments(
+  pool: Pool,
+  target: ScheduleTarget
+): Promise<void> {
+  const credits = await fetchCreditPaymentsForTarget(pool, target);
+  for (const credit of credits) {
+    try {
+      await setScheduleMonthStatus(pool, {
+        reservationId: target.reservationId,
+        leaseId: target.leaseId,
+        monthNumber: credit.monthNumber,
+        status: "Paid",
+        paidOn: credit.paidOn,
+      });
+    } catch {
+      /* month may not exist on schedule */
+    }
+  }
+}
+
+/** Mark schedule months paid from cash payments matched by paid_on calendar month. */
+async function syncScheduleFromCashPaymentsByMonth(
+  pool: Pool,
+  target: ScheduleTarget
+): Promise<void> {
+  const monthlyRent = await getMonthlyRentForTarget(pool, target);
+  if (monthlyRent <= 0) return;
+
+  const payments = await fetchPaidPaymentsForTarget(pool, target);
+  const schedule = await fetchMonthlySchedule(pool, {
+    reservationId: target.reservationId ?? undefined,
+    leaseId: target.leaseId ?? undefined,
+  });
+  if (schedule.length === 0) return;
+
+  const paidMonthNumbers = new Set(
+    schedule.filter((m) => m.status === "Paid").map((m) => m.monthNumber)
+  );
+
+  for (const payment of payments) {
+    if (isInitialMoveInPayment(payment.amount, monthlyRent)) {
+      const month1 = schedule.find((m) => m.monthNumber === 1);
+      if (month1 && !paidMonthNumbers.has(1)) {
+        try {
+          await setScheduleMonthStatus(pool, {
+            reservationId: target.reservationId,
+            leaseId: target.leaseId,
+            monthNumber: 1,
+            status: "Paid",
+            paidOn: payment.paidOn,
+          });
+          paidMonthNumbers.add(1);
+        } catch {
+          /* month may not exist or already updated */
+        }
+      }
+      continue;
+    }
+
+    if (payment.amount < monthlyRent - 0.01) continue;
+
+    const matched = matchScheduleMonthByPaidOn(schedule, payment.paidOn, {
+      onlyUnpaid: true,
+    });
+    if (matched && !paidMonthNumbers.has(matched.monthNumber)) {
+      try {
+        await setScheduleMonthStatus(pool, {
+          reservationId: target.reservationId,
+          leaseId: target.leaseId,
+          monthNumber: matched.monthNumber,
+          status: "Paid",
+          paidOn: payment.paidOn,
+        });
+        paidMonthNumbers.add(matched.monthNumber);
+      } catch {
+        /* month may not exist or already updated */
+      }
+    }
+  }
+
+  // Refresh schedule after month-targeted marks before sequential fallback.
+  const refreshed = await fetchMonthlySchedule(pool, {
+    reservationId: target.reservationId ?? undefined,
+    leaseId: target.leaseId ?? undefined,
+  });
+  let paidOnSchedule = refreshed.filter((m) => m.status === "Paid").length;
+  const targetPaidMonths = await computePaidRentMonthsFromPayments(pool, target);
+  const toApply = targetPaidMonths - paidOnSchedule;
+
+  for (let i = 0; i < toApply; i++) {
+    await applyPaidRentToSchedule(pool, {
+      reservationId: target.reservationId,
+      leaseId: target.leaseId,
+    });
+  }
+}
+
 async function fetchPaidPaymentsForTarget(
   pool: Pool,
   target: ScheduleTarget
@@ -322,7 +663,9 @@ async function fetchPaidPaymentsForTarget(
       room_id: string;
       guest_name: string;
     }>(
-      `SELECT room_id, guest_name FROM public.student_dorm_reservations WHERE id = $1::uuid`,
+      `SELECT s.room_id, s.guest_name
+       FROM public.student_dorm_reservations s
+       WHERE s.id = $1::uuid`,
       [target.reservationId]
     );
     const res = resRows[0];
@@ -339,9 +682,12 @@ async function fetchPaidPaymentsForTarget(
       [target.reservationId]
     );
     for (const p of studentPay) {
+      const paidOn = p.paid_at ?? p.created_at;
       payments.push({
         amount: Number(p.amount),
-        paidOn: (p.paid_at ?? p.created_at)?.toISOString().slice(0, 10) ?? null,
+        paidOn: paidOn instanceof Date
+          ? `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, "0")}-${String(paidOn.getDate()).padStart(2, "0")}`
+          : null,
       });
     }
 
@@ -351,18 +697,39 @@ async function fetchPaidPaymentsForTarget(
         paid_on: string | null;
         created_at: Date;
       }>(
-        `SELECT amount::text, paid_on::text, created_at
-         FROM public.landlord_payments
-         WHERE room_id = $1::uuid AND status = 'Paid'
-           AND lower(trim(payer_name)) = lower(trim($2))
-           AND (entry_source IS NULL OR entry_source = 'manual')
-         ORDER BY COALESCE(paid_on, created_at::date) ASC`,
-        [res.room_id, res.guest_name]
+        `SELECT lp.amount::text, lp.paid_on::text, lp.created_at
+         FROM public.landlord_payments lp
+         LEFT JOIN public.landlord_tenant_leases ltl ON ltl.id = lp.tenant_lease_id
+         JOIN public.student_dorm_reservations s ON s.id = $1::uuid
+         LEFT JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
+         WHERE lp.room_id = s.room_id AND lp.status = 'Paid'
+           AND (lp.entry_source IS NULL OR lp.entry_source = 'manual')
+           AND (
+             ltl.student_reservation_id = s.id
+             OR lp.tenant_lease_id IN (
+               SELECT id FROM public.landlord_tenant_leases
+               WHERE student_reservation_id = s.id
+             )
+             OR lower(trim(lp.payer_name)) = lower(trim(s.guest_name))
+             OR lower(trim(lp.payer_name)) = lower(trim(COALESCE(u.full_name, '')))
+             OR (
+               NOT EXISTS (
+                 SELECT 1 FROM public.student_dorm_reservations s2
+                 WHERE s2.room_id = s.room_id
+                   AND s2.status = 'Confirmed'
+                   AND s2.id <> s.id
+               )
+             )
+           )
+         ORDER BY COALESCE(lp.paid_on, lp.created_at::date) ASC`,
+        [target.reservationId]
       );
       for (const p of landlordPay) {
         payments.push({
           amount: Number(p.amount),
-          paidOn: p.paid_on?.slice(0, 10) ?? p.created_at.toISOString().slice(0, 10),
+          paidOn:
+            p.paid_on?.slice(0, 10) ??
+            `${p.created_at.getFullYear()}-${String(p.created_at.getMonth() + 1).padStart(2, "0")}-${String(p.created_at.getDate()).padStart(2, "0")}`,
         });
       }
     }
@@ -537,6 +904,8 @@ async function syncMoveInAdvanceAndDeposit(
 
 /**
  * Align schedule with paid amounts: move-in (3× rent) = month 1 only + advance/deposit.
+ * Cash payments match schedule months by paid_on calendar month; advance/deposit
+ * ledger entries mark their linked schedule month as paid.
  */
 export async function reconcileScheduleWithPaidPayments(
   pool: Pool,
@@ -556,28 +925,82 @@ export async function reconcileScheduleWithPaidPayments(
     await syncMoveInAdvanceAndDeposit(pool, target.reservationId, monthlyRent);
   }
 
-  const targetPaidMonths = await computePaidRentMonthsFromPayments(pool, target);
-  if (targetPaidMonths < 1) return;
+  await syncScheduleFromCreditPayments(pool, target);
 
-  const schedule = await fetchMonthlySchedule(pool, {
-    reservationId: target.reservationId ?? undefined,
-    leaseId: target.leaseId ?? undefined,
-  });
-  const paidOnSchedule = schedule.filter((m) => m.status === "Paid").length;
-  const toApply = targetPaidMonths - paidOnSchedule;
-
-  for (let i = 0; i < toApply; i++) {
-    await applyPaidRentToSchedule(pool, {
-      reservationId: target.reservationId,
-      leaseId: target.leaseId,
-    });
+  if (target.reservationId && monthlyRent > 0) {
+    await syncAdvanceDepositFromLedger(pool, target.reservationId, monthlyRent);
   }
+
+  await syncScheduleFromCashPaymentsByMonth(pool, target);
 
   if (target.reservationId) {
     await recomputeReservationBalances(pool, target.reservationId);
   } else if (target.leaseId) {
     await syncLeasePaymentStatusFromSchedule(pool, target.leaseId);
   }
+}
+
+/** Reconcile schedule then mark the month matching paid_on for a new cash payment. */
+export async function applyRecordedPaymentToSchedule(
+  pool: Pool,
+  opts: {
+    reservationId?: string | null;
+    leaseId?: string | null;
+    amount: number;
+    paidOn?: string | null;
+  }
+): Promise<void> {
+  const paidOn = opts.paidOn?.slice(0, 10) ?? null;
+  const reconcileOpts = opts.reservationId
+    ? { reservationId: opts.reservationId }
+    : opts.leaseId
+      ? { leaseId: opts.leaseId }
+      : null;
+  if (!reconcileOpts) return;
+
+  await reconcileScheduleWithPaidPayments(pool, reconcileOpts);
+
+  if (!paidOn || opts.amount < 0.01) return;
+
+  const target = await resolveScheduleTarget(pool, reconcileOpts);
+  const monthlyRent = await getMonthlyRentForTarget(pool, target);
+  if (monthlyRent <= 0) return;
+
+  const isMoveIn = isInitialMoveInPayment(opts.amount, monthlyRent);
+  if (!isMoveIn && opts.amount < monthlyRent - 0.01) return;
+
+  const monthNumber = await resolveScheduleMonthFromPaidOn(
+    pool,
+    reconcileOpts,
+    paidOn
+  );
+  if (monthNumber == null) {
+    if (isMoveIn) {
+      await setScheduleMonthStatus(pool, {
+        reservationId: target.reservationId,
+        leaseId: target.leaseId,
+        monthNumber: 1,
+        status: "Paid",
+        paidOn,
+      });
+    }
+    return;
+  }
+
+  const schedule = await fetchMonthlySchedule(pool, {
+    reservationId: target.reservationId ?? undefined,
+    leaseId: target.leaseId ?? undefined,
+  });
+  const row = schedule.find((m) => m.monthNumber === monthNumber);
+  if (row?.status === "Paid") return;
+
+  await setScheduleMonthStatus(pool, {
+    reservationId: target.reservationId,
+    leaseId: target.leaseId,
+    monthNumber,
+    status: "Paid",
+    paidOn,
+  });
 }
 
 export async function ensurePaymentDueDatesForReservation(
@@ -995,16 +1418,25 @@ export async function recomputeReservationBalances(
     [reservationId]
   );
 
-  let remaining = 0;
+  let grossRemaining = 0;
   let nextDue: string | null = null;
-  const today = toDateStr(new Date());
 
   for (const d of due) {
     if (d.status !== "Paid") {
-      remaining += Number(d.amount_due);
+      grossRemaining += Number(d.amount_due);
       if (!nextDue) nextDue = d.due_date;
     }
   }
+
+  const { rows: advRows } = await pool.query<{ advance_amount: string }>(
+    `SELECT advance_amount::text FROM public.student_dorm_reservations WHERE id = $1::uuid`,
+    [reservationId]
+  );
+  const advanceCredit = Number(advRows[0]?.advance_amount ?? 0);
+  const remaining = Math.max(
+    0,
+    Math.round((grossRemaining - advanceCredit) * 100) / 100
+  );
 
   const scheduleRows: MonthlyDueRow[] = due.map((d, i) => ({
     id: `m-${i}`,

@@ -10,13 +10,13 @@ export default function LandlordMoreTab() {
       <MenuLink
         href="/landlord/properties"
         label="Properties"
-        subtitle="Your dorm properties"
+        subtitle="Add and manage dorm properties"
         icon="business-outline"
       />
       <MenuLink
         href="/landlord/rooms"
         label="Rooms"
-        subtitle="Room list and status"
+        subtitle="Add rooms and post listings for students"
         icon="bed-outline"
       />
       <MenuLink

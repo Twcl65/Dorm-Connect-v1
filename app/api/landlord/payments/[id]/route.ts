@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
 import {
-  reconcileScheduleWithPaidPayments,
+  applyRecordedPaymentToSchedule,
   resolveLeaseIdForRoom,
+  resolveReservationIdForPaymentContext,
 } from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
 
@@ -42,9 +43,10 @@ export async function PATCH(req: Request, context: Ctx) {
       proof_url: string | null;
       paid_on: string | null;
       room_id: string | null;
+      tenant_lease_id: string | null;
     }>(
       `SELECT payer_name, amount::text, method, status, reference_no, proof_url,
-              paid_on::text, room_id
+              paid_on::text, room_id, tenant_lease_id
        FROM public.landlord_payments
        WHERE owner_user_id = $1::uuid AND id = $2::uuid`,
       [ownerId, id]
@@ -95,9 +97,28 @@ export async function PATCH(req: Request, context: Ctx) {
       [amount, method, status, referenceNo, proofUrl, paidOn, ownerId, id]
     );
     if (status === "Paid" && c.room_id) {
-      const leaseId = await resolveLeaseIdForRoom(pool, ownerId, c.room_id);
-      if (leaseId) {
-        await reconcileScheduleWithPaidPayments(pool, { leaseId });
+      const reservationId = await resolveReservationIdForPaymentContext(pool, {
+        tenantLeaseId: c.tenant_lease_id,
+        roomId: c.room_id,
+      });
+
+      if (reservationId) {
+        await applyRecordedPaymentToSchedule(pool, {
+          reservationId,
+          amount,
+          paidOn,
+        });
+      } else {
+        const leaseId =
+          c.tenant_lease_id ??
+          (await resolveLeaseIdForRoom(pool, ownerId, c.room_id));
+        if (leaseId) {
+          await applyRecordedPaymentToSchedule(pool, {
+            leaseId,
+            amount,
+            paidOn,
+          });
+        }
       }
     }
 

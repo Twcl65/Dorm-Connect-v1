@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
 import {
-  reconcileScheduleWithPaidPayments,
+  applyRecordedPaymentToSchedule,
+  resolveReservationIdForPaymentContext,
   resolveLeaseIdForRoom,
 } from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
@@ -61,13 +62,23 @@ export async function GET() {
       `SELECT p.id, p.created_at, r.room_no, prop.name AS property_name,
               p.payer_name, p.amount::text, p.method, p.status,
               p.reference_no, p.proof_url, p.paid_on::text,
-              p.tenant_lease_id, l.student_reservation_id, s.student_user_id,
+              p.tenant_lease_id,
+              COALESCE(l.student_reservation_id, room_res.reservation_id) AS student_reservation_id,
+              COALESCE(s.student_user_id, room_res.student_user_id) AS student_user_id,
               p.entry_source
        FROM public.landlord_payments p
        LEFT JOIN public.landlord_rooms r ON r.id = p.room_id
        LEFT JOIN public.landlord_properties prop ON prop.id = r.property_id
        LEFT JOIN public.landlord_tenant_leases l ON l.id = p.tenant_lease_id
        LEFT JOIN public.student_dorm_reservations s ON s.id = l.student_reservation_id
+       LEFT JOIN LATERAL (
+         SELECT res.id AS reservation_id, res.student_user_id
+         FROM public.student_dorm_reservations res
+         WHERE res.room_id = p.room_id
+           AND res.status = 'Confirmed'
+         ORDER BY res.created_at DESC
+         LIMIT 1
+       ) room_res ON true
        WHERE p.owner_user_id = $1::uuid`,
       [ownerId]
     );
@@ -306,6 +317,8 @@ export async function POST(req: Request) {
       tenantLeaseId = await resolveLeaseIdForRoom(pool, ownerId, roomId);
     }
 
+    const paidOn = body.paidOn?.slice(0, 10) || null;
+
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_payments
         (owner_user_id, room_id, tenant_lease_id, payer_name, amount, method, status,
@@ -322,16 +335,42 @@ export async function POST(req: Request) {
         status,
         (body.referenceNo ?? "").trim() || null,
         (body.proofUrl ?? "").trim() || null,
-        body.paidOn?.slice(0, 10) || null,
+        paidOn,
       ]
     );
 
-    if (status === "Paid" && tenantLeaseId) {
-      await reconcileScheduleWithPaidPayments(pool, { leaseId: tenantLeaseId });
-    } else if (status === "Paid" && roomId) {
-      const leaseId = await resolveLeaseIdForRoom(pool, ownerId, roomId);
-      if (leaseId) {
-        await reconcileScheduleWithPaidPayments(pool, { leaseId });
+    if (status === "Paid") {
+      const studentUserId =
+        body.studentUserId && uuidRe.test(body.studentUserId)
+          ? body.studentUserId
+          : null;
+      const reservationId = await resolveReservationIdForPaymentContext(pool, {
+        tenantLeaseId,
+        roomId,
+        studentUserId,
+      });
+
+      if (reservationId) {
+        await applyRecordedPaymentToSchedule(pool, {
+          reservationId,
+          amount,
+          paidOn,
+        });
+      } else if (tenantLeaseId) {
+        await applyRecordedPaymentToSchedule(pool, {
+          leaseId: tenantLeaseId,
+          amount,
+          paidOn,
+        });
+      } else if (roomId) {
+        const leaseId = await resolveLeaseIdForRoom(pool, ownerId, roomId);
+        if (leaseId) {
+          await applyRecordedPaymentToSchedule(pool, {
+            leaseId,
+            amount,
+            paidOn,
+          });
+        }
       }
     }
 

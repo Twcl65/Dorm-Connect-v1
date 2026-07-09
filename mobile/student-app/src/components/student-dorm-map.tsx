@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Platform, StyleSheet, View } from "react-native";
-import MapView, { Marker, PROVIDER_DEFAULT, type Region } from "react-native-maps";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
+import MapView, { PROVIDER_DEFAULT, type Region } from "react-native-maps";
 import { spreadOverlappingMarkers } from "@/lib/spread-map-markers";
 import { resolveMediaUrl } from "@/lib/config";
 import {
   PropertyMapMarker,
+  MARKER_ANCHOR_OFFSET_Y,
+  MARKER_WIDTH,
   type MapMarkerData,
 } from "@/components/property-map-marker";
 
@@ -15,6 +23,8 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.12,
 };
 
+type ScreenPoint = { x: number; y: number };
+
 type Props = {
   markers: MapMarkerData[];
   selectedId?: string | null;
@@ -23,6 +33,8 @@ type Props = {
 
 export function StudentDormMap({ markers, selectedId, onMarkerPress }: Props) {
   const mapRef = useRef<MapView>(null);
+  const [positions, setPositions] = useState<Record<string, ScreenPoint>>({});
+  const layoutTick = useRef(0);
 
   const displayMarkers = useMemo(
     () =>
@@ -34,6 +46,48 @@ export function StudentDormMap({ markers, selectedId, onMarkerPress }: Props) {
       ),
     [markers]
   );
+
+  const updatePositions = useCallback(async () => {
+    const map = mapRef.current;
+    if (!map || displayMarkers.length === 0) {
+      setPositions({});
+      return;
+    }
+    const next: Record<string, ScreenPoint> = {};
+    await Promise.all(
+      displayMarkers.map(async (m) => {
+        try {
+          const point = await map.pointForCoordinate({
+            latitude: m.latitude,
+            longitude: m.longitude,
+          });
+          if (
+            point &&
+            Number.isFinite(point.x) &&
+            Number.isFinite(point.y)
+          ) {
+            next[m.id] = point;
+          }
+        } catch {
+          /* map not ready */
+        }
+      })
+    );
+    setPositions(next);
+  }, [displayMarkers]);
+
+  const schedulePositionUpdate = useCallback(() => {
+    layoutTick.current += 1;
+    const tick = layoutTick.current;
+    requestAnimationFrame(() => {
+      if (tick !== layoutTick.current) return;
+      void updatePositions();
+    });
+  }, [updatePositions]);
+
+  useEffect(() => {
+    schedulePositionUpdate();
+  }, [displayMarkers, schedulePositionUpdate]);
 
   useEffect(() => {
     if (!mapRef.current || displayMarkers.length === 0) return;
@@ -75,6 +129,10 @@ export function StudentDormMap({ markers, selectedId, onMarkerPress }: Props) {
     };
   }, [displayMarkers]);
 
+  const onMapLayout = (_e: LayoutChangeEvent) => {
+    schedulePositionUpdate();
+  };
+
   return (
     <View style={styles.wrap}>
       <MapView
@@ -84,25 +142,41 @@ export function StudentDormMap({ markers, selectedId, onMarkerPress }: Props) {
         initialRegion={initialRegion}
         showsUserLocation
         showsMyLocationButton={Platform.OS === "android"}
-      >
-        {displayMarkers.map((m) => (
-          <Marker
-            key={m.id}
-            coordinate={{
-              latitude: m.latitude,
-              longitude: m.longitude,
-            }}
-            onPress={() => onMarkerPress(m.id)}
-            anchor={{ x: 0.5, y: 0.92 }}
-          >
-            <PropertyMapMarker
-              name={m.name}
-              coverImageUrl={m.coverImageUrl}
-              selected={selectedId === m.id}
-            />
-          </Marker>
-        ))}
-      </MapView>
+        onMapReady={schedulePositionUpdate}
+        onLayout={onMapLayout}
+        onRegionChangeComplete={schedulePositionUpdate}
+      />
+
+      <View style={styles.overlay} pointerEvents="box-none">
+        {displayMarkers.map((m) => {
+          const point = positions[m.id];
+          if (!point) return null;
+          const left = point.x - MARKER_WIDTH / 2;
+          const top = point.y - MARKER_ANCHOR_OFFSET_Y;
+          return (
+            <Pressable
+              key={m.id}
+              style={[
+                styles.markerHit,
+                {
+                  left,
+                  top,
+                  zIndex: selectedId === m.id ? 20 : 10,
+                },
+              ]}
+              onPress={() => onMarkerPress(m.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${m.name} dorm marker`}
+            >
+              <PropertyMapMarker
+                name={m.name}
+                coverImageUrl={m.coverImageUrl}
+                selected={selectedId === m.id}
+              />
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -110,4 +184,12 @@ export function StudentDormMap({ markers, selectedId, onMarkerPress }: Props) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, minHeight: 220 },
   map: { ...StyleSheet.absoluteFillObject },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "visible",
+  },
+  markerHit: {
+    position: "absolute",
+    width: MARKER_WIDTH,
+  },
 });

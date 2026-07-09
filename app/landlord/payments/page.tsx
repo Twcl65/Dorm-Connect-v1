@@ -200,13 +200,12 @@ export default function LandlordPaymentsPage() {
         leasePaymentMonitoring?: LeasePaymentMonitoring[];
         error?: string;
       };
-      if (!payRes.ok) throw new Error(json.error ?? "Failed to load");
+      if (!payRes.ok) throw new Error(json.error ?? "Failed to load payments");
       setPaymentsList(json.payments ?? []);
-      if (leaseRes.ok && lj.leasePaymentMonitoring) {
-        setLeaseMonitoringList(lj.leasePaymentMonitoring);
-      } else {
-        setLeaseMonitoringList([]);
+      if (!leaseRes.ok) {
+        throw new Error(lj.error ?? "Failed to load lease payment monitoring");
       }
+      setLeaseMonitoringList(lj.leasePaymentMonitoring ?? []);
       if (hintsRes.ok && hj.rooms) {
         setOnsiteRoomHints(hj.rooms);
       } else {
