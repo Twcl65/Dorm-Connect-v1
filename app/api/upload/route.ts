@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/require-session";
 import { savePublicUpload } from "@/lib/save-upload";
+import { getFormField } from "@/lib/request-form-data";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
 
   try {
     const form = await req.formData();
-    const file = form.get("file");
+    const file = getFormField(form, "file");
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json({ error: "Missing file." }, { status: 400 });
     }

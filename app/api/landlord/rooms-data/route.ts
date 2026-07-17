@@ -6,6 +6,7 @@ import {
   mapRentPaymentStatus,
   resolveDormDisplayName,
   resolveRoomListingStatus,
+  type RoomListingStatus,
 } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
 

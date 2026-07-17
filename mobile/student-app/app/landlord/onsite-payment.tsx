@@ -2,7 +2,6 @@ import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,9 +14,9 @@ import {
   type LandlordOnsiteRoom,
 } from "@/lib/api";
 import { uploadMobileFile } from "@/lib/upload";
+import { SelectField } from "@/components/select-field";
 import {
   Button,
-  Card,
   CenteredLoader,
   Input,
   Screen,
@@ -34,7 +33,10 @@ export default function OnsitePaymentScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [propertyId, setPropertyId] = useState("");
   const [roomId, setRoomId] = useState("");
+  const [tenantLeaseId, setTenantLeaseId] = useState("");
+  const [studentUserId, setStudentUserId] = useState("");
   const [payerName, setPayerName] = useState("");
   const [amount, setAmount] = useState("");
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
@@ -64,15 +66,61 @@ export default function OnsitePaymentScreen() {
     }, [load])
   );
 
+  const properties = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of rooms) {
+      map.set(r.propertyId, r.propertyName);
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ value: id, label: name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [rooms]);
+
+  const roomsForProperty = useMemo(() => {
+    if (!propertyId) return [];
+    return rooms.filter((r) => r.propertyId === propertyId);
+  }, [rooms, propertyId]);
+
   const selected = useMemo(
-    () => rooms.find((r) => r.roomId === roomId),
+    () => rooms.find((r) => r.roomId === roomId) ?? null,
     [rooms, roomId]
   );
 
-  const pickRoom = (r: LandlordOnsiteRoom) => {
-    setRoomId(r.roomId);
-    setPayerName(r.suggestedTenantName ?? "");
+  const applyRoomSelection = (hint: LandlordOnsiteRoom | null) => {
+    if (!hint) {
+      setRoomId("");
+      setPayerName("");
+      setTenantLeaseId("");
+      setStudentUserId("");
+      return;
+    }
+    setRoomId(hint.roomId);
+    setPayerName(hint.suggestedTenantName?.trim() ?? "");
+    setTenantLeaseId(hint.tenantLeaseId ?? "");
+    setStudentUserId(hint.studentUserId ?? "");
   };
+
+  const onPropertyChange = (id: string) => {
+    setPropertyId(id);
+    applyRoomSelection(null);
+  };
+
+  const tenantRoomOptions = useMemo(
+    () =>
+      roomsForProperty.map((r) => {
+        const tenant = r.suggestedTenantName?.trim();
+        return {
+          value: r.roomId,
+          label: tenant ?? `Room ${r.roomNo} (no tenant)`,
+          subtitle: tenant
+            ? `Room ${r.roomNo}${
+                r.studentUserId ? " · Student app account" : ""
+              }`
+            : "Payment saved by room only",
+        };
+      }),
+    [roomsForProperty]
+  );
 
   const pickProof = async () => {
     try {
@@ -99,7 +147,7 @@ export default function OnsitePaymentScreen() {
 
   const submit = async () => {
     if (!token || !roomId || !payerName.trim() || !amount || !paidOn) {
-      setError("Room, tenant name, amount, and paid date are required.");
+      setError("Property, student/tenant, amount, and paid date are required.");
       return;
     }
     setSaving(true);
@@ -120,8 +168,8 @@ export default function OnsitePaymentScreen() {
         body: {
           roomId,
           roomNo: selected?.roomNo,
-          tenantLeaseId: selected?.tenantLeaseId ?? undefined,
-          studentUserId: selected?.studentUserId ?? undefined,
+          tenantLeaseId: tenantLeaseId || undefined,
+          studentUserId: studentUserId || undefined,
           payerName: payerName.trim(),
           amount: Number(amount),
           method: "Cash",
@@ -145,52 +193,103 @@ export default function OnsitePaymentScreen() {
       <Subtitle>Add onsite cash payment</Subtitle>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <ScrollView>
-        <Text style={styles.label}>Room / tenant</Text>
-        {rooms.map((r) => (
-          <Pressable key={r.roomId} onPress={() => pickRoom(r)}>
-            <Card>
-              <View
-                style={
-                  roomId === r.roomId ? styles.roomCardActive : undefined
-                }
-              >
-              <Text style={styles.roomTitle}>
-                {r.propertyName} · Room {r.roomNo}
-              </Text>
-              <Text style={styles.meta}>
-                {r.suggestedTenantName ?? "No tenant name on file"}
-              </Text>
-              </View>
-            </Card>
-          </Pressable>
-        ))}
+      <ScrollView keyboardShouldPersistTaps="handled">
+        <SelectField
+          label="Dorm / property"
+          placeholder="Select property"
+          value={propertyId}
+          options={properties}
+          onChange={onPropertyChange}
+          emptyMessage="Add a property and rooms under Properties & Rooms first."
+        />
 
-        <Text style={styles.label}>Tenant name</Text>
-        <Input value={payerName} onChangeText={setPayerName} />
+        <SelectField
+          label="Student / tenant"
+          placeholder={
+            propertyId ? "Select student or tenant" : "Select a property first"
+          }
+          value={roomId}
+          options={tenantRoomOptions}
+          onChange={(id) => {
+            const hint = roomsForProperty.find((r) => r.roomId === id) ?? null;
+            applyRoomSelection(hint);
+          }}
+          disabled={!propertyId}
+          emptyMessage={
+            propertyId
+              ? "No rooms or tenants for this property."
+              : undefined
+          }
+        />
 
-        <Text style={styles.label}>Amount (₱)</Text>
+        <Text style={styles.hint}>
+          Choosing a student or tenant fills the name and links the payment to
+          their account when they booked through the app.
+        </Text>
+
+        {selected ? (
+          <View style={styles.selectedBox}>
+            <Text style={styles.selectedLabel}>Selected tenant</Text>
+            <Text style={styles.selectedValue}>
+              {payerName.trim() || "No tenant name on file"}
+            </Text>
+            <Text style={styles.selectedMeta}>
+              {selected.propertyName} · Room {selected.roomNo}
+            </Text>
+            {studentUserId ? (
+              <Text style={styles.linked}>
+                Linked to student app account — payment will appear in their
+                Payments tab.
+              </Text>
+            ) : (
+              <Text style={styles.warn}>
+                No student app account linked. Payment is saved under the tenant
+                name only.
+              </Text>
+            )}
+          </View>
+        ) : null}
+
+        {!selected || !payerName.trim() ? (
+          <>
+            <Text style={styles.fieldLabel}>Tenant name (if not in list)</Text>
+            <Input
+              value={payerName}
+              onChangeText={setPayerName}
+              placeholder="Student full name"
+              editable={!!roomId || !!propertyId}
+            />
+          </>
+        ) : null}
+
+        <Text style={styles.fieldLabel}>Amount (₱)</Text>
         <Input
           value={amount}
           onChangeText={setAmount}
           keyboardType="decimal-pad"
+          placeholder="0.00"
         />
 
-        <Text style={styles.label}>Paid on (YYYY-MM-DD)</Text>
-        <Input value={paidOn} onChangeText={setPaidOn} />
+        <Text style={styles.fieldLabel}>Paid on</Text>
+        <Input value={paidOn} onChangeText={setPaidOn} placeholder="YYYY-MM-DD" />
 
-        <Text style={styles.label}>Proof (optional)</Text>
-        <Button label="Attach receipt photo" variant="outline" onPress={() => void pickProof()} />
-        {proofUri ? (
-          <Text style={styles.meta}>Photo selected.</Text>
-        ) : null}
-
+        <Text style={styles.fieldLabel}>Proof (optional)</Text>
         <Button
-          label={saving ? "Saving…" : "Save payment"}
-          variant="brand"
-          loading={saving}
-          onPress={() => void submit()}
+          label="Attach receipt photo"
+          variant="outline"
+          onPress={() => void pickProof()}
         />
+        {proofUri ? <Text style={styles.meta}>Photo selected.</Text> : null}
+
+        <View style={styles.submitWrap}>
+          <Button
+            label={saving ? "Saving…" : "Save payment"}
+            variant="brand"
+            loading={saving}
+            disabled={!roomId || !payerName.trim() || !amount || !paidOn}
+            onPress={() => void submit()}
+          />
+        </View>
       </ScrollView>
     </Screen>
   );
@@ -198,19 +297,58 @@ export default function OnsitePaymentScreen() {
 
 const styles = StyleSheet.create({
   error: { color: colors.red, fontSize: 13, marginBottom: 8 },
-  label: {
+  hint: {
+    fontSize: 11,
+    color: colors.muted,
+    lineHeight: 16,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  fieldLabel: {
     fontSize: 12,
     fontWeight: "600",
     color: colors.muted,
     marginTop: 12,
     marginBottom: 6,
   },
-  roomCardActive: {
-    borderWidth: 2,
-    borderColor: colors.brand,
-    borderRadius: 8,
-    padding: 2,
+  selectedBox: {
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    backgroundColor: "#f0fdf4",
   },
-  roomTitle: { fontSize: 14, fontWeight: "600", color: colors.text },
-  meta: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  selectedLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#166534",
+    textTransform: "uppercase",
+  },
+  selectedValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.navy,
+    marginTop: 4,
+  },
+  selectedMeta: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 4,
+  },
+  linked: {
+    fontSize: 11,
+    color: "#166534",
+    marginTop: 8,
+    lineHeight: 16,
+  },
+  warn: {
+    fontSize: 11,
+    color: "#b45309",
+    marginTop: 8,
+    lineHeight: 16,
+  },
+  meta: { fontSize: 12, color: colors.muted, marginTop: 6 },
+  submitWrap: { marginTop: 16, marginBottom: 24 },
 });

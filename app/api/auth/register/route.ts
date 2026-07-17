@@ -4,6 +4,7 @@ import { getPool } from "@/lib/db";
 import { savePublicUpload } from "@/lib/save-upload";
 import { DB_ROLE_TO_ROUTE, SESSION_COOKIE } from "@/lib/auth-config";
 import { signSessionToken } from "@/lib/session-token";
+import { getFormField, getFormString } from "@/lib/request-form-data";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,14 +24,14 @@ export async function POST(req: Request) {
 
     if (ct.includes("multipart/form-data")) {
       const form = await req.formData();
-      fullName = String(form.get("fullName") ?? "").trim();
-      email = String(form.get("email") ?? "").trim().toLowerCase();
-      password = String(form.get("password") ?? "");
-      studentId = String(form.get("studentId") ?? "").trim();
-      course = String(form.get("course") ?? "").trim();
-      emergencyName = String(form.get("emergencyContactName") ?? "").trim();
-      emergencyPhone = String(form.get("emergencyContactPhone") ?? "").trim();
-      const file = form.get("profileImage");
+      fullName = getFormString(form, "fullName").trim();
+      email = getFormString(form, "email").trim().toLowerCase();
+      password = getFormString(form, "password");
+      studentId = getFormString(form, "studentId").trim();
+      course = getFormString(form, "course").trim();
+      emergencyName = getFormString(form, "emergencyContactName").trim();
+      emergencyPhone = getFormString(form, "emergencyContactPhone").trim();
+      const file = getFormField(form, "profileImage");
       if (file && file instanceof Blob && file.size > 0) {
         profileMime =
           (file as File).type || "application/octet-stream";

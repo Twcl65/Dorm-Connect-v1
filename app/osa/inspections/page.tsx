@@ -266,7 +266,8 @@ export default function OsaInspectionsPage() {
   };
 
   const checklistByCategory = useMemo(() => {
-    const groups = new Map<string, typeof OSA_INSPECTION_CHECKLIST>();
+    type ChecklistItem = (typeof OSA_INSPECTION_CHECKLIST)[number];
+    const groups = new Map<string, ChecklistItem[]>();
     for (const item of OSA_INSPECTION_CHECKLIST) {
       const list = groups.get(item.category) ?? [];
       list.push(item);
