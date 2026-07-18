@@ -76,6 +76,9 @@ async function buildPool(): Promise<Pool> {
     return new Pool({
       connectionString,
       ssl: sslForHost(connectionString, hostname),
+      max: 5,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
     });
   }
 
@@ -88,6 +91,9 @@ async function buildPool(): Promise<Pool> {
     password: parsed.password,
     database: parsed.database ?? undefined,
     ssl: sslForHost(connectionString, hostname),
+    max: 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
   });
 }
 
