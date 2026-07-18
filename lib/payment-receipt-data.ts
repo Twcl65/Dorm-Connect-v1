@@ -16,6 +16,7 @@ export type PaymentReceiptData = {
   lineItems: PaymentReceiptLineItem[] | null;
   notes: string | null;
   periodLabel?: string | null;
+  proofImageUrl?: string | null;
 };
 
 export function buildInitialPaymentLineItems(

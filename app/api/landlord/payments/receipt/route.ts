@@ -54,9 +54,10 @@ export async function GET(req: Request) {
         student_name: string;
         description: string | null;
         acc_dorm_name: string | null;
+        proof_image_url: string | null;
       }>(
         `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
-                pay.description,
+                pay.description, pay.proof_image_url,
                 p.name AS property_name, r.room_no,
                 s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
                 s.monthly_rent::text,
@@ -109,6 +110,7 @@ export async function GET(req: Request) {
           x.paid_at ? new Date(x.paid_at).toISOString().slice(0, 10) : null,
           x.created_at
         ),
+        proofImageUrl: x.proof_image_url ?? null,
       };
     } else {
       const { rows } = await pool.query<{

@@ -7,6 +7,10 @@
     "scheme": "dormconnect-student",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#1e3a5f"
+    },
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/icon.png",
@@ -38,7 +42,14 @@
       "expo-secure-store",
       "expo-asset",
       "expo-font",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1e3a5f"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

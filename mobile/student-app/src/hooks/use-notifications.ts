@@ -101,6 +101,7 @@ export function useNotifications() {
                 content: {
                   title: item.title,
                   body: item.body,
+                  ...(Platform.OS === "android" ? { channelId: "default" } : {}),
                 },
                 trigger: null,
               });

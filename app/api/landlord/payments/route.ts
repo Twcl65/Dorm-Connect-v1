@@ -93,13 +93,14 @@ export async function GET() {
       method: string;
       status: string;
       receipt_url: string | null;
+      proof_image_url: string | null;
       paid_at: Date | null;
       reservation_id: string;
       student_user_id: string;
     }>(
       `SELECT pay.id, pay.created_at, r.room_no, prop.name AS property_name,
               stu.full_name AS payer_name, pay.amount::text, pay.method, pay.status,
-              pay.receipt_url, pay.paid_at, pay.reservation_id, pay.student_user_id
+              pay.receipt_url, pay.proof_image_url, pay.paid_at, pay.reservation_id, pay.student_user_id
        FROM public.student_payment_records pay
        JOIN public.student_dorm_reservations s ON s.id = pay.reservation_id
        JOIN public.boarding_house_app_users stu ON stu.id = pay.student_user_id
@@ -156,7 +157,9 @@ export async function GET() {
         method: m,
         status: st,
         referenceNo: undefined as string | undefined,
-        proofOfPaymentUrl: x.receipt_url ?? undefined,
+        // proof_image_url is what students upload from the app (GCash screenshot);
+        // receipt_url is the landlord-generated receipt PDF; prefer proof_image_url
+        proofOfPaymentUrl: x.proof_image_url ?? x.receipt_url ?? undefined,
         date: x.paid_at
           ? new Date(x.paid_at).toISOString().slice(0, 10)
           : new Date(x.created_at).toISOString().slice(0, 10),

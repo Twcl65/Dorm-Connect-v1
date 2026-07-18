@@ -115,6 +115,19 @@ export function PaymentReceiptCard({
           <dd>{payment.status}</dd>
         </div>
       </dl>
+      {payment.proofImageUrl && (
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-slate-600 mb-2">
+            GCash Receipt / Proof of Payment
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={payment.proofImageUrl}
+            alt="GCash receipt submitted by student"
+            className="max-h-72 w-auto max-w-full rounded-md border border-slate-200 object-contain shadow-sm"
+          />
+        </div>
+      )}
       <p className="mt-8 text-[0.65rem] text-muted-foreground text-center">
         {footerNote}
       </p>

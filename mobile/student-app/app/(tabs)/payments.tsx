@@ -174,20 +174,6 @@ export default function PaymentsScreen() {
         Student app and manual payments, plus rent months not yet paid
       </Subtitle>
 
-      {unpaidMonths.length > 0 && (
-        <View style={{ marginBottom: 12 }}>
-          <Button
-            label="Submit GCash Payment"
-            onPress={() => {
-              setPayError(null);
-              setPayAmount("");
-              setPayProofImage(null);
-              setSelectedMonth(unpaidMonths[0]);
-              setPayModalVisible(true);
-            }}
-          />
-        </View>
-      )}
 
       <View style={styles.filters}>
         {(
