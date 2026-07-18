@@ -5,7 +5,10 @@ import { ThemeProvider } from "@/components/theme-provider";
 export const metadata: Metadata = {
   title: "DormConnect – Accredited Dormitories & Boarding Houses",
   description:
-    "Browse OSA-accredited dormitories and boarding houses near USTP. View landlord-posted room availability and rates on DormConnect."
+    "Browse OSA-accredited dormitories and boarding houses near USTP. View landlord-posted room availability and rates on DormConnect.",
+  icons: {
+    icon: "/icon.png",
+  }
 };
 
 export default function RootLayout({
