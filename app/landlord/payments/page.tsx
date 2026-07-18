@@ -67,6 +67,9 @@ type OnsiteRoomHint = {
   tenantLeaseId: string | null;
   studentUserId: string | null;
   studentReservationId: string | null;
+  advanceAmount: number;
+  depositAmount: number;
+  unpaidMonths: { monthNumber: number; monthLabel: string }[];
 };
 
 type LeasePaymentMonitoring = {
@@ -153,6 +156,8 @@ export default function LandlordPaymentsPage() {
   const [onsiteError, setOnsiteError] = useState<string | null>(null);
   const [onsiteSaving, setOnsiteSaving] = useState(false);
   const [showOnsiteDialog, setShowOnsiteDialog] = useState(false);
+  const [onsiteMethod, setOnsiteMethod] = useState<"Cash" | "Advance" | "Security deposit">("Cash");
+  const [onsiteScheduleMonthNumber, setOnsiteScheduleMonthNumber] = useState<string>("");
 
   const [showNotifyDialog, setShowNotifyDialog] = useState(false);
   const [showLeaseDetailsDialog, setShowLeaseDetailsDialog] = useState(false);
@@ -269,6 +274,8 @@ export default function LandlordPaymentsPage() {
     setOnsitePaidOn("");
     setOnsiteProofFile(null);
     setOnsiteError(null);
+    setOnsiteMethod("Cash");
+    setOnsiteScheduleMonthNumber("");
   }, []);
 
   useEffect(() => {
@@ -846,6 +853,48 @@ export default function LandlordPaymentsPage() {
                     under the tenant name only.
                   </p>
                 ) : null}
+                <div className="space-y-1 md:col-span-2">
+                  <label className="font-medium text-slate-800">Payment method</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                    value={onsiteMethod}
+                    onChange={(e) => {
+                      const m = e.target.value as "Cash" | "Advance" | "Security deposit";
+                      setOnsiteMethod(m);
+                    }}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Advance">Advance payment</option>
+                    <option value="Security deposit">Security deposit</option>
+                  </select>
+                </div>
+                {selectedOnsiteHint && (selectedOnsiteHint.advanceAmount > 0 || selectedOnsiteHint.depositAmount > 0) && (
+                  <div className="space-y-1 md:col-span-2 p-2 rounded border bg-slate-50 text-[0.7rem] text-slate-600">
+                    <p>
+                      <strong>Advance balance available:</strong> ₱{selectedOnsiteHint.advanceAmount?.toLocaleString() || "0"}
+                    </p>
+                    <p>
+                      <strong>Security deposit balance available:</strong> ₱{selectedOnsiteHint.depositAmount?.toLocaleString() || "0"}
+                    </p>
+                  </div>
+                )}
+                {selectedOnsiteHint && selectedOnsiteHint.unpaidMonths && selectedOnsiteHint.unpaidMonths.length > 0 && (
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="font-medium text-slate-800">Apply to month (optional)</label>
+                    <select
+                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                      value={onsiteScheduleMonthNumber}
+                      onChange={(e) => setOnsiteScheduleMonthNumber(e.target.value)}
+                    >
+                      <option value="">Apply sequentially (default)</option>
+                      {selectedOnsiteHint.unpaidMonths.map((m) => (
+                        <option key={m.monthNumber} value={m.monthNumber}>
+                          {m.monthLabel}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <label className="font-medium text-slate-800">Amount (₱)</label>
                   <Input
@@ -867,7 +916,7 @@ export default function LandlordPaymentsPage() {
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <label className="font-medium text-slate-800">
-                    Proof (receipt / slip photo)
+                    Proof (receipt / slip photo) {onsiteMethod !== "Cash" && "(Optional)"}
                   </label>
                   <Input
                     type="file"
@@ -899,13 +948,16 @@ export default function LandlordPaymentsPage() {
                     !onsitePayerName.trim() ||
                     !onsiteAmount ||
                     !onsitePaidOn ||
-                    !onsiteProofFile
+                    (onsiteMethod === "Cash" && !onsiteProofFile)
                   }
                   onClick={async () => {
                     setOnsiteError(null);
                     setOnsiteSaving(true);
                     try {
-                      const proofUrl = await uploadDormConnectFile(onsiteProofFile!);
+                      let proofUrl = "";
+                      if (onsiteProofFile) {
+                        proofUrl = await uploadDormConnectFile(onsiteProofFile);
+                      }
                       const hint = selectedOnsiteHint;
                       const res = await fetch("/api/landlord/payments", {
                         method: "POST",
@@ -918,10 +970,11 @@ export default function LandlordPaymentsPage() {
                           studentUserId: onsiteStudentUserId || undefined,
                           payerName: onsitePayerName.trim(),
                           amount: Number(onsiteAmount),
-                          method: "Cash",
+                          method: onsiteMethod,
                           status: "Paid",
                           paidOn: onsitePaidOn,
-                          proofUrl,
+                          proofUrl: proofUrl || undefined,
+                          scheduleMonthNumber: onsiteScheduleMonthNumber ? Number(onsiteScheduleMonthNumber) : undefined,
                         }),
                       });
                       const j = (await res.json()) as { error?: string };

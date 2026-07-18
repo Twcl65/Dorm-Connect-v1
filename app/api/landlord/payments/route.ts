@@ -202,12 +202,15 @@ export async function POST(req: Request) {
       referenceNo?: string;
       proofUrl?: string;
       paidOn?: string;
+      scheduleMonthNumber?: number;
     };
     let payerName = (body.payerName ?? "").trim();
     const method =
       body.method === "GCash" ||
       body.method === "Cash" ||
-      body.method === "Bank Transfer"
+      body.method === "Bank Transfer" ||
+      body.method === "Advance" ||
+      body.method === "Security deposit"
         ? body.method
         : "Cash";
     const status =
@@ -228,7 +231,7 @@ export async function POST(req: Request) {
       const { rows: roomRows } = await pool.query<{ id: string }>(
         `SELECT id FROM public.landlord_rooms
          WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
-        [roomId, ownerId]
+         [roomId, ownerId]
       );
       if (!roomRows[0]) {
         return NextResponse.json({ error: "Room not found." }, { status: 404 });
@@ -317,13 +320,61 @@ export async function POST(req: Request) {
       tenantLeaseId = await resolveLeaseIdForRoom(pool, ownerId, roomId);
     }
 
+    const reservationId = await resolveReservationIdForPaymentContext(pool, {
+      tenantLeaseId,
+      roomId,
+      studentUserId: body.studentUserId && uuidRe.test(body.studentUserId) ? body.studentUserId : null,
+    });
+
+    let entrySource = 'manual';
+    if (method === 'Advance' || method === 'Security deposit') {
+      entrySource = method === 'Advance' ? 'advance' : 'deposit';
+      if (!reservationId) {
+        return NextResponse.json({ error: "Advance/deposit payments require a tenant linked to a student reservation." }, { status: 400 });
+      }
+
+      const { rows: resRows } = await pool.query<{
+        advance_amount: string;
+        deposit_amount: string;
+      }>(
+        `SELECT advance_amount::text, deposit_amount::text
+         FROM public.student_dorm_reservations
+         WHERE id = $1::uuid`,
+        [reservationId]
+      );
+      const res = resRows[0];
+      if (!res) {
+        return NextResponse.json({ error: "Linked student reservation not found." }, { status: 404 });
+      }
+      const advanceAvail = Number(res.advance_amount) || 0;
+      const depositAvail = Number(res.deposit_amount) || 0;
+      if (entrySource === 'advance' && advanceAvail < amount - 0.01) {
+        return NextResponse.json({ error: `Insufficient advance balance (₱${advanceAvail.toLocaleString()} available).` }, { status: 400 });
+      }
+      if (entrySource === 'deposit' && depositAvail < amount - 0.01) {
+        return NextResponse.json({ error: `Insufficient security deposit (₱${depositAvail.toLocaleString()} available).` }, { status: 400 });
+      }
+
+      // Deduct from reservation balances
+      const newAdvance = entrySource === 'advance' ? Math.max(0, advanceAvail - amount) : advanceAvail;
+      const newDeposit = entrySource === 'deposit' ? Math.max(0, depositAvail - amount) : depositAvail;
+      await pool.query(
+        `UPDATE public.student_dorm_reservations
+         SET advance_amount = $1, deposit_amount = $2, updated_at = now()
+         WHERE id = $3::uuid`,
+        [newAdvance, newDeposit, reservationId]
+      );
+    }
+
     const paidOn = body.paidOn?.slice(0, 10) || null;
+    const methodCol = (entrySource === 'advance' || entrySource === 'deposit') ? 'Cash' : method;
+    const scheduleMonthNumber = body.scheduleMonthNumber ? Number(body.scheduleMonthNumber) : null;
 
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_payments
         (owner_user_id, room_id, tenant_lease_id, payer_name, amount, method, status,
-         reference_no, proof_url, paid_on, entry_source)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::date, 'manual')
+         reference_no, proof_url, paid_on, entry_source, schedule_month_number)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10::date, $11, $12)
        RETURNING id`,
       [
         ownerId,
@@ -331,36 +382,30 @@ export async function POST(req: Request) {
         tenantLeaseId,
         payerName,
         amount,
-        method,
+        methodCol,
         status,
         (body.referenceNo ?? "").trim() || null,
         (body.proofUrl ?? "").trim() || null,
         paidOn,
+        entrySource,
+        scheduleMonthNumber,
       ]
     );
 
     if (status === "Paid") {
-      const studentUserId =
-        body.studentUserId && uuidRe.test(body.studentUserId)
-          ? body.studentUserId
-          : null;
-      const reservationId = await resolveReservationIdForPaymentContext(pool, {
-        tenantLeaseId,
-        roomId,
-        studentUserId,
-      });
-
       if (reservationId) {
         await applyRecordedPaymentToSchedule(pool, {
           reservationId,
           amount,
           paidOn,
+          scheduleMonthNumber,
         });
       } else if (tenantLeaseId) {
         await applyRecordedPaymentToSchedule(pool, {
           leaseId: tenantLeaseId,
           amount,
           paidOn,
+          scheduleMonthNumber,
         });
       } else if (roomId) {
         const leaseId = await resolveLeaseIdForRoom(pool, ownerId, roomId);
@@ -369,6 +414,7 @@ export async function POST(req: Request) {
             leaseId,
             amount,
             paidOn,
+            scheduleMonthNumber,
           });
         }
       }

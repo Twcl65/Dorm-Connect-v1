@@ -309,7 +309,7 @@ export function isInitialMoveInPayment(
   return amount >= expected - 0.01;
 }
 
-type PaidPaymentRow = { amount: number; paidOn: string | null };
+type PaidPaymentRow = { amount: number; paidOn: string | null; scheduleMonthNumber?: number | null };
 
 type CreditPaymentRow = {
   monthNumber: number;
@@ -594,7 +594,31 @@ async function syncScheduleFromCashPaymentsByMonth(
     schedule.filter((m) => m.status === "Paid").map((m) => m.monthNumber)
   );
 
+  // First apply payments with explicit scheduleMonthNumber
+  for (const p of payments) {
+    if (p.scheduleMonthNumber != null) {
+      const month = schedule.find((m) => m.monthNumber === p.scheduleMonthNumber);
+      if (month && !paidMonthNumbers.has(p.scheduleMonthNumber)) {
+        try {
+          await setScheduleMonthStatus(pool, {
+            reservationId: target.reservationId,
+            leaseId: target.leaseId,
+            monthNumber: p.scheduleMonthNumber,
+            status: "Paid",
+            paidOn: p.paidOn,
+          });
+          paidMonthNumbers.add(p.scheduleMonthNumber);
+        } catch {
+          /* ignore error */
+        }
+      }
+    }
+  }
+
   for (const payment of payments) {
+    // Skip payments that had explicit month number and were already processed above
+    if (payment.scheduleMonthNumber != null) continue;
+
     if (isInitialMoveInPayment(payment.amount, monthlyRent)) {
       const month1 = schedule.find((m) => m.monthNumber === 1);
       if (month1 && !paidMonthNumbers.has(1)) {
@@ -650,9 +674,7 @@ async function syncScheduleFromCashPaymentsByMonth(
       leaseId: target.leaseId,
     });
   }
-}
-
-async function fetchPaidPaymentsForTarget(
+}async function fetchPaidPaymentsForTarget(
   pool: Pool,
   target: ScheduleTarget
 ): Promise<PaidPaymentRow[]> {
@@ -674,8 +696,9 @@ async function fetchPaidPaymentsForTarget(
       amount: string;
       paid_at: Date | null;
       created_at: Date;
+      schedule_month_number: number | null;
     }>(
-      `SELECT amount::text, paid_at, created_at
+      `SELECT amount::text, paid_at, created_at, schedule_month_number
        FROM public.student_payment_records
        WHERE reservation_id = $1::uuid AND status = 'Paid'
        ORDER BY COALESCE(paid_at, created_at) ASC`,
@@ -688,6 +711,7 @@ async function fetchPaidPaymentsForTarget(
         paidOn: paidOn instanceof Date
           ? `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, "0")}-${String(paidOn.getDate()).padStart(2, "0")}`
           : null,
+        scheduleMonthNumber: p.schedule_month_number,
       });
     }
 
@@ -696,8 +720,9 @@ async function fetchPaidPaymentsForTarget(
         amount: string;
         paid_on: string | null;
         created_at: Date;
+        schedule_month_number: number | null;
       }>(
-        `SELECT lp.amount::text, lp.paid_on::text, lp.created_at
+        `SELECT lp.amount::text, lp.paid_on::text, lp.created_at, lp.schedule_month_number
          FROM public.landlord_payments lp
          LEFT JOIN public.landlord_tenant_leases ltl ON ltl.id = lp.tenant_lease_id
          JOIN public.student_dorm_reservations s ON s.id = $1::uuid
@@ -730,6 +755,7 @@ async function fetchPaidPaymentsForTarget(
           paidOn:
             p.paid_on?.slice(0, 10) ??
             `${p.created_at.getFullYear()}-${String(p.created_at.getMonth() + 1).padStart(2, "0")}-${String(p.created_at.getDate()).padStart(2, "0")}`,
+          scheduleMonthNumber: p.schedule_month_number,
         });
       }
     }
@@ -749,8 +775,9 @@ async function fetchPaidPaymentsForTarget(
         amount: string;
         paid_on: string | null;
         created_at: Date;
+        schedule_month_number: number | null;
       }>(
-        `SELECT amount::text, paid_on::text, created_at
+        `SELECT amount::text, paid_on::text, created_at, schedule_month_number
          FROM public.landlord_payments
          WHERE owner_user_id = $1::uuid AND room_id = $2::uuid AND status = 'Paid'
            AND lower(trim(payer_name)) = lower(trim($3))
@@ -762,6 +789,7 @@ async function fetchPaidPaymentsForTarget(
         payments.push({
           amount: Number(p.amount),
           paidOn: p.paid_on?.slice(0, 10) ?? p.created_at.toISOString().slice(0, 10),
+          scheduleMonthNumber: p.schedule_month_number,
         });
       }
     }
@@ -948,6 +976,7 @@ export async function applyRecordedPaymentToSchedule(
     leaseId?: string | null;
     amount: number;
     paidOn?: string | null;
+    scheduleMonthNumber?: number | null;
   }
 ): Promise<void> {
   const paidOn = opts.paidOn?.slice(0, 10) ?? null;
@@ -969,7 +998,7 @@ export async function applyRecordedPaymentToSchedule(
   const isMoveIn = isInitialMoveInPayment(opts.amount, monthlyRent);
   if (!isMoveIn && opts.amount < monthlyRent - 0.01) return;
 
-  const monthNumber = await resolveScheduleMonthFromPaidOn(
+  const monthNumber = opts.scheduleMonthNumber ?? await resolveScheduleMonthFromPaidOn(
     pool,
     reconcileOpts,
     paidOn

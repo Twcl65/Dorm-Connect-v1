@@ -27,6 +27,7 @@ export type LandlordRoomDetail = {
   roomImageUrls?: string[];
   roomSizeLabel?: string;
   roomDetails?: string;
+  occupants?: string;
 };
 
 export type LandlordRoomsDataResponse = {

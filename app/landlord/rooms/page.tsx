@@ -42,6 +42,7 @@ type Room = {
   roomImageUrls?: string[];
   roomSizeLabel?: string;
   roomDetails?: string;
+  occupants?: string;
 };
 
 type LeaseRow = {
@@ -573,7 +574,7 @@ export default function LandlordRoomsPage() {
                       <PostStatusBadge listed={Boolean(room.isListed)} />
                     </TableCell>
                     <TableCell className="text-sm font-medium text-slate-800">
-                      {lease?.name ?? (
+                      {room.occupants || lease?.name || (
                         <span className="font-normal text-muted-foreground">
                           —
                         </span>

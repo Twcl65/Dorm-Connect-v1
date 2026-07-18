@@ -138,6 +138,34 @@ export default function LandlordPaymentsTab() {
             {item.dueLabel ? (
               <Text style={styles.meta}>{item.dueLabel}</Text>
             ) : null}
+
+            {((item.remainingBalance ?? 0) > 0 ||
+              (item.advancePayments ?? 0) > 0 ||
+              (item.deposits ?? 0) > 0) ? (
+              <View style={styles.balancesContainer}>
+                <View style={styles.balancesRow}>
+                  <View style={styles.balanceCol}>
+                    <Text style={styles.balanceLabel}>Remaining Balance</Text>
+                    <Text style={styles.balanceVal}>
+                      ₱{(item.remainingBalance ?? 0).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.balanceCol}>
+                    <Text style={styles.balanceLabel}>Advance Payment</Text>
+                    <Text style={styles.balanceVal}>
+                      ₱{(item.advancePayments ?? 0).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.balanceCol}>
+                    <Text style={styles.balanceLabel}>Security Deposit</Text>
+                    <Text style={styles.balanceVal}>
+                      ₱{(item.deposits ?? 0).toLocaleString()}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+
             <Pressable
               style={styles.txBtn}
               onPress={() =>
@@ -183,4 +211,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   txBtnText: { fontSize: 13, fontWeight: "600", color: colors.brand },
+  balancesContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+  },
+  balancesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  balanceCol: {
+    minWidth: 80,
+    flex: 1,
+  },
+  balanceLabel: {
+    fontSize: 11,
+    color: colors.muted,
+  },
+  balanceVal: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.navy ?? colors.text,
+    marginTop: 2,
+  },
 });

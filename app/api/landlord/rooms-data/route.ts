@@ -241,6 +241,31 @@ export async function GET(req: Request) {
       leaseCounts.map((row) => [row.room_id, Number(row.c)])
     );
 
+    const occupantsMap = new Map<string, string[]>();
+    for (const l of leases) {
+      const list = occupantsMap.get(l.room_id) ?? [];
+      if (l.tenant_name?.trim() && !list.includes(l.tenant_name.trim())) {
+        list.push(l.tenant_name.trim());
+      }
+      occupantsMap.set(l.room_id, list);
+    }
+    for (const s of studentReservations) {
+      const list = occupantsMap.get(s.room_id) ?? [];
+      if (s.guest_name?.trim() && !list.includes(s.guest_name.trim())) {
+        list.push(s.guest_name.trim());
+      }
+      occupantsMap.set(s.room_id, list);
+    }
+    for (const m of manualReservations) {
+      if (m.room_id) {
+        const list = occupantsMap.get(m.room_id) ?? [];
+        if (m.guest_name?.trim() && !list.includes(m.guest_name.trim())) {
+          list.push(m.guest_name.trim());
+        }
+        occupantsMap.set(m.room_id, list);
+      }
+    }
+
     const roomStatuses: (
       | "Occupied"
       | "Available"
@@ -287,6 +312,7 @@ export async function GET(req: Request) {
         roomImageUrls: roomImgs,
         roomSizeLabel: r.room_size_label ?? undefined,
         roomDetails: r.room_details ?? undefined,
+        occupants: occupantsMap.get(r.id)?.join(", ") || "",
       };
     });
 

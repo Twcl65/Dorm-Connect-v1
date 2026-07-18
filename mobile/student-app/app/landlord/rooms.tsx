@@ -9,6 +9,11 @@ import {
   View,
 } from "react-native";
 import { apiRequest, formatSignInError } from "@/lib/api";
+import type {
+  LandlordPropertyOption,
+  LandlordRoomDetail,
+  LandlordRoomsDataResponse,
+} from "@/lib/landlord-rooms";
 import {
   Badge,
   Button,
@@ -200,6 +205,9 @@ export default function LandlordRoomsScreen() {
             {item.isListed && item.listingLocation ? (
               <Text style={styles.meta}>Location: {item.listingLocation}</Text>
             ) : null}
+            {item.occupants ? (
+              <Text style={styles.occupants}>Occupied by: {item.occupants}</Text>
+            ) : null}
           </Card>
         )}
       />
@@ -238,4 +246,10 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: "600", color: colors.text, flex: 1 },
   meta: { fontSize: 13, color: colors.muted, marginTop: 4 },
   empty: { fontSize: 13, color: colors.muted },
+  occupants: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: colors.brand,
+    marginTop: 4,
+  },
 });

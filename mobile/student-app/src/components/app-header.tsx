@@ -61,45 +61,41 @@ export function AppHeader({ showBack, onBack }: Props) {
             <Text style={styles.brandName}>DORMCONNECT</Text>
           </View>
 
-          {!isLandlord ? (
-            <Pressable
-              style={styles.bellBtn}
-              onPress={() => {
-                void load();
-                setNotifOpen(true);
-              }}
-              accessibilityLabel="Notifications"
-              hitSlop={8}
-            >
-              <Ionicons
-                name={unread > 0 ? "notifications" : "notifications-outline"}
-                size={24}
-                color={colors.white}
-              />
-              {unread > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {unread > 9 ? "9+" : unread}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-          ) : null}
+          <Pressable
+            style={styles.bellBtn}
+            onPress={() => {
+              void load();
+              setNotifOpen(true);
+            }}
+            accessibilityLabel="Notifications"
+            hitSlop={8}
+          >
+            <Ionicons
+              name={unread > 0 ? "notifications" : "notifications-outline"}
+              size={24}
+              color={colors.white}
+            />
+            {unread > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {unread > 9 ? "9+" : unread}
+                </Text>
+              </View>
+            )}
+          </Pressable>
         </View>
       </View>
 
-      {!isLandlord ? (
-        <NotificationsModal
-          visible={notifOpen}
-          onClose={() => setNotifOpen(false)}
-          items={items}
-          loading={loading}
-          unread={unread}
-          onRefresh={() => void load()}
-          onMarkRead={(id) => void markRead(id)}
-          onMarkAllRead={() => void markAllRead()}
-        />
-      ) : null}
+      <NotificationsModal
+        visible={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        items={items}
+        loading={loading}
+        unread={unread}
+        onRefresh={() => void load()}
+        onMarkRead={(id) => void markRead(id)}
+        onMarkAllRead={() => void markAllRead()}
+      />
     </>
   );
 }

@@ -100,6 +100,38 @@ export async function GET() {
           r.payment_status as "Paid" | "Pending" | "Overdue"
         );
         const nextDue = resolveNextUnpaidDueFromSchedule(monthlySchedule);
+
+        // Fetch balances from linked student reservation (if any)
+        let advancePayments = 0;
+        let deposits = 0;
+        let remainingBalance = 0;
+        const { rows: sr2 } = await pool.query<{ student_reservation_id: string | null }>(
+          `SELECT student_reservation_id FROM public.landlord_tenant_leases WHERE id = $1::uuid`,
+          [r.id]
+        );
+        const linkedResId = sr2[0]?.student_reservation_id;
+        if (linkedResId) {
+          const { rows: bal } = await pool.query<{
+            advance_amount: string;
+            deposit_amount: string;
+            balance_remaining: string;
+          }>(
+            `SELECT advance_amount::text, deposit_amount::text, balance_remaining::text
+             FROM public.student_dorm_reservations WHERE id = $1::uuid`,
+            [linkedResId]
+          );
+          if (bal[0]) {
+            advancePayments = Number(bal[0].advance_amount) || 0;
+            deposits = Number(bal[0].deposit_amount) || 0;
+            remainingBalance = Number(bal[0].balance_remaining) || 0;
+          }
+        } else {
+          // For manual leases without a reservation, calculate remaining from schedule
+          remainingBalance = monthlySchedule
+            .filter((m) => m.status !== "Paid")
+            .reduce((s, m) => s + m.amount, 0);
+        }
+
         return {
           id: r.id,
           roomNo: r.room_no,
@@ -122,6 +154,9 @@ export async function GET() {
           daysUntilDue: nextDue.daysUntilDue,
           dueUrgency: nextDue.urgency,
           dueLabel: nextDue.dueLabel,
+          advancePayments,
+          deposits,
+          remainingBalance,
         };
       })
     );

@@ -56,9 +56,11 @@ export async function GET() {
       listing_background_url: string | null;
       room_image_urls: unknown;
       acc_dorm_name: string | null;
+      schedule_month_number: number | null;
     }>(
       `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
               pay.receipt_url, pay.proof_image_url, pay.description, pay.reservation_id,
+              pay.schedule_month_number,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text AS monthly_rent,
@@ -221,6 +223,7 @@ export async function GET() {
           ? new Date(x.paid_at).toLocaleString()
           : undefined,
         leasePeriod,
+        scheduleMonthNumber: x.schedule_month_number ?? undefined,
       };
     });
     const fromLandlord = landlordRows.map((x) => {
@@ -351,6 +354,7 @@ export async function GET() {
           ...m,
           dormName,
           roomNo: active.room_no,
+          reservationId: active.id,
         })
       );
     }
@@ -380,6 +384,7 @@ export async function POST(req: Request) {
       description?: string;
       paidAt?: string;
       paidOnDate?: string;
+      scheduleMonthNumber?: number | null;
     };
     const amount = Math.max(0, Number(body.amount) || 0);
     if (amount <= 0) {
@@ -428,10 +433,12 @@ export async function POST(req: Request) {
         ? new Date(body.paidAt).toISOString()
         : null;
 
+    const scheduleMonthNumber = body.scheduleMonthNumber ? Number(body.scheduleMonthNumber) : null;
+
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.student_payment_records
-        (student_user_id, reservation_id, amount, method, status, paid_at, receipt_url, proof_image_url, description)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz, $7, $8, $9)
+        (student_user_id, reservation_id, amount, method, status, paid_at, receipt_url, proof_image_url, description, schedule_month_number)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10)
        RETURNING id`,
       [
         studentId,
@@ -443,6 +450,7 @@ export async function POST(req: Request) {
         (body.receiptUrl ?? "").trim() || null,
         proofImage || null,
         (body.description ?? "").trim() || null,
+        scheduleMonthNumber,
       ]
     );
 

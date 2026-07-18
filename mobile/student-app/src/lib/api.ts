@@ -192,6 +192,7 @@ export type UnpaidRentMonth = {
   dueLabel: string;
   dormName?: string;
   roomNo?: string;
+  reservationId?: string;
 };
 
 export type OverviewResponse = {
@@ -269,6 +270,7 @@ export type PaymentRow = {
   location?: string;
   landlord?: string;
   monthlyRent?: number;
+  scheduleMonthNumber?: number;
 };
 
 export type PaymentReceiptLineItem = { label: string; amount: number };
@@ -460,6 +462,9 @@ export type LandlordLease = {
   leasePeriod: string;
   paymentStatus: string;
   dueLabel?: string;
+  advancePayments?: number;
+  deposits?: number;
+  remainingBalance?: number;
 };
 
 export type LandlordOnsiteRoom = {
@@ -471,6 +476,10 @@ export type LandlordOnsiteRoom = {
   tenantLeaseId: string | null;
   studentUserId: string | null;
   studentReservationId: string | null;
+  advanceAmount: number;
+  depositAmount: number;
+  balanceRemaining: number;
+  unpaidMonths: { monthNumber: number; monthLabel: string }[];
 };
 
 export type LandlordIncident = {

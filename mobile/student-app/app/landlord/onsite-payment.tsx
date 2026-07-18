@@ -41,6 +41,8 @@ export default function OnsitePaymentScreen() {
   const [amount, setAmount] = useState("");
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
   const [proofUri, setProofUri] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Advance" | "Security deposit">("Cash");
+  const [scheduleMonthNumber, setScheduleMonthNumber] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -87,6 +89,8 @@ export default function OnsitePaymentScreen() {
   );
 
   const applyRoomSelection = (hint: LandlordOnsiteRoom | null) => {
+    setScheduleMonthNumber(null);
+    setPaymentMethod("Cash");
     if (!hint) {
       setRoomId("");
       setPayerName("");
@@ -122,6 +126,14 @@ export default function OnsitePaymentScreen() {
     [roomsForProperty]
   );
 
+  const monthOptions = useMemo(() => {
+    if (!selected || !selected.unpaidMonths) return [];
+    return selected.unpaidMonths.map((m) => ({
+      value: `${m.monthNumber}`,
+      label: m.monthLabel,
+    }));
+  }, [selected]);
+
   const pickProof = async () => {
     try {
       const ImagePicker = await import("expo-image-picker");
@@ -150,6 +162,20 @@ export default function OnsitePaymentScreen() {
       setError("Property, student/tenant, amount, and paid date are required.");
       return;
     }
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      setError("Please enter a valid amount greater than zero.");
+      return;
+    }
+    if (paymentMethod === "Advance" && selected && numAmount > (selected.advanceAmount ?? 0)) {
+      setError(`Insufficient advance payment balance (₱${(selected.advanceAmount ?? 0).toLocaleString()} available).`);
+      return;
+    }
+    if (paymentMethod === "Security deposit" && selected && numAmount > (selected.depositAmount ?? 0)) {
+      setError(`Insufficient security deposit balance (₱${(selected.depositAmount ?? 0).toLocaleString()} available).`);
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -171,11 +197,12 @@ export default function OnsitePaymentScreen() {
           tenantLeaseId: tenantLeaseId || undefined,
           studentUserId: studentUserId || undefined,
           payerName: payerName.trim(),
-          amount: Number(amount),
-          method: "Cash",
+          amount: numAmount,
+          method: paymentMethod,
           status: "Paid",
           paidOn,
           proofUrl,
+          scheduleMonthNumber: scheduleMonthNumber ?? undefined,
         },
       });
       router.back();
@@ -190,7 +217,7 @@ export default function OnsitePaymentScreen() {
 
   return (
     <Screen>
-      <Subtitle>Add onsite cash payment</Subtitle>
+      <Subtitle>Record onsite payment</Subtitle>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <ScrollView keyboardShouldPersistTaps="handled">
@@ -226,6 +253,50 @@ export default function OnsitePaymentScreen() {
           Choosing a student or tenant fills the name and links the payment to
           their account when they booked through the app.
         </Text>
+
+        {selected ? (
+          <View style={styles.balancesContainer}>
+            <Text style={styles.balancesTitle}>Tenant Balances</Text>
+            <View style={styles.balancesRow}>
+              <View style={styles.balanceCol}>
+                <Text style={styles.balanceLabel}>Remaining Balance</Text>
+                <Text style={styles.balanceVal}>₱{(selected.balanceRemaining ?? 0).toLocaleString()}</Text>
+              </View>
+              <View style={styles.balanceCol}>
+                <Text style={styles.balanceLabel}>Advance Payment</Text>
+                <Text style={styles.balanceVal}>₱{(selected.advanceAmount ?? 0).toLocaleString()}</Text>
+              </View>
+              <View style={styles.balanceCol}>
+                <Text style={styles.balanceLabel}>Security Deposit</Text>
+                <Text style={styles.balanceVal}>₱{(selected.depositAmount ?? 0).toLocaleString()}</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {roomId ? (
+          <SelectField
+            label="Payment method"
+            placeholder="Select payment method"
+            value={paymentMethod}
+            options={[
+              { value: "Cash", label: "Cash" },
+              { value: "Advance", label: "Advance payment" },
+              { value: "Security deposit", label: "Security deposit" },
+            ]}
+            onChange={(val) => setPaymentMethod(val as any)}
+          />
+        ) : null}
+
+        {selected && selected.unpaidMonths && selected.unpaidMonths.length > 0 ? (
+          <SelectField
+            label="Month to pay"
+            placeholder="Select rent month (optional)"
+            value={scheduleMonthNumber ? `${scheduleMonthNumber}` : ""}
+            options={monthOptions}
+            onChange={(val) => setScheduleMonthNumber(val ? Number(val) : null)}
+          />
+        ) : null}
 
         {selected ? (
           <View style={styles.selectedBox}>
@@ -351,4 +422,39 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: 12, color: colors.muted, marginTop: 6 },
   submitWrap: { marginTop: 16, marginBottom: 24 },
+  balancesContainer: {
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#f8fafc",
+  },
+  balancesTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.muted,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  balancesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  balanceCol: {
+    minWidth: 80,
+    flex: 1,
+  },
+  balanceLabel: {
+    fontSize: 11,
+    color: colors.muted,
+  },
+  balanceVal: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.navy,
+    marginTop: 2,
+  },
 });
