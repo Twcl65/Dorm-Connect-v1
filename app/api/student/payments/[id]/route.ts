@@ -4,6 +4,15 @@ import { requireStudent } from "@/lib/require-student";
 import { resolveDormDisplayName } from "@/lib/landlord-db";
 import { formatLeasePeriod } from "@/lib/student-db";
 
+function getScheduleMonthLabel(leaseStart: string | null, monthNumber: number | null): string | undefined {
+  if (!leaseStart || !monthNumber) return undefined;
+  const start = new Date(leaseStart);
+  if (isNaN(start.getTime())) return undefined;
+  start.setHours(12, 0, 0, 0);
+  start.setMonth(start.getMonth() + monthNumber - 1);
+  return `Month ${monthNumber} (${start.toLocaleDateString("en-US", { month: "long" })})`;
+}
+
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,7 +61,7 @@ export async function GET(
         acc_dorm_name: string | null;
       }>(
         `SELECT lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
-                lp.paid_on::text, lp.proof_url, lp.reference_no,
+                lp.paid_on::text, lp.proof_url, lp.reference_no, lp.schedule_month_number,
                 p.name AS property_name, r.room_no,
                 s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
                 s.monthly_rent::text,
@@ -84,6 +93,7 @@ export async function GET(
         x.lease_start && x.lease_end
           ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
           : "—";
+      const periodLabel = getScheduleMonthLabel(x.lease_start, (x as any).schedule_month_number);
       const amountNum = Number(x.amount);
       const monthlyRent = x.monthly_rent ? Number(x.monthly_rent) : 0;
       const expectedInitial = monthlyRent > 0 ? monthlyRent * 3 : 0;
@@ -131,6 +141,7 @@ export async function GET(
           monthlyRent: monthlyRent > 0 ? monthlyRent : null,
           lineItems,
           notes,
+          periodLabel,
           source: "landlord_entry" as const,
         },
       });
@@ -157,7 +168,7 @@ export async function GET(
       acc_dorm_name: string | null;
     }>(
       `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
-              pay.receipt_url, pay.proof_image_url, pay.reservation_id, pay.description,
+              pay.receipt_url, pay.proof_image_url, pay.reservation_id, pay.description, pay.schedule_month_number,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text,
@@ -186,6 +197,7 @@ export async function GET(
       x.lease_start && x.lease_end
         ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
         : "—";
+    const periodLabel = getScheduleMonthLabel(x.lease_start, (x as any).schedule_month_number);
     const amountNum = Number(x.amount);
     const monthlyRent = x.monthly_rent ? Number(x.monthly_rent) : 0;
     const expectedInitial = monthlyRent > 0 ? monthlyRent * 3 : 0;
@@ -233,6 +245,7 @@ export async function GET(
         monthlyRent: monthlyRent > 0 ? monthlyRent : null,
         lineItems,
         notes,
+        periodLabel,
         source: "student_app" as const,
       },
     });

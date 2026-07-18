@@ -18,6 +18,15 @@ import {
 } from "@/lib/payment-schedule";
 import { isAllowedStoredFileUrl } from "@/lib/upload-url";
 
+function getScheduleMonthLabel(leaseStart: string | null, monthNumber: number | null): string | undefined {
+  if (!leaseStart || !monthNumber) return undefined;
+  const start = new Date(leaseStart);
+  if (isNaN(start.getTime())) return undefined;
+  start.setHours(12, 0, 0, 0);
+  start.setMonth(start.getMonth() + monthNumber - 1);
+  return `Month ${monthNumber} (${start.toLocaleDateString("en-US", { month: "long" })})`;
+}
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -110,11 +119,12 @@ export async function GET() {
       room_image_urls: unknown;
       acc_dorm_name: string | null;
       entry_source: string | null;
+      schedule_month_number: number | null;
     }>(
       `WITH ${MATCHED_STUDENT_LANDLORD_PAYMENTS_CTE}
        SELECT DISTINCT ON (lp.id)
               lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
-              lp.paid_on::text, lp.proof_url, lp.reference_no, lp.entry_source,
+              lp.paid_on::text, lp.proof_url, lp.reference_no, lp.entry_source, lp.schedule_month_number,
               p.name AS property_name, r.room_no,
               s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
               s.monthly_rent::text,
@@ -158,10 +168,11 @@ export async function GET() {
     );
 
     const fromApp = appRows.map((x) => {
-      const leasePeriod =
+      const defaultLeasePeriod =
         x.lease_start && x.lease_end
           ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
           : "—";
+      const leasePeriod = getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? defaultLeasePeriod;
       const months =
         x.lease_start && x.lease_end
           ? Math.max(
@@ -227,10 +238,11 @@ export async function GET() {
       };
     });
     const fromLandlord = landlordRows.map((x) => {
-      const leasePeriod =
+      const defaultLeasePeriod =
         x.lease_start && x.lease_end
           ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
           : "—";
+      const leasePeriod = getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? defaultLeasePeriod;
       const months =
         x.lease_start && x.lease_end
           ? Math.max(

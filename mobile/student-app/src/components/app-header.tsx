@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NotificationsModal } from "@/components/notifications-modal";
 import { colors } from "@/components/ui";
@@ -51,13 +51,11 @@ export function AppHeader({ showBack, onBack }: Props) {
           ) : null}
 
           <View style={styles.brand}>
-            <View style={styles.logo}>
-              <Ionicons
-                name={isLandlord ? "business" : "home"}
-                size={18}
-                color={colors.brand}
-              />
-            </View>
+            <Image
+              source={require("../../assets/icon.png")}
+              style={styles.logoImage}
+              resizeMode="cover"
+            />
             <Text style={styles.brandName}>DORMCONNECT</Text>
           </View>
 
@@ -92,7 +90,7 @@ export function AppHeader({ showBack, onBack }: Props) {
         items={items}
         loading={loading}
         unread={unread}
-        onRefresh={() => void load()}
+        onRefresh={() => load()}
         onMarkRead={(id) => void markRead(id)}
         onMarkAllRead={() => void markAllRead()}
       />
@@ -120,13 +118,11 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     gap: 10,
   },
-  logo: {
+  logoImage: {
     width: 34,
     height: 34,
     borderRadius: 10,
     backgroundColor: colors.white,
-    alignItems: "center",
-    justifyContent: "center",
   },
   brandName: {
     fontSize: 17,

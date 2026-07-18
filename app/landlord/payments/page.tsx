@@ -864,8 +864,12 @@ export default function LandlordPaymentsPage() {
                     }}
                   >
                     <option value="Cash">Cash</option>
-                    <option value="Advance">Advance payment</option>
-                    <option value="Security deposit">Security deposit</option>
+                    {selectedOnsiteHint && selectedOnsiteHint.advanceAmount > 0 && (
+                      <option value="Advance">Advance payment</option>
+                    )}
+                    {selectedOnsiteHint && selectedOnsiteHint.depositAmount > 0 && (
+                      <option value="Security deposit">Security deposit</option>
+                    )}
                   </select>
                 </div>
                 {selectedOnsiteHint && (selectedOnsiteHint.advanceAmount > 0 || selectedOnsiteHint.depositAmount > 0) && (

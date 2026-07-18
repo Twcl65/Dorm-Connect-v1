@@ -281,8 +281,8 @@ export default function OnsitePaymentScreen() {
             value={paymentMethod}
             options={[
               { value: "Cash", label: "Cash" },
-              { value: "Advance", label: "Advance payment" },
-              { value: "Security deposit", label: "Security deposit" },
+              ...(selected && (selected.advanceAmount ?? 0) > 0 ? [{ value: "Advance", label: "Advance payment" }] : []),
+              ...(selected && (selected.depositAmount ?? 0) > 0 ? [{ value: "Security deposit", label: "Security deposit" }] : []),
             ]}
             onChange={(val) => setPaymentMethod(val as any)}
           />

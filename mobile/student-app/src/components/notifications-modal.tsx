@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import type { NotificationItem } from "@/lib/api";
 import { Badge, Button, Card, colors } from "@/components/ui";
@@ -25,7 +26,7 @@ type Props = {
   items: NotificationItem[];
   loading: boolean;
   unread: number;
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
 };
@@ -40,6 +41,8 @@ export function NotificationsModal({
   onMarkRead,
   onMarkAllRead,
 }: Props) {
+  const [isPulling, setIsPulling] = useState(false);
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <Pressable style={styles.overlay} onPress={onClose}>
@@ -69,8 +72,12 @@ export function NotificationsModal({
               ListEmptyComponent={
                 <Text style={styles.empty}>No notifications yet.</Text>
               }
-              refreshing={loading}
-              onRefresh={onRefresh}
+              refreshing={isPulling}
+              onRefresh={async () => {
+                setIsPulling(true);
+                await onRefresh();
+                setIsPulling(false);
+              }}
               renderItem={({ item }) => (
                 <Pressable
                   onPress={() => {

@@ -334,9 +334,6 @@ export default function PaymentsScreen() {
               {item.referenceNo ? (
                 <Text style={styles.meta}>Ref: {item.referenceNo}</Text>
               ) : null}
-              {item.scheduleMonthNumber ? (
-                <Text style={styles.meta}>Applied Month: Month {item.scheduleMonthNumber}</Text>
-              ) : null}
               <View style={styles.badges}>
                 <Badge
                   label={item.status}

@@ -33,6 +33,15 @@ function monthYearLabel(paidOnIso: string | null | undefined, createdAt: Date) {
   return d.toLocaleString("en-US", { month: "long", year: "numeric" });
 }
 
+function getScheduleMonthLabel(leaseStart: string | null, monthNumber: number | null): string | undefined {
+  if (!leaseStart || !monthNumber) return undefined;
+  const start = new Date(leaseStart);
+  if (isNaN(start.getTime())) return undefined;
+  start.setHours(12, 0, 0, 0);
+  start.setMonth(start.getMonth() + monthNumber - 1);
+  return `Month ${monthNumber} (${start.toLocaleDateString("en-US", { month: "long" })})`;
+}
+
 export async function GET() {
   const session = await requireOwner();
   if (!session) {
@@ -58,13 +67,16 @@ export async function GET() {
       student_reservation_id: string | null;
       student_user_id: string | null;
       entry_source: string | null;
+      schedule_month_number: number | null;
+      lease_start: string | null;
     }>(
       `SELECT p.id, p.created_at, r.room_no, prop.name AS property_name,
               p.payer_name, p.amount::text, p.method, p.status,
               p.reference_no, p.proof_url, p.paid_on::text,
-              p.tenant_lease_id,
+              p.tenant_lease_id, p.schedule_month_number,
               COALESCE(l.student_reservation_id, room_res.reservation_id) AS student_reservation_id,
               COALESCE(s.student_user_id, room_res.student_user_id) AS student_user_id,
+              COALESCE(l.lease_start, s.lease_start, room_res.lease_start)::text AS lease_start,
               p.entry_source
        FROM public.landlord_payments p
        LEFT JOIN public.landlord_rooms r ON r.id = p.room_id
@@ -72,7 +84,7 @@ export async function GET() {
        LEFT JOIN public.landlord_tenant_leases l ON l.id = p.tenant_lease_id
        LEFT JOIN public.student_dorm_reservations s ON s.id = l.student_reservation_id
        LEFT JOIN LATERAL (
-         SELECT res.id AS reservation_id, res.student_user_id
+         SELECT res.id AS reservation_id, res.student_user_id, res.lease_start
          FROM public.student_dorm_reservations res
          WHERE res.room_id = p.room_id
            AND res.status = 'Confirmed'
@@ -97,10 +109,13 @@ export async function GET() {
       paid_at: Date | null;
       reservation_id: string;
       student_user_id: string;
+      schedule_month_number: number | null;
+      lease_start: string | null;
     }>(
       `SELECT pay.id, pay.created_at, r.room_no, prop.name AS property_name,
               stu.full_name AS payer_name, pay.amount::text, pay.method, pay.status,
-              pay.receipt_url, pay.proof_image_url, pay.paid_at, pay.reservation_id, pay.student_user_id
+              pay.receipt_url, pay.proof_image_url, pay.paid_at, pay.reservation_id, pay.student_user_id,
+              pay.schedule_month_number, s.lease_start::text AS lease_start
        FROM public.student_payment_records pay
        JOIN public.student_dorm_reservations s ON s.id = pay.reservation_id
        JOIN public.boarding_house_app_users stu ON stu.id = pay.student_user_id
@@ -136,7 +151,7 @@ export async function GET() {
       referenceNo: x.reference_no ?? undefined,
       proofOfPaymentUrl: x.proof_url ?? undefined,
       date: x.paid_on?.slice(0, 10),
-      periodLabel: monthYearLabel(x.paid_on, x.created_at),
+      periodLabel: getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? monthYearLabel(x.paid_on, x.created_at),
       createdAt: x.created_at.toISOString(),
       tenantLeaseId: x.tenant_lease_id ?? undefined,
       reservationId: x.student_reservation_id ?? undefined,
@@ -157,13 +172,11 @@ export async function GET() {
         method: m,
         status: st,
         referenceNo: undefined as string | undefined,
-        // proof_image_url is what students upload from the app (GCash screenshot);
-        // receipt_url is the landlord-generated receipt PDF; prefer proof_image_url
         proofOfPaymentUrl: x.proof_image_url ?? x.receipt_url ?? undefined,
         date: x.paid_at
           ? new Date(x.paid_at).toISOString().slice(0, 10)
           : new Date(x.created_at).toISOString().slice(0, 10),
-        periodLabel: monthYearLabel(
+        periodLabel: getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? monthYearLabel(
           x.paid_at ? new Date(x.paid_at).toISOString().slice(0, 10) : null,
           x.created_at
         ),

@@ -18,6 +18,15 @@ function monthYearLabel(paidOnIso: string | null, createdAt: Date): string {
   return d.toLocaleString("en-US", { month: "long", year: "numeric" });
 }
 
+function getScheduleMonthLabel(leaseStart: string | null, monthNumber: number | null): string | undefined {
+  if (!leaseStart || !monthNumber) return undefined;
+  const start = new Date(leaseStart);
+  if (isNaN(start.getTime())) return undefined;
+  start.setHours(12, 0, 0, 0);
+  start.setMonth(start.getMonth() + monthNumber - 1);
+  return `Month ${monthNumber} (${start.toLocaleDateString("en-US", { month: "long" })})`;
+}
+
 export async function GET(req: Request) {
   const session = await requireOwner();
   if (!session) {
@@ -55,9 +64,10 @@ export async function GET(req: Request) {
         description: string | null;
         acc_dorm_name: string | null;
         proof_image_url: string | null;
+        schedule_month_number: number | null;
       }>(
         `SELECT pay.id, pay.amount::text, pay.method, pay.status, pay.created_at, pay.paid_at,
-                pay.description, pay.proof_image_url,
+                pay.description, pay.proof_image_url, pay.schedule_month_number,
                 p.name AS property_name, r.room_no,
                 s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
                 s.monthly_rent::text,
@@ -106,7 +116,7 @@ export async function GET(req: Request) {
         monthlyRent: monthlyRent > 0 ? monthlyRent : null,
         lineItems: buildInitialPaymentLineItems(amountNum, monthlyRent),
         notes: x.description?.trim() || null,
-        periodLabel: monthYearLabel(
+        periodLabel: getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? monthYearLabel(
           x.paid_at ? new Date(x.paid_at).toISOString().slice(0, 10) : null,
           x.created_at
         ),
@@ -130,9 +140,10 @@ export async function GET(req: Request) {
         payer_name: string;
         entry_source: string | null;
         acc_dorm_name: string | null;
+        schedule_month_number: number | null;
       }>(
         `SELECT lp.id, lp.amount::text, lp.method, lp.status, lp.created_at,
-                lp.paid_on::text, lp.reference_no,
+                lp.paid_on::text, lp.reference_no, lp.schedule_month_number,
                 prop.name AS property_name, r.room_no,
                 s.lease_start::text AS lease_start, s.lease_end::text AS lease_end,
                 s.monthly_rent::text,
@@ -192,7 +203,7 @@ export async function GET(req: Request) {
         notes:
           x.reference_no?.trim() ||
           "Recorded by landlord (onsite / manual entry).",
-        periodLabel: monthYearLabel(x.paid_on, x.created_at),
+        periodLabel: getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? monthYearLabel(x.paid_on, x.created_at),
       };
     }
 
