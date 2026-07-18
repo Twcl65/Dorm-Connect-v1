@@ -21,7 +21,8 @@ import {
   Menu,
   MoreVertical,
   Star,
-  User as UserIcon
+  User as UserIcon,
+  X as XIcon
 } from "lucide-react";
 import { cn } from "@/components/ui/utils";
 import { NotificationsBell } from "@/components/notifications-bell";
@@ -76,6 +77,7 @@ export function RoleShell({
 }: RoleShellProps) {
   const router = useRouter();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [me, setMe] = useState<MeUser | null>(null);
   const pathname = usePathname() ?? "";
   const settingsHref = `/${pathname.split("/").filter(Boolean)[0] ?? ""}/settings`;
@@ -122,18 +124,41 @@ export function RoleShell({
   return (
     <div className="min-h-screen bg-muted">
       <div className="flex min-h-screen">
+        {/* Mobile Menu Drawer Overlay */}
+        {isMobileMenuOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/50 md:hidden animate-in fade-in duration-200"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
-        <aside className="hidden md:flex md:w-64 lg:w-72 flex-col border-r bg-white text-slate-900">
-          <div className="flex h-14 items-center gap-2 border-b border-[#031C2E] bg-[#031C2E] px-5 text-slate-100">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-0.5 shadow-sm">
-              <img src="/icon.png" alt="DormConnect Logo" className="h-full w-full object-contain rounded-lg" />
+        <aside
+          className={cn(
+            "fixed inset-y-0 left-0 z-50 flex w-64 md:w-64 lg:w-72 flex-col border-r bg-white text-slate-900 transition-transform duration-300 md:static md:translate-x-0",
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          )}
+        >
+          <div className="flex h-14 items-center justify-between border-b border-[#031C2E] bg-[#031C2E] px-5 text-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-0.5 shadow-sm">
+                <img src="/icon.png" alt="DormConnect Logo" className="h-full w-full object-contain rounded-lg" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold leading-tight text-white">DormConnect</p>
+                <p className="text-[0.7rem] text-primary font-medium">
+                  {roleLabel}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold leading-tight text-white">DormConnect</p>
-              <p className="text-[0.7rem] text-primary font-medium">
-                {roleLabel}
-              </p>
-            </div>
+            {/* Mobile Sidebar Close Button */}
+            <button
+              type="button"
+              className="md:hidden text-slate-300 hover:text-white"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <XIcon className="h-5 w-5" />
+            </button>
           </div>
 
           <nav className="flex-1 space-y-3 px-4 py-4 text-sm">
@@ -149,6 +174,7 @@ export function RoleShell({
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
                     className={cn(
                       "flex items-center gap-2.5 rounded-lg px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors",
                       isActive
@@ -174,12 +200,6 @@ export function RoleShell({
           {/* Global header (same color as sidebar) */}
           <header className="hidden md:flex h-14 items-center justify-between border-b border-[#031C2E] bg-[#031C2E] px-6 text-slate-100">
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center"
-              >
-                <Menu className="h-6 w-6" />
-              </button>
               <p className="text-sm font-semibold tracking-tight">
                 {activeItem?.label ?? roleLabel}
               </p>
@@ -256,7 +276,8 @@ export function RoleShell({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center"
+                className="inline-flex h-8 w-8 items-center justify-center animate-in fade-in"
+                onClick={() => setIsMobileMenuOpen(true)}
               >
                 <Menu className="h-6 w-6" />
               </button>
