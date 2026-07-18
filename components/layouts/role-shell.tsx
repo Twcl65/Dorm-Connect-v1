@@ -125,8 +125,8 @@ export function RoleShell({
         {/* Sidebar */}
         <aside className="hidden md:flex md:w-64 lg:w-72 flex-col border-r bg-white text-slate-900">
           <div className="flex h-14 items-center gap-2 border-b border-[#031C2E] bg-[#031C2E] px-5 text-slate-100">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <Building2 className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-0.5 shadow-sm">
+              <img src="/icon.png" alt="DormConnect Logo" className="h-full w-full object-contain rounded-lg" />
             </div>
             <div>
               <p className="text-sm font-semibold leading-tight text-white">DormConnect</p>

@@ -290,7 +290,7 @@ export default function OnsitePaymentScreen() {
 
         {selected && selected.unpaidMonths && selected.unpaidMonths.length > 0 ? (
           <SelectField
-            label="Month to pay"
+            label="Paid for month (optional)"
             placeholder="Select rent month (optional)"
             value={scheduleMonthNumber ? `${scheduleMonthNumber}` : ""}
             options={monthOptions}

@@ -151,7 +151,7 @@ export default function LandlordPaymentsPage() {
   const [onsiteStudentUserId, setOnsiteStudentUserId] = useState("");
   const [onsitePayerName, setOnsitePayerName] = useState("");
   const [onsiteAmount, setOnsiteAmount] = useState("");
-  const [onsitePaidOn, setOnsitePaidOn] = useState("");
+  const [onsitePaidOn, setOnsitePaidOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [onsiteProofFile, setOnsiteProofFile] = useState<File | null>(null);
   const [onsiteError, setOnsiteError] = useState<string | null>(null);
   const [onsiteSaving, setOnsiteSaving] = useState(false);
@@ -271,7 +271,7 @@ export default function LandlordPaymentsPage() {
     setOnsiteTenantLeaseId("");
     setOnsiteStudentUserId("");
     setOnsiteAmount("");
-    setOnsitePaidOn("");
+    setOnsitePaidOn(new Date().toISOString().slice(0, 10));
     setOnsiteProofFile(null);
     setOnsiteError(null);
     setOnsiteMethod("Cash");
@@ -884,7 +884,7 @@ export default function LandlordPaymentsPage() {
                 )}
                 {selectedOnsiteHint && selectedOnsiteHint.unpaidMonths && selectedOnsiteHint.unpaidMonths.length > 0 && (
                   <div className="space-y-1 md:col-span-2">
-                    <label className="font-medium text-slate-800">Apply to month (optional)</label>
+                    <label className="font-medium text-slate-800">Paid for month (optional)</label>
                     <select
                       className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
                       value={onsiteScheduleMonthNumber}

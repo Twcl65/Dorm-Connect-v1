@@ -306,8 +306,8 @@ export function LandingPage() {
       <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/30">
-              <Building2 className="h-4.5 w-4.5 text-white" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-0.5 shadow-lg">
+              <img src="/icon.png" alt="DormConnect Logo" className="h-full w-full object-contain rounded-lg" />
             </div>
             <div>
               <p className="text-sm font-bold tracking-tight text-white">DormConnect</p>
@@ -741,8 +741,8 @@ export function LandingPage() {
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div className="lg:col-span-2">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
-                  <Building2 className="h-4 w-4 text-white" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white p-0.5">
+                  <img src="/icon.png" alt="DormConnect Logo" className="h-full w-full object-contain rounded-lg" />
                 </div>
                 <p className="text-base font-bold text-white">DormConnect</p>
               </div>
