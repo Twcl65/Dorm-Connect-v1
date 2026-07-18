@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { apiRequest, type NotificationItem } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -14,28 +16,70 @@ Notifications.setNotificationHandler({
   }),
 });
 
+/** Register for Expo push notifications and return the token string. */
+async function registerForPushNotifications(): Promise<string | null> {
+  try {
+    // Request permission
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== "granted") {
+      return null;
+    }
+
+    // Android needs a notification channel
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "Default",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#1e3a5f",
+      });
+    }
+
+    // Get the Expo push token
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    return tokenData.data; // e.g. "ExponentPushToken[xxx]"
+  } catch (err) {
+    if (__DEV__) console.warn("[push] Failed to get push token:", err);
+    return null;
+  }
+}
+
 export function useNotifications() {
   const { token } = useAuth();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const [isInitialized, setIsInitialized] = useState(false);
+  const pushTokenRegistered = useRef(false);
 
-  // Request push notification permissions on mount
+  // Register push token with server when auth token is available
   useEffect(() => {
+    if (!token || pushTokenRegistered.current) return;
     void (async () => {
+      const expoPushToken = await registerForPushNotifications();
+      if (!expoPushToken) return;
       try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== "granted") {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-      } catch {
-        // fail silently in environments without push support
+        await apiRequest("/api/push-token", {
+          token,
+          method: "POST",
+          body: { token: expoPushToken },
+        });
+        pushTokenRegistered.current = true;
+        if (__DEV__) console.log("[push] Registered token:", expoPushToken);
+      } catch (err) {
+        if (__DEV__) console.warn("[push] Failed to register token:", err);
       }
     })();
-  }, []);
+  }, [token]);
 
   const load = useCallback(async () => {
     if (!token) return;

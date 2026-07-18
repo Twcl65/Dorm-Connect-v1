@@ -99,10 +99,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Unregister push token from server before clearing auth
+    if (token) {
+      try {
+        const Notifications = await import("expo-notifications");
+        const Constants = await import("expo-constants");
+        const projectId = Constants.default.expoConfig?.extra?.eas?.projectId;
+        const tokenData = await Notifications.getExpoPushTokenAsync(
+          projectId ? { projectId } : undefined
+        );
+        await apiRequest("/api/push-token", {
+          method: "DELETE",
+          token,
+          body: { token: tokenData.data },
+        });
+      } catch {
+        // best-effort: don't block sign-out if this fails
+      }
+    }
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     setToken(null);
     setUser(null);
-  }, []);
+  }, [token]);
 
   const value = useMemo(
     () => ({ user, token, loading, signIn, signOut, refreshUser }),
