@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -26,8 +26,14 @@ import {
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { SelectField } from "@/components/select-field";
 
 type PropertyOpt = { id: string; name: string };
+type TenantStudent = {
+  studentUserId: string;
+  fullName: string;
+  roomNo: string;
+};
 
 export default function LandlordAnnouncementsTab() {
   const { token } = useAuth();
@@ -40,6 +46,12 @@ export default function LandlordAnnouncementsTab() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [propertyId, setPropertyId] = useState("");
+  const [audience, setAudience] = useState<"all_booked" | "single_student">(
+    "all_booked"
+  );
+  const [targetStudentUserId, setTargetStudentUserId] = useState("");
+  const [eligibleStudents, setEligibleStudents] = useState<TenantStudent[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -80,9 +92,46 @@ export default function LandlordAnnouncementsTab() {
     }, [load])
   );
 
+  // Load eligible students when single_student audience + property selected
+  useEffect(() => {
+    if (!token || !propertyId || audience !== "single_student") {
+      setEligibleStudents([]);
+      setTargetStudentUserId("");
+      return;
+    }
+    let cancelled = false;
+    setLoadingStudents(true);
+    void (async () => {
+      try {
+        const res = await apiRequest<{ students?: TenantStudent[] }>(
+          `/api/landlord/tenant-announcements/eligible-students?propertyId=${encodeURIComponent(propertyId)}`,
+          { token }
+        );
+        if (!cancelled) {
+          setEligibleStudents(res.students ?? []);
+          setTargetStudentUserId("");
+        }
+      } catch {
+        if (!cancelled) {
+          setEligibleStudents([]);
+          setTargetStudentUserId("");
+        }
+      } finally {
+        if (!cancelled) setLoadingStudents(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, propertyId, audience]);
+
   const submitAnnouncement = async () => {
     if (!token || !propertyId || !title.trim() || !body.trim()) {
       setError("Property, title, and message are required.");
+      return;
+    }
+    if (audience === "single_student" && !targetStudentUserId) {
+      setError("Please select a student.");
       return;
     }
     setSaving(true);
@@ -95,12 +144,16 @@ export default function LandlordAnnouncementsTab() {
           propertyId,
           title: title.trim(),
           body: body.trim(),
-          audience: "all_booked",
+          audience,
+          targetStudentUserId:
+            audience === "single_student" ? targetStudentUserId : null,
         },
       });
       setModalOpen(false);
       setTitle("");
       setBody("");
+      setTargetStudentUserId("");
+      setAudience("all_booked");
       await load();
     } catch (e) {
       setError(formatSignInError(e));
@@ -112,6 +165,21 @@ export default function LandlordAnnouncementsTab() {
   if (loading && osa.length === 0 && sent.length === 0) {
     return <CenteredLoader />;
   }
+
+  const propertyOptions = properties.map((p) => ({
+    value: p.id,
+    label: p.name,
+  }));
+
+  const audienceOptions = [
+    { value: "all_booked", label: "All booked students at this dorm" },
+    { value: "single_student", label: "One student only" },
+  ];
+
+  const studentOptions = eligibleStudents.map((s) => ({
+    value: s.studentUserId,
+    label: `${s.fullName} — Room ${s.roomNo}`,
+  }));
 
   return (
     <Screen style={styles.screen}>
@@ -182,52 +250,86 @@ export default function LandlordAnnouncementsTab() {
       <Modal visible={modalOpen} animationType="slide" transparent>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>New tenant announcement</Text>
-            <Text style={styles.label}>Property</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {properties.map((p) => (
-                <Pressable
-                  key={p.id}
-                  style={[
-                    styles.chip,
-                    propertyId === p.id && styles.chipActive,
-                  ]}
-                  onPress={() => setPropertyId(p.id)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      propertyId === p.id && styles.chipTextActive,
-                    ]}
-                  >
-                    {p.name}
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.sheetTitle}>New tenant announcement</Text>
+
+              <SelectField
+                label="Dorm / property"
+                placeholder="Select property"
+                value={propertyId}
+                options={propertyOptions}
+                onChange={setPropertyId}
+                emptyMessage="Add a property under Properties & Rooms first."
+              />
+
+              <SelectField
+                label="Send to"
+                placeholder="Select audience"
+                value={audience}
+                options={audienceOptions}
+                onChange={(val) =>
+                  setAudience(
+                    val === "single_student" ? "single_student" : "all_booked"
+                  )
+                }
+              />
+
+              {audience === "single_student" && propertyId ? (
+                loadingStudents ? (
+                  <Text style={styles.loadingHint}>Loading students…</Text>
+                ) : eligibleStudents.length === 0 ? (
+                  <Text style={styles.noStudentsHint}>
+                    No active reservations at this dorm. Students must have a
+                    pending or confirmed booking.
                   </Text>
-                </Pressable>
-              ))}
+                ) : (
+                  <SelectField
+                    label="Student"
+                    placeholder="Select student"
+                    value={targetStudentUserId}
+                    options={studentOptions}
+                    onChange={setTargetStudentUserId}
+                  />
+                )
+              ) : null}
+
+              <Text style={styles.label}>Title</Text>
+              <Input
+                placeholder="e.g. Rent collection — March"
+                value={title}
+                onChangeText={setTitle}
+              />
+              <Text style={styles.label}>Message</Text>
+              <Input
+                placeholder="e.g. Please settle March rent by Friday."
+                value={body}
+                onChangeText={setBody}
+                multiline
+                style={styles.textArea}
+              />
+              <View style={{ marginTop: 12, gap: 8 }}>
+                <Button
+                  label={saving ? "Posting…" : "Post to students"}
+                  variant="brand"
+                  loading={saving}
+                  disabled={
+                    !propertyId ||
+                    !title.trim() ||
+                    !body.trim() ||
+                    (audience === "single_student" && !targetStudentUserId)
+                  }
+                  onPress={() => void submitAnnouncement()}
+                />
+                <Button
+                  label="Cancel"
+                  variant="outline"
+                  onPress={() => setModalOpen(false)}
+                />
+              </View>
             </ScrollView>
-            <Input
-              placeholder="Title"
-              value={title}
-              onChangeText={setTitle}
-            />
-            <Input
-              placeholder="Message"
-              value={body}
-              onChangeText={setBody}
-              multiline
-              style={styles.textArea}
-            />
-            <Button
-              label={saving ? "Posting…" : "Post to all booked tenants"}
-              variant="brand"
-              loading={saving}
-              onPress={() => void submitAnnouncement()}
-            />
-            <Button
-              label="Cancel"
-              variant="outline"
-              onPress={() => setModalOpen(false)}
-            />
           </View>
         </View>
       </Modal>
@@ -267,17 +369,24 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
   },
-  label: { fontSize: 12, fontWeight: "600", color: colors.muted, marginBottom: 6 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#f1f5f9",
-    marginRight: 8,
-    marginBottom: 8,
+  label: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.muted,
+    marginTop: 12,
+    marginBottom: 6,
   },
-  chipActive: { backgroundColor: colors.brand },
-  chipText: { fontSize: 12, color: colors.text },
-  chipTextActive: { color: colors.white, fontWeight: "600" },
+  loadingHint: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 8,
+    fontStyle: "italic",
+  },
+  noStudentsHint: {
+    fontSize: 12,
+    color: "#92400e",
+    marginTop: 8,
+    lineHeight: 17,
+  },
   textArea: { minHeight: 100, textAlignVertical: "top" },
 });

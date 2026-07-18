@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -113,14 +114,23 @@ export default function OnsitePaymentScreen() {
     () =>
       roomsForProperty.map((r) => {
         const tenant = r.suggestedTenantName?.trim();
+        const isFullyPaid =
+          tenant &&
+          r.studentReservationId &&
+          r.unpaidMonths != null &&
+          r.unpaidMonths.length === 0;
+        const suffix = isFullyPaid ? " - Fully paid" : "";
         return {
           value: r.roomId,
-          label: tenant ?? `Room ${r.roomNo} (no tenant)`,
+          label: tenant
+            ? `${tenant}${suffix}`
+            : `Room ${r.roomNo} (no tenant)`,
           subtitle: tenant
             ? `Room ${r.roomNo}${
                 r.studentUserId ? " · Student app account" : ""
               }`
             : "Payment saved by room only",
+          disabled: !!isFullyPaid,
         };
       }),
     [roomsForProperty]
@@ -346,11 +356,16 @@ export default function OnsitePaymentScreen() {
 
         <Text style={styles.fieldLabel}>Proof (optional)</Text>
         <Button
-          label="Attach receipt photo"
+          label={proofUri ? "Change receipt photo" : "Attach receipt photo"}
           variant="outline"
           onPress={() => void pickProof()}
         />
-        {proofUri ? <Text style={styles.meta}>Photo selected.</Text> : null}
+        {proofUri ? (
+          <View style={styles.proofPreviewWrap}>
+            <Image source={{ uri: proofUri }} style={styles.proofPreview} />
+            <Text style={styles.meta}>Receipt photo attached</Text>
+          </View>
+        ) : null}
 
         <View style={styles.submitWrap}>
           <Button
@@ -421,6 +436,17 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   meta: { fontSize: 12, color: colors.muted, marginTop: 6 },
+  proofPreviewWrap: {
+    marginTop: 10,
+    alignItems: "center",
+  },
+  proofPreview: {
+    width: "100%",
+    height: 200,
+    borderRadius: 10,
+    resizeMode: "contain",
+    backgroundColor: "#f1f5f9",
+  },
   submitWrap: { marginTop: 16, marginBottom: 24 },
   balancesContainer: {
     marginTop: 12,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireOsaAdmin } from "@/lib/require-osa";
+import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,41 @@ export async function POST(req: Request) {
        RETURNING id`,
       [title, text, isActive, audience, session.sub]
     );
+
+    // Send push notifications to relevant audience if active
+    if (isActive) {
+      try {
+        let roles: string[] = [];
+        if (audience === "Students") {
+          roles = ["Student"];
+        } else if (audience === "Landlords") {
+          roles = ["Landlord"];
+        } else if (audience === "All") {
+          roles = ["Student", "Landlord"];
+        }
+
+        if (roles.length > 0) {
+          const { rows: targetUsers } = await pool.query<{ id: string }>(
+            `SELECT id FROM public.boarding_house_app_users
+             WHERE status = 'Active'
+               AND role = ANY($1::text[])`,
+            [roles]
+          );
+
+          for (const u of targetUsers) {
+            await insertNotification(
+              pool,
+              u.id,
+              title,
+              text,
+              "announcement"
+            );
+          }
+        }
+      } catch (err) {
+        console.error("[osa-announcements] Failed to notify target users:", err);
+      }
+    }
 
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
   } catch (e) {

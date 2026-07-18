@@ -14,6 +14,7 @@ export type SelectOption = {
   value: string;
   label: string;
   subtitle?: string;
+  disabled?: boolean;
 };
 
 type Props = {
@@ -98,24 +99,28 @@ export function SelectField({
               }
               renderItem={({ item }) => {
                 const active = item.value === value;
+                const isDisabled = !!item.disabled;
                 return (
                   <Pressable
-                    style={[styles.option, active && styles.optionActive]}
+                    style={[styles.option, active && styles.optionActive, isDisabled && styles.optionDisabled]}
                     onPress={() => {
+                      if (isDisabled) return;
                       onChange(item.value);
                       setOpen(false);
                     }}
+                    disabled={isDisabled}
                   >
                     <Text
                       style={[
                         styles.optionLabel,
                         active && styles.optionLabelActive,
+                        isDisabled && styles.optionLabelDisabled,
                       ]}
                     >
                       {item.label}
                     </Text>
                     {item.subtitle ? (
-                      <Text style={styles.optionSubtitle}>{item.subtitle}</Text>
+                      <Text style={[styles.optionSubtitle, isDisabled && styles.optionLabelDisabled]}>{item.subtitle}</Text>
                     ) : null}
                   </Pressable>
                 );
@@ -217,6 +222,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.muted,
     marginTop: 4,
+  },
+  optionDisabled: {
+    backgroundColor: "#f1f5f9",
+    opacity: 0.65,
+  },
+  optionLabelDisabled: {
+    color: "#94a3b8",
   },
   empty: {
     fontSize: 13,

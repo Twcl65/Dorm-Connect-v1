@@ -798,14 +798,21 @@ export default function LandlordPaymentsPage() {
                       }}
                     >
                       <option value="">Select room</option>
-                      {onsiteRoomsForProperty.map((h) => (
-                        <option key={h.roomId} value={h.roomId}>
-                          Room {h.roomNo}
-                          {h.suggestedTenantName
-                            ? ` — ${h.suggestedTenantName}`
-                            : ""}
-                        </option>
-                      ))}
+                      {onsiteRoomsForProperty.map((h) => {
+                        const isFullyPaid =
+                          h.suggestedTenantName &&
+                          h.studentReservationId &&
+                          h.unpaidMonths &&
+                          h.unpaidMonths.length === 0;
+                        return (
+                          <option key={h.roomId} value={h.roomId} disabled={!!isFullyPaid}>
+                            Room {h.roomNo}
+                            {h.suggestedTenantName
+                              ? ` — ${h.suggestedTenantName}${isFullyPaid ? " - Fully paid" : ""}`
+                              : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     <Input
@@ -930,6 +937,16 @@ export default function LandlordPaymentsPage() {
                       setOnsiteProofFile(e.target.files?.[0] ?? null)
                     }
                   />
+                  {onsiteProofFile && (
+                    <div className="mt-2 w-full max-w-xs overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={URL.createObjectURL(onsiteProofFile)}
+                        alt="Onsite proof preview"
+                        className="max-h-40 w-full rounded object-contain"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap justify-end gap-2 pt-1">

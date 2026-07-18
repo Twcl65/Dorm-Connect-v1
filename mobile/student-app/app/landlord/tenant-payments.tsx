@@ -1,10 +1,12 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import {
@@ -24,6 +26,7 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function TenantPaymentsScreen() {
   const { token } = useAuth();
+  const router = useRouter();
   const params = useLocalSearchParams<{
     leaseId?: string;
     tenantName?: string;
@@ -74,9 +77,7 @@ export default function TenantPaymentsScreen() {
 
   return (
     <Screen>
-      <Subtitle>
-        {tenantName} · Room {roomNo}
-      </Subtitle>
+      <Subtitle>{`${tenantName} · Room ${roomNo}`}</Subtitle>
       <Text style={styles.hint}>All payment transactions for this tenant</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -123,9 +124,18 @@ export default function TenantPaymentsScreen() {
                     : "warning"
               }
             />
-            <Text style={styles.source}>
-              {item.source === "student" ? "Student app" : "Manual / landlord"}
-            </Text>
+            <View style={styles.cardActions}>
+              <Pressable
+                style={styles.receiptBtn}
+                onPress={() =>
+                  router.push(
+                    `/payment-receipt/${encodeURIComponent(item.id)}?source=${item.source}`
+                  )
+                }
+              >
+                <Text style={styles.receiptBtnText}>Receipt</Text>
+              </Pressable>
+            </View>
           </Card>
         )}
       />
@@ -140,4 +150,22 @@ const styles = StyleSheet.create({
   amount: { fontSize: 18, fontWeight: "700", color: colors.text },
   meta: { fontSize: 13, color: colors.muted, marginTop: 4 },
   source: { fontSize: 11, color: colors.muted, marginTop: 6 },
+  cardActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 10,
+  },
+  receiptBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.sky,
+    backgroundColor: "#f0f9ff",
+  },
+  receiptBtnText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.sky,
+  },
 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
+import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 
@@ -150,6 +151,39 @@ export async function POST(req: Request) {
         audience === "single_student" ? targetStudentUserId : null,
       ]
     );
+
+    // Send push notifications
+    try {
+      const studentIds: string[] = [];
+      if (audience === "single_student" && targetStudentUserId) {
+        studentIds.push(targetStudentUserId);
+      } else {
+        const { rows: students } = await pool.query<{ student_user_id: string }>(
+          `SELECT DISTINCT s.student_user_id
+           FROM public.student_dorm_reservations s
+           JOIN public.landlord_rooms r ON r.id = s.room_id
+           WHERE r.property_id = $1::uuid
+             AND s.status IN ('Pending', 'Confirmed')
+             AND s.student_user_id IS NOT NULL`,
+          [propertyId]
+        );
+        for (const s of students) {
+          studentIds.push(s.student_user_id);
+        }
+      }
+
+      for (const studentId of studentIds) {
+        await insertNotification(
+          pool,
+          studentId,
+          title,
+          text,
+          "announcement"
+        );
+      }
+    } catch (err) {
+      console.error("[landlord-announcements] Failed to notify student(s):", err);
+    }
 
     await landlordLog(
       pool,

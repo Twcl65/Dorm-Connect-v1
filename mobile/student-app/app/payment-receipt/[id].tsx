@@ -12,21 +12,27 @@ import { CenteredLoader, Screen, Subtitle, Title, colors } from "@/components/ui
 import { useAuth } from "@/context/AuthContext";
 
 export default function PaymentReceiptScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { token } = useAuth();
+  const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
+  const { token, user } = useAuth();
   const [payment, setPayment] = useState<PaymentReceiptData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
     setError(null);
+    let endpoint = `/api/student/payments/${encodeURIComponent(id)}`;
+    if (user?.role === "Landlord") {
+      const src = source === "student" ? "student" : "landlord";
+      endpoint = `/api/landlord/payments/receipt?id=${encodeURIComponent(id)}&source=${src}`;
+    }
     const res = await apiRequest<{ payment: PaymentReceiptData }>(
-      `/api/student/payments/${encodeURIComponent(id)}`,
+      endpoint,
       { token }
     );
     setPayment(res.payment ?? null);
-  }, [token, id]);
+  }, [token, id, user?.role, source]);
 
   useFocusEffect(
     useCallback(() => {
