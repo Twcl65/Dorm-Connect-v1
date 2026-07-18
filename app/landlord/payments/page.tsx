@@ -576,7 +576,7 @@ export default function LandlordPaymentsPage() {
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Source</TableHead>
-                <TableHead>Period</TableHead>
+                <TableHead>Paid for</TableHead>
                 <TableHead>Room No.</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Amount</TableHead>
@@ -1044,9 +1044,17 @@ export default function LandlordPaymentsPage() {
                 </p>
                 {selectedPayment.date && (
                   <p className="text-[0.7rem] text-muted-foreground">
-                    Date:{" "}
+                    Paid on:{" "}
                     <span className="font-medium text-slate-900">
                       {selectedPayment.date}
+                    </span>
+                  </p>
+                )}
+                {selectedPayment.periodLabel && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Paid for:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedPayment.periodLabel}
                     </span>
                   </p>
                 )}
@@ -1499,7 +1507,7 @@ export default function LandlordPaymentsPage() {
                       <TableRow>
                         <TableHead>ID</TableHead>
                         <TableHead>Source</TableHead>
-                        <TableHead>Period</TableHead>
+                        <TableHead>Paid for</TableHead>
                         <TableHead>Room No.</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Amount</TableHead>

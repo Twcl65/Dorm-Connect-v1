@@ -27,7 +27,7 @@ export function PaymentReceiptCard({
           <dd className="font-mono text-xs">{payment.id.slice(0, 8).toUpperCase()}</dd>
         </div>
         <div className="flex justify-between gap-4">
-          <dt className="text-muted-foreground">Date</dt>
+          <dt className="text-muted-foreground">Paid on</dt>
           <dd>
             {payment.paidAt
               ? new Date(payment.paidAt).toLocaleDateString()
@@ -36,7 +36,7 @@ export function PaymentReceiptCard({
         </div>
         {payment.periodLabel ? (
           <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">Period</dt>
+            <dt className="text-muted-foreground">Paid for</dt>
             <dd className="text-right">{payment.periodLabel}</dd>
           </div>
         ) : null}

@@ -191,7 +191,7 @@ export function PaymentDetailModal({ visible, payment, onClose }: Props) {
               ) : null}
               {payment.leasePeriod ? (
                 <>
-                  <Text style={styles.label}>Lease period</Text>
+                  <Text style={styles.label}>Paid for</Text>
                   <Text style={styles.value}>{payment.leasePeriod}</Text>
                 </>
               ) : null}

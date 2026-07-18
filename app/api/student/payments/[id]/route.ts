@@ -89,11 +89,12 @@ export async function GET(
       if (!x) {
         return NextResponse.json({ error: "Payment not found." }, { status: 404 });
       }
-      const leasePeriod =
+      const defaultLeasePeriod =
         x.lease_start && x.lease_end
           ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
           : "—";
-      const periodLabel = getScheduleMonthLabel(x.lease_start, (x as any).schedule_month_number);
+      const leasePeriod = getScheduleMonthLabel(x.lease_start, (x as any).schedule_month_number) ?? defaultLeasePeriod;
+      const periodLabel = leasePeriod;
       const amountNum = Number(x.amount);
       const monthlyRent = x.monthly_rent ? Number(x.monthly_rent) : 0;
       const expectedInitial = monthlyRent > 0 ? monthlyRent * 3 : 0;
@@ -193,11 +194,12 @@ export async function GET(
     if (!x) {
       return NextResponse.json({ error: "Payment not found." }, { status: 404 });
     }
-    const leasePeriod =
+    const defaultLeasePeriod =
       x.lease_start && x.lease_end
         ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
         : "—";
-    const periodLabel = getScheduleMonthLabel(x.lease_start, (x as any).schedule_month_number);
+    const leasePeriod = getScheduleMonthLabel(x.lease_start, (x as any).schedule_month_number) ?? defaultLeasePeriod;
+    const periodLabel = leasePeriod;
     const amountNum = Number(x.amount);
     const monthlyRent = x.monthly_rent ? Number(x.monthly_rent) : 0;
     const expectedInitial = monthlyRent > 0 ? monthlyRent * 3 : 0;

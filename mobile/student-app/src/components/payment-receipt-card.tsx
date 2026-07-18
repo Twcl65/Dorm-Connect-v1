@@ -50,9 +50,9 @@ export function PaymentReceiptCard({
         label="Receipt No."
         value={payment.id.slice(0, 8).toUpperCase()}
       />
-      <ReceiptRow label="Date" value={formatDate(receiptDate)} />
+      <ReceiptRow label="Paid on" value={formatDate(receiptDate)} />
       {payment.periodLabel ? (
-        <ReceiptRow label="Period" value={payment.periodLabel} />
+        <ReceiptRow label="Paid for" value={payment.periodLabel} />
       ) : null}
       <ReceiptRow label="Student" value={payment.studentName} />
       <ReceiptRow

@@ -132,10 +132,10 @@ export function resolveUpcomingUnpaidMonthsFromSchedule(
       const diffDays = Math.round(
         (due.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
       );
-      const monthLabel = due.toLocaleDateString(undefined, {
+      const monthName = due.toLocaleDateString(undefined, {
         month: "long",
-        year: "numeric",
       });
+      const monthLabel = `Month ${m.monthNumber} (${monthName})`;
       return {
         dueDate: dueStr,
         amount: m.amount,
