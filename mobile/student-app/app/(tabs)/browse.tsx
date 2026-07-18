@@ -11,11 +11,13 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { StudentDormMap } from "@/components/student-dorm-map";
+import { MapErrorBoundary } from "@/components/map-error-boundary";
 import {
   apiRequest,
   formatSignInError,
   type MapProperty,
 } from "@/lib/api";
+import { isValidMapCoordinate } from "@/lib/map-coords";
 import {
   Badge,
   Card,
@@ -83,13 +85,15 @@ export default function BrowseScreen() {
 
   const mapMarkers = useMemo(
     () =>
-      properties.map((p) => ({
-        id: p.id,
-        name: p.name,
-        latitude: p.latitude,
-        longitude: p.longitude,
-        coverImageUrl: p.coverImageUrl,
-      })),
+      properties
+        .filter((p) => isValidMapCoordinate(p.latitude, p.longitude))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          coverImageUrl: p.coverImageUrl,
+        })),
     [properties]
   );
 
@@ -130,13 +134,23 @@ export default function BrowseScreen() {
 
       <View style={[styles.mapBox, { height: MAP_HEIGHT }]}>
         {mapMarkers.length > 0 ? (
-          <StudentDormMap
-            markers={mapMarkers}
-            selectedId={selectedPropertyId}
-            onMarkerPress={(id) => {
-              setSelectedPropertyId((prev) => (prev === id ? null : id));
-            }}
-          />
+          <MapErrorBoundary
+            fallback={
+              <View style={styles.mapEmpty}>
+                <Text style={styles.mapEmptyText}>
+                  Map could not load. Scroll down to browse rooms by list.
+                </Text>
+              </View>
+            }
+          >
+            <StudentDormMap
+              markers={mapMarkers}
+              selectedId={selectedPropertyId}
+              onMarkerPress={(id) => {
+                setSelectedPropertyId((prev) => (prev === id ? null : id));
+              }}
+            />
+          </MapErrorBoundary>
         ) : (
           <View style={styles.mapEmpty}>
             <Text style={styles.mapEmptyText}>

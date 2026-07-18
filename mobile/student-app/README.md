@@ -46,6 +46,8 @@ npm start
 
 Press `a` (Android) or `i` (iOS), or scan the QR code with Expo Go.
 
+Browse uses **Leaflet + OpenStreetMap** (same as the website). No Google Maps API key is required.
+
 ## Features (MVP)
 
 - Sign in (Student accounts only)
