@@ -341,6 +341,8 @@ export type IncidentReport = {
   roomNo: string | null;
   propertyName: string | null;
   landlordName: string | null;
+  landlordReply: string | null;
+  landlordRepliedAt: string | null;
 };
 
 export type IncidentRoom = {
@@ -492,6 +494,8 @@ export type LandlordIncident = {
   roomNo: string | null;
   propertyName: string | null;
   reporterName: string;
+  landlordReply: string | null;
+  landlordRepliedAt: string | null;
 };
 
 export type OsaAnnouncement = {

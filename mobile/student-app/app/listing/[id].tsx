@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -34,6 +35,7 @@ import {
   listingImageUrls,
   showRoomDetailsAside,
 } from "@/lib/listing-utils";
+import { KeyboardAwareSheet } from "@/components/keyboard-aware-modal";
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -399,53 +401,62 @@ export default function ListingDetailScreen() {
 
       {/* Step 3: Move-in & lease */}
       <Modal visible={bookingStep === 3} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Confirm reservation</Text>
-            <Text style={styles.muted}>Choose move-in date and lease duration.</Text>
-            {submitError ? (
-              <Text style={styles.error}>{submitError}</Text>
-            ) : null}
-            <Text style={styles.inputLabel}>Move-in date (YYYY-MM-DD)</Text>
-            <Input
-              value={moveInDate}
-              onChangeText={setMoveInDate}
-              placeholder="2026-06-01"
-              autoCapitalize="none"
-            />
-            <Text style={styles.inputLabel}>Lease duration</Text>
-            <View style={styles.durationRow}>
-              {(["6", "12", "18"] as const).map((m) => (
-                <Button
+        <KeyboardAwareSheet sheetStyle={styles.modalCardInner}>
+          <Text style={styles.modalTitle}>Confirm reservation</Text>
+          <Text style={styles.muted}>Choose move-in date and lease duration.</Text>
+          {submitError ? (
+            <Text style={styles.error}>{submitError}</Text>
+          ) : null}
+          <Text style={styles.inputLabel}>Move-in date (YYYY-MM-DD)</Text>
+          <Input
+            value={moveInDate}
+            onChangeText={setMoveInDate}
+            placeholder="2026-06-01"
+            autoCapitalize="none"
+          />
+          <Text style={styles.inputLabel}>Lease duration</Text>
+          <View style={styles.durationRow}>
+            {(["6", "12", "18"] as const).map((m) => {
+              const active = leaseMonths === m;
+              return (
+                <Pressable
                   key={m}
-                  label={`${m} mo`}
-                  variant={leaseMonths === m ? "primary" : "outline"}
+                  style={[styles.durationBtn, active && styles.durationBtnActive]}
                   onPress={() => setLeaseMonths(m)}
-                />
-              ))}
+                >
+                  <Text
+                    style={[
+                      styles.durationBtnText,
+                      active && styles.durationBtnTextActive,
+                    ]}
+                  >
+                    {m} months
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.muted}>
+            Final terms are subject to landlord confirmation.
+          </Text>
+          <View style={styles.modalActions}>
+            <View style={styles.modalBtn}>
+              <Button
+                label="Back"
+                variant="outline"
+                onPress={() => setBookingStep(2)}
+              />
             </View>
-            <Text style={styles.muted}>
-              Final terms are subject to landlord confirmation.
-            </Text>
-            <View style={styles.modalActions}>
-              <View style={styles.modalBtn}>
-                <Button
-                  label="Back"
-                  variant="outline"
-                  onPress={() => setBookingStep(2)}
-                />
-              </View>
-              <View style={styles.modalBtn}>
-                <Button
-                  label={submitting ? "Submitting…" : "Confirm"}
-                  onPress={() => void submitReservation()}
-                  loading={submitting}
-                  disabled={!moveInDate.trim() || submitting}
-                />
-              </View>
+            <View style={styles.modalBtn}>
+              <Button
+                label={submitting ? "Submitting…" : "Confirm"}
+                onPress={() => void submitReservation()}
+                loading={submitting}
+                disabled={!moveInDate.trim() || submitting}
+              />
             </View>
-          </Card>
-        </View>
+          </View>
+        </KeyboardAwareSheet>
       </Modal>
     </Screen>
   );
@@ -512,6 +523,11 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalCard: { maxHeight: "85%" },
+  modalCardInner: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 16,
+  },
   modalTitle: { fontSize: 17, fontWeight: "700", color: colors.navy },
   termsScroll: { maxHeight: 280, marginVertical: 12 },
   termItem: { fontSize: 13, color: "#334155", lineHeight: 20, marginBottom: 8 },
@@ -525,4 +541,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   durationRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+  durationBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#f8fafc",
+    alignItems: "center",
+  },
+  durationBtnActive: {
+    borderColor: colors.brand,
+    backgroundColor: colors.brandMuted,
+  },
+  durationBtnText: { fontSize: 13, color: colors.text, fontWeight: "500" },
+  durationBtnTextActive: { color: colors.navy, fontWeight: "700" },
 });

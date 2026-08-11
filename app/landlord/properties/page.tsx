@@ -278,7 +278,7 @@ export default function LandlordPropertiesPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Map pin</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -310,8 +310,8 @@ export default function LandlordPropertiesPage() {
                           ? `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`
                           : "Not set"}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                      <TableCell>
+                        <div className="flex justify-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"

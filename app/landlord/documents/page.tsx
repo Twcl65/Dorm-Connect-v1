@@ -536,7 +536,7 @@ export default function LandlordDocumentsPage() {
                 <TableHead>Documents</TableHead>
                 <TableHead>Submitted Date</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -575,7 +575,7 @@ export default function LandlordDocumentsPage() {
                     <StatusBadge status={req.status} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end">
+                    <div className="flex justify-center">
                       <Button
                         variant="outline"
                         size="sm"

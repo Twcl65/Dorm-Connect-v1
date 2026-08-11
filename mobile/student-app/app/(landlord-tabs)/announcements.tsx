@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Modal,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -27,6 +25,8 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { SelectField } from "@/components/select-field";
+import { CollapsibleAnnouncementList } from "@/components/collapsible-announcement-list";
+import { KeyboardAwareModal } from "@/components/keyboard-aware-modal";
 
 type PropertyOpt = { id: string; name: string };
 type TenantStudent = {
@@ -212,127 +212,119 @@ export default function LandlordAnnouncementsTab() {
         }
       >
         <Text style={styles.section}>From OSA</Text>
-        {osa.length === 0 ? (
-          <Card>
-            <Text style={styles.empty}>No OSA announcements.</Text>
-          </Card>
-        ) : (
-          osa.map((a) => (
-            <Card key={a.id}>
-              <Text style={styles.cardTitle}>{a.title}</Text>
-              <Text style={styles.meta}>{a.date}</Text>
-              <Text style={styles.body}>{a.message}</Text>
-            </Card>
-          ))
-        )}
+        <Card>
+          <CollapsibleAnnouncementList
+            items={osa.map((a) => ({
+              id: a.id,
+              title: a.title,
+              message: a.message,
+              date: a.date,
+              meta: `OSA · ${new Date(a.date).toLocaleDateString()}`,
+            }))}
+            emptyMessage="No OSA announcements."
+          />
+        </Card>
 
         <Text style={styles.section}>Your announcements to tenants</Text>
-        {sent.length === 0 ? (
-          <Card>
-            <Text style={styles.empty}>You have not sent any yet.</Text>
-          </Card>
-        ) : (
-          sent.map((a) => (
-            <Card key={a.id}>
-              <Text style={styles.cardTitle}>{a.title}</Text>
-              <Text style={styles.meta}>
-                {a.propertyName} · {a.date}
-                {a.targetStudentName
+        <Card>
+          <CollapsibleAnnouncementList
+            items={sent.map((a) => ({
+              id: a.id,
+              title: a.title,
+              message: a.message,
+              date: a.date,
+              meta: `${a.propertyName} · ${a.date}${
+                a.targetStudentName
                   ? ` · To: ${a.targetStudentName}`
-                  : " · All booked tenants"}
-              </Text>
-              <Text style={styles.body}>{a.message}</Text>
-            </Card>
-          ))
-        )}
+                  : " · All booked tenants"
+              }`,
+            }))}
+            emptyMessage="You have not sent any yet."
+          />
+        </Card>
       </ScrollView>
 
-      <Modal visible={modalOpen} animationType="slide" transparent>
-        <View style={styles.overlay}>
-          <View style={styles.sheet}>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.sheetTitle}>New tenant announcement</Text>
+      <KeyboardAwareModal
+        visible={modalOpen}
+        onRequestClose={() => setModalOpen(false)}
+        sheetStyle={styles.sheet}
+      >
+        <Text style={styles.sheetTitle}>New tenant announcement</Text>
 
-              <SelectField
-                label="Dorm / property"
-                placeholder="Select property"
-                value={propertyId}
-                options={propertyOptions}
-                onChange={setPropertyId}
-                emptyMessage="Add a property under Properties & Rooms first."
-              />
+        <SelectField
+          label="Dorm / property"
+          placeholder="Select property"
+          value={propertyId}
+          options={propertyOptions}
+          onChange={setPropertyId}
+          emptyMessage="Add a property under Properties & Rooms first."
+        />
 
-              <SelectField
-                label="Send to"
-                placeholder="Select audience"
-                value={audience}
-                options={audienceOptions}
-                onChange={(val) =>
-                  setAudience(
-                    val === "single_student" ? "single_student" : "all_booked"
-                  )
-                }
-              />
+        <SelectField
+          label="Send to"
+          placeholder="Select audience"
+          value={audience}
+          options={audienceOptions}
+          onChange={(val) =>
+            setAudience(
+              val === "single_student" ? "single_student" : "all_booked"
+            )
+          }
+        />
 
-              {audience === "single_student" && propertyId ? (
-                loadingStudents ? (
-                  <Text style={styles.loadingHint}>Loading students…</Text>
-                ) : eligibleStudents.length === 0 ? (
-                  <Text style={styles.noStudentsHint}>
-                    No active reservations at this dorm. Students must have a
-                    pending or confirmed booking.
-                  </Text>
-                ) : (
-                  <SelectField
-                    label="Student"
-                    placeholder="Select student"
-                    value={targetStudentUserId}
-                    options={studentOptions}
-                    onChange={setTargetStudentUserId}
-                  />
-                )
-              ) : null}
+        {audience === "single_student" && propertyId ? (
+          loadingStudents ? (
+            <Text style={styles.loadingHint}>Loading students…</Text>
+          ) : eligibleStudents.length === 0 ? (
+            <Text style={styles.noStudentsHint}>
+              No active reservations at this dorm. Students must have a
+              pending or confirmed booking.
+            </Text>
+          ) : (
+            <SelectField
+              label="Student"
+              placeholder="Select student"
+              value={targetStudentUserId}
+              options={studentOptions}
+              onChange={setTargetStudentUserId}
+            />
+          )
+        ) : null}
 
-              <Text style={styles.label}>Title</Text>
-              <Input
-                placeholder="e.g. Rent collection — March"
-                value={title}
-                onChangeText={setTitle}
-              />
-              <Text style={styles.label}>Message</Text>
-              <Input
-                placeholder="e.g. Please settle March rent by Friday."
-                value={body}
-                onChangeText={setBody}
-                multiline
-                style={styles.textArea}
-              />
-              <View style={{ marginTop: 12, gap: 8 }}>
-                <Button
-                  label={saving ? "Posting…" : "Post to students"}
-                  variant="brand"
-                  loading={saving}
-                  disabled={
-                    !propertyId ||
-                    !title.trim() ||
-                    !body.trim() ||
-                    (audience === "single_student" && !targetStudentUserId)
-                  }
-                  onPress={() => void submitAnnouncement()}
-                />
-                <Button
-                  label="Cancel"
-                  variant="outline"
-                  onPress={() => setModalOpen(false)}
-                />
-              </View>
-            </ScrollView>
-          </View>
+        <Text style={styles.label}>Title</Text>
+        <Input
+          placeholder="e.g. Rent collection — March"
+          value={title}
+          onChangeText={setTitle}
+        />
+        <Text style={styles.label}>Message</Text>
+        <Input
+          placeholder="e.g. Please settle March rent by Friday."
+          value={body}
+          onChangeText={setBody}
+          multiline
+          style={styles.textArea}
+        />
+        <View style={{ marginTop: 12, gap: 8 }}>
+          <Button
+            label={saving ? "Posting…" : "Post to students"}
+            variant="brand"
+            loading={saving}
+            disabled={
+              !propertyId ||
+              !title.trim() ||
+              !body.trim() ||
+              (audience === "single_student" && !targetStudentUserId)
+            }
+            onPress={() => void submitAnnouncement()}
+          />
+          <Button
+            label="Cancel"
+            variant="outline"
+            onPress={() => setModalOpen(false)}
+          />
         </View>
-      </Modal>
+      </KeyboardAwareModal>
     </Screen>
   );
 }

@@ -280,7 +280,7 @@ export default function OsaAnnouncementsPage() {
                     <TableHead>Title</TableHead>
                     <TableHead>Audience</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                    <TableHead className="pr-4 font-semibold text-slate-600">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -311,7 +311,7 @@ export default function OsaAnnouncementsPage() {
                         <StatusBadge status={ann.status} />
                       </TableCell>
                       <TableCell className="pr-4">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"

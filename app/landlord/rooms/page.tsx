@@ -76,6 +76,32 @@ function formatPropertyAddress(p: PropertyOption | undefined): string {
   return line;
 }
 
+function formatLeaseMonth(date: string): string {
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function LeasePeriodStacked({
+  leaseStart,
+  leaseEnd,
+  className,
+}: {
+  leaseStart: string;
+  leaseEnd: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`mx-auto flex w-fit flex-col items-center leading-tight ${className ?? ""}`}
+    >
+      <span>{formatLeaseMonth(leaseStart)}</span>
+      <span>{formatLeaseMonth(leaseEnd)}</span>
+    </div>
+  );
+}
+
 /** Prefill listing description from room record (other details + remarks). */
 function listingDescriptionFromRoom(room: Room): string {
   const details = room.roomDetails?.trim();
@@ -537,7 +563,7 @@ export default function LandlordRoomsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Lease Period</TableHead>
                 <TableHead>Payment Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="whitespace-nowrap pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -581,7 +607,12 @@ export default function LandlordRoomsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-slate-700">
-                      {lease?.leasePeriod ?? (
+                      {lease ? (
+                        <LeasePeriodStacked
+                          leaseStart={lease.leaseStart}
+                          leaseEnd={lease.leaseEnd}
+                        />
+                      ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
@@ -595,11 +626,11 @@ export default function LandlordRoomsPage() {
                       )}
                     </TableCell>
                     <TableCell className="pr-4">
-                      <div className="flex flex-wrap justify-end gap-2">
+                      <div className="mx-auto grid w-fit grid-cols-2 gap-1.5">
                         <Button
                           variant="destructive"
                           size="sm"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
+                          className="h-7 px-2 text-[0.7rem] flex items-center justify-center gap-1"
                           onClick={() => {
                             setRoomToEdit(room);
                             setEditRoomStatus(room.status);
@@ -610,9 +641,40 @@ export default function LandlordRoomsPage() {
                           Room
                         </Button>
                         <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={!lease}
+                          className="h-7 px-2 text-[0.7rem] disabled:opacity-50"
+                          onClick={() => {
+                            if (!lease) return;
+                            setSelectedTenant(lease);
+                            setEditTenantName(lease.name);
+                            setEditLeaseStart(lease.leaseStart);
+                            setEditLeaseEnd(lease.leaseEnd);
+                            setEditTenantPaymentStatus(lease.paymentStatus);
+                            setShowTenantEditDialog(true);
+                          }}
+                        >
+                          Lease
+                        </Button>
+                        <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[0.7rem] text-red-600 border-red-200 hover:bg-red-50"
+                          disabled={!lease}
+                          className="h-7 px-2 text-[0.7rem] flex items-center justify-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600 disabled:opacity-50"
+                          onClick={() => {
+                            if (!lease) return;
+                            setSelectedTenant(lease);
+                            setShowTenantDetailsDialog(true);
+                          }}
+                        >
+                          <Eye className="h-3 w-3" />
+                          View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[0.7rem] flex items-center justify-center gap-1 text-red-600 border-red-200 hover:bg-red-50"
                           onClick={async () => {
                             if (
                               !window.confirm(
@@ -639,42 +701,8 @@ export default function LandlordRoomsPage() {
                           }}
                         >
                           <Trash2 className="h-3 w-3" />
+                          Delete
                         </Button>
-                        {lease ? (
-                          <>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-7 px-2 text-[0.7rem]"
-                              onClick={() => {
-                                setSelectedTenant(lease);
-                                setEditTenantName(lease.name);
-                                setEditLeaseStart(lease.leaseStart);
-                                setEditLeaseEnd(lease.leaseEnd);
-                                setEditTenantPaymentStatus(lease.paymentStatus);
-                                setShowTenantEditDialog(true);
-                              }}
-                            >
-                              Lease
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
-                              onClick={() => {
-                                setSelectedTenant(lease);
-                                setShowTenantDetailsDialog(true);
-                              }}
-                            >
-                              <Eye className="h-3 w-3" />
-                              View
-                            </Button>
-                          </>
-                        ) : (
-                          <span className="text-[0.65rem] text-muted-foreground self-center px-1">
-                            No lease
-                          </span>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1018,7 +1046,7 @@ export default function LandlordRoomsPage() {
                     <TableHead>Rate (₱)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Post status</TableHead>
-                    <TableHead className="text-right pr-4">Action</TableHead>
+                    <TableHead className="pr-4">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1039,7 +1067,7 @@ export default function LandlordRoomsPage() {
                       <TableCell>
                         <PostStatusBadge listed={Boolean(room.isListed)} />
                       </TableCell>
-                      <TableCell className="pr-4 text-right">
+                      <TableCell className="pr-4">
                         <Button
                           type="button"
                           size="sm"
@@ -1689,11 +1717,13 @@ export default function LandlordRoomsPage() {
                   </span>
                 </p>
                 <p className="text-[0.7rem] text-muted-foreground">
-                  Lease period:{" "}
-                  <span className="font-medium text-slate-900">
-                    {selectedTenant.leasePeriod}
-                  </span>
+                  Lease period:
                 </p>
+                <LeasePeriodStacked
+                  leaseStart={selectedTenant.leaseStart}
+                  leaseEnd={selectedTenant.leaseEnd}
+                  className="font-medium text-slate-900"
+                />
               </div>
 
               <div className="space-y-1">

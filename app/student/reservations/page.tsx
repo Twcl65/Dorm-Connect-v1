@@ -260,7 +260,7 @@ export default function StudentReservationsPage() {
                 <TableHead>Room No.</TableHead>
                 <TableHead>Date Submitted</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -296,12 +296,12 @@ export default function StudentReservationsPage() {
                     <StatusBadge status={res.status} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap items-center justify-center gap-1.5">
                       {res.status === "Pending" && (
                         <Button
                           variant="destructive"
                           size="sm"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
+                          className="h-7 shrink-0 px-2 text-[0.7rem] flex items-center gap-1"
                           onClick={() => {
                             setSelectedReservation(res);
                             setShowEditDialog(true);

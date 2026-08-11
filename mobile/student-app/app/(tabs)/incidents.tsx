@@ -190,6 +190,17 @@ export default function IncidentsTab() {
             </Text>
             <Badge label={item.status} tone="warning" />
             <Text style={styles.body}>{item.description}</Text>
+            {item.landlordReply ? (
+              <View style={styles.replyBox}>
+                <Text style={styles.replyLabel}>
+                  Landlord reply
+                  {item.landlordRepliedAt
+                    ? ` · ${new Date(item.landlordRepliedAt).toLocaleDateString()}`
+                    : ""}
+                </Text>
+                <Text style={styles.replyBody}>{item.landlordReply}</Text>
+              </View>
+            ) : null}
           </Card>
         )}
       />
@@ -207,4 +218,14 @@ const styles = StyleSheet.create({
   title: { fontSize: 15, fontWeight: "600", color: colors.text },
   meta: { fontSize: 12, color: "#64748b", marginTop: 4 },
   body: { fontSize: 14, color: "#334155", marginTop: 8, lineHeight: 20 },
+  replyBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "#f0f9ff",
+    borderWidth: 1,
+    borderColor: "#bae6fd",
+  },
+  replyLabel: { fontSize: 11, fontWeight: "600", color: colors.sky, marginBottom: 4 },
+  replyBody: { fontSize: 13, color: "#334155", lineHeight: 19 },
 });

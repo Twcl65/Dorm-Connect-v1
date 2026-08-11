@@ -7,9 +7,9 @@ import {
   type AnnouncementRow,
 } from "@/lib/api";
 import { Badge, Card, colors } from "@/components/ui";
+import { CollapsibleAnnouncementList } from "@/components/collapsible-announcement-list";
 import { useAuth } from "@/context/AuthContext";
 
-const PREVIEW_COUNT = 3;
 const NEW_DAYS = 7;
 
 function isNew(dateStr: string) {
@@ -44,7 +44,14 @@ export function AnnouncementsCard() {
     }, [load])
   );
 
-  const preview = rows.slice(0, PREVIEW_COUNT);
+  const items = rows.map((item) => ({
+    id: item.id,
+    title: item.title,
+    message: item.message,
+    date: item.date,
+    source: item.source,
+    propertyName: item.propertyName,
+  }));
 
   return (
     <Card>
@@ -63,35 +70,7 @@ export function AnnouncementsCard() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {preview.length === 0 && !error ? (
-        <Text style={styles.empty}>No announcements right now.</Text>
-      ) : (
-        preview.map((item) => (
-          <View key={item.id} style={styles.item}>
-            <View style={styles.itemHead}>
-              <Text style={styles.itemTitle} numberOfLines={1}>
-                {item.title}
-              </Text>
-              {isNew(item.date) && <Badge label="New" tone="warning" />}
-            </View>
-            <Text style={styles.itemMeta}>
-              {item.source === "landlord" ? "Landlord" : "OSA"}
-              {item.propertyName ? ` · ${item.propertyName}` : ""} ·{" "}
-              {new Date(item.date).toLocaleDateString()}
-            </Text>
-            <Text style={styles.itemBody} numberOfLines={2}>
-              {item.message}
-            </Text>
-          </View>
-        ))
-      )}
-
-      {rows.length > PREVIEW_COUNT && (
-        <Text style={styles.more}>
-          +{rows.length - PREVIEW_COUNT} more announcement
-          {rows.length - PREVIEW_COUNT === 1 ? "" : "s"}
-        </Text>
-      )}
+      <CollapsibleAnnouncementList items={items} />
     </Card>
   );
 }
@@ -105,26 +84,4 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: "600", color: colors.navy },
   sub: { fontSize: 12, color: colors.muted, marginTop: 4, marginBottom: 8 },
   error: { fontSize: 12, color: colors.red, marginBottom: 8 },
-  empty: { fontSize: 13, color: colors.muted },
-  item: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 10,
-    marginTop: 10,
-  },
-  itemHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  itemTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.navy,
-  },
-  itemMeta: { fontSize: 11, color: colors.muted, marginTop: 4 },
-  itemBody: { fontSize: 13, color: "#334155", marginTop: 4, lineHeight: 18 },
-  more: { fontSize: 12, color: colors.sky, marginTop: 10, fontWeight: "500" },
 });

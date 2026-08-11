@@ -404,7 +404,7 @@ export default function OsaInspectionsPage() {
                     <TableHead>Scheduled</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Result</TableHead>
-                    <TableHead className="text-right pr-4">Actions</TableHead>
+                    <TableHead className="pr-4">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -442,7 +442,7 @@ export default function OsaInspectionsPage() {
                         <ResultBadge result={row.result} />
                       </TableCell>
                       <TableCell className="pr-4">
-                        <div className="flex justify-end gap-1.5">
+                        <div className="flex justify-center gap-1.5">
                           {!row.scheduledFor && (
                             <Button
                               variant="outline"

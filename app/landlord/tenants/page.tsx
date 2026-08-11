@@ -492,7 +492,7 @@ export default function LandlordTenantsPage() {
                 <TableHead>Lease Period</TableHead>
                 <TableHead>Next rent due</TableHead>
                 <TableHead>Payment Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -537,7 +537,7 @@ export default function LandlordTenantsPage() {
                     <PaymentStatusBadge status={tenant.paymentStatus} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-center gap-2">
                       <Button
                         variant="destructive"
                         size="sm"
@@ -858,16 +858,22 @@ export default function LandlordTenantsPage() {
                         selectedTenant.monthlySchedule.length}{" "}
                       paid)
                     </p>
-                    <div className="max-h-48 overflow-y-auto rounded border text-[0.65rem]">
-                      <table className="w-full">
+                    <div className="mt-[5px] max-h-48 overflow-y-auto rounded text-[0.65rem]">
+                      <table className="w-full border-collapse text-center text-[0.65rem]">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="px-2 py-1 text-left">Month</th>
-                            <th className="px-2 py-1 text-left">Due</th>
-                            <th className="px-2 py-1 text-left">Status</th>
+                            <th className="border-b border-r border-slate-200 px-2 py-1 last:border-r-0">
+                              Month
+                            </th>
+                            <th className="border-b border-r border-slate-200 px-2 py-1 last:border-r-0">
+                              Due
+                            </th>
+                            <th className="border-b border-r border-slate-200 px-2 py-1 last:border-r-0">
+                              Status
+                            </th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="[&>tr:last-child>td]:border-b-0">
                           {selectedTenant.monthlySchedule.map((m) => {
                             const isNextUnpaid =
                               m.status !== "Paid" &&
@@ -878,20 +884,21 @@ export default function LandlordTenantsPage() {
                             <tr
                               key={m.monthNumber}
                               className={cn(
-                                "border-t",
                                 isNextUnpaid &&
                                   "bg-amber-50 font-medium text-amber-900"
                               )}
                             >
-                              <td className="px-2 py-1">Month {m.monthNumber}</td>
-                              <td className="px-2 py-1">
+                              <td className="border-b border-r border-slate-200 px-2 py-1 last:border-r-0">
+                                Month {m.monthNumber}
+                              </td>
+                              <td className="border-b border-r border-slate-200 px-2 py-1 last:border-r-0">
                                 {new Date(m.dueDate).toLocaleDateString("en-US", {
                                   month: "short",
                                   day: "numeric",
                                   year: "numeric",
                                 })}
                               </td>
-                              <td className="px-2 py-1">
+                              <td className="border-b border-r border-slate-200 px-2 py-1 last:border-r-0">
                                 {m.status === "Paid" ? "Paid" : "Not Yet Paid"}
                                 {isNextUnpaid ? " · Next due" : ""}
                               </td>

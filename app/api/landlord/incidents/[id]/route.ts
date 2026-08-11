@@ -19,18 +19,52 @@ export async function PATCH(
   }
 
   try {
-    const body = (await req.json()) as { status?: string };
+    const body = (await req.json()) as { status?: string; reply?: string };
     const status =
       body.status === "Open" ||
       body.status === "Acknowledged" ||
       body.status === "Resolved"
         ? body.status
         : null;
+    const reply =
+      typeof body.reply === "string" ? body.reply.trim() : null;
+
+    if (!status && !reply) {
+      return NextResponse.json(
+        { error: "Provide status and/or reply." },
+        { status: 400 }
+      );
+    }
+
+    const pool = await getPool();
+
+    if (reply !== null) {
+      if (!reply) {
+        return NextResponse.json(
+          { error: "Reply cannot be empty." },
+          { status: 400 }
+        );
+      }
+      const { rows } = await pool.query<{ id: string }>(
+        `UPDATE public.dorm_incident_reports
+         SET landlord_reply = $1,
+             landlord_replied_at = now(),
+             status = CASE WHEN status = 'Open' THEN 'Acknowledged' ELSE status END,
+             updated_at = now()
+         WHERE id = $2::uuid AND owner_user_id = $3::uuid
+         RETURNING id`,
+        [reply, id, ownerId]
+      );
+      if (!rows[0]) {
+        return NextResponse.json({ error: "Report not found." }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     if (!status) {
       return NextResponse.json({ error: "Invalid status." }, { status: 400 });
     }
 
-    const pool = await getPool();
     const { rows } = await pool.query<{ id: string }>(
       `UPDATE public.dorm_incident_reports
        SET status = $1, updated_at = now()

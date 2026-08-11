@@ -582,7 +582,7 @@ export default function LandlordPaymentsPage() {
                 <TableHead>Amount</TableHead>
                 <TableHead>Payment Method</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -619,7 +619,7 @@ export default function LandlordPaymentsPage() {
                     <PaymentStatusBadge status={p.status} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -1368,7 +1368,7 @@ export default function LandlordPaymentsPage() {
                       <TableHead>Due date</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1392,10 +1392,10 @@ export default function LandlordPaymentsPage() {
                         >
                           {m.status}
                         </TableCell>
-                        <TableCell className="min-w-[200px] text-right align-top">
+                        <TableCell className="min-w-[200px] align-top">
                           {editingScheduleMonth === m.monthNumber ? (
-                            <div className="flex flex-col items-end gap-2">
-                              <div className="flex w-full min-w-[180px] flex-col gap-1 text-left">
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="flex w-full min-w-[180px] flex-col items-center gap-1 text-center">
                                 <label className="text-[0.6rem] font-medium text-slate-600">
                                   Status
                                 </label>
@@ -1415,7 +1415,7 @@ export default function LandlordPaymentsPage() {
                                   </option>
                                 </select>
                               </div>
-                              <div className="flex w-full flex-col gap-1 text-left">
+                              <div className="flex w-full flex-col items-center gap-1 text-center">
                                 <label className="text-[0.6rem] font-medium text-slate-600">
                                   Use this as payment
                                 </label>
@@ -1530,7 +1530,7 @@ export default function LandlordPaymentsPage() {
                         <TableHead>Amount</TableHead>
                         <TableHead>Method</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1555,7 +1555,7 @@ export default function LandlordPaymentsPage() {
                             <PaymentStatusBadge status={p.status} />
                           </TableCell>
                           <TableCell className="pr-4">
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"

@@ -303,7 +303,7 @@ export default function StudentIncidentsPage() {
                   <TableHead>Location</TableHead>
                   <TableHead>Landlord</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                  <TableHead className="pr-4 font-semibold text-slate-600">
                     Action
                   </TableHead>
                 </TableRow>
@@ -325,7 +325,7 @@ export default function StudentIncidentsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="pr-4">
-                      <div className="flex justify-end">
+                      <div className="flex justify-center">
                         <Button
                           type="button"
                           variant="outline"

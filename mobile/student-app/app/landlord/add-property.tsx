@@ -172,6 +172,7 @@ export default function AddPropertyScreen() {
           value={contactPhone}
           onChangeText={setContactPhone}
           keyboardType="phone-pad"
+          placeholder="e.g. 09171234567"
         />
 
         <Text style={styles.label}>Contact email</Text>
@@ -180,6 +181,7 @@ export default function AddPropertyScreen() {
           onChangeText={setContactEmail}
           keyboardType="email-address"
           autoCapitalize="none"
+          placeholder="e.g. landlord@email.com"
         />
 
         <Text style={styles.label}>Total rooms (optional)</Text>
@@ -187,6 +189,7 @@ export default function AddPropertyScreen() {
           value={totalRooms}
           onChangeText={setTotalRooms}
           keyboardType="number-pad"
+          placeholder="e.g. 20"
         />
 
         <Text style={styles.label}>Max occupancy (optional)</Text>
@@ -194,6 +197,7 @@ export default function AddPropertyScreen() {
           value={maxOccupancy}
           onChangeText={setMaxOccupancy}
           keyboardType="number-pad"
+          placeholder="e.g. 40"
         />
 
         <Text style={styles.label}>Latitude (optional)</Text>

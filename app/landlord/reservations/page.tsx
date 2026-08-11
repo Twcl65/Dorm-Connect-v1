@@ -89,7 +89,7 @@ function ReservationStatusBadge({ status }: { status: ReservationStatus }) {
 
   return (
     <Badge
-      className={`${colorClasses} rounded-full px-3 py-1 text-xs font-medium`}
+      className={`${colorClasses} inline-flex min-w-[5.5rem] justify-center rounded-full px-3 py-1 text-xs font-medium`}
       variant="outline"
     >
       {status}
@@ -363,8 +363,8 @@ export default function LandlordReservationsPage() {
                 <TableHead>Room No.</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Lease Period</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -406,8 +406,8 @@ export default function LandlordReservationsPage() {
                   <TableCell className="text-xs text-slate-700">
                     {res.leasePeriod}
                   </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
+                  <TableCell className="text-center">
+                    <div className="flex flex-col items-center gap-1">
                       <ReservationStatusBadge
                         status={res.reservationStatus}
                       />
@@ -415,7 +415,7 @@ export default function LandlordReservationsPage() {
                         res.reservationStatus === "Pending" && (
                           <Badge
                             variant="outline"
-                            className="w-fit rounded-full bg-amber-100 px-2 py-0 text-[0.65rem] font-semibold text-amber-900 ring-1 ring-amber-300"
+                            className="rounded-full bg-amber-100 px-2 py-0 text-[0.65rem] font-semibold text-amber-900 ring-1 ring-amber-300"
                           >
                             Unpaid at other BH
                           </Badge>
@@ -428,7 +428,7 @@ export default function LandlordReservationsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap items-center justify-center gap-1.5">
                       <Button
                         variant="outline"
                         size="sm"

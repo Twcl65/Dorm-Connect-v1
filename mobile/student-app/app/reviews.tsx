@@ -90,6 +90,7 @@ export default function ReviewsScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [showWriteForm, setShowWriteForm] = useState(true);
   const [roomId, setRoomId] = useState("");
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
@@ -104,6 +105,9 @@ export default function ReviewsScreen() {
     }>("/api/student/reviews/mine", { token });
     setReviewableRooms(res.reviewableRooms ?? []);
     setMyReviews(res.myReviews ?? []);
+    if ((res.myReviews ?? []).length > 0) {
+      setShowWriteForm(false);
+    }
   }, [token]);
 
   useFocusEffect(
@@ -152,7 +156,13 @@ export default function ReviewsScreen() {
   };
 
   const startEdit = (review: MyReview) => {
+    setShowWriteForm(true);
     selectRoom(review.roomId);
+  };
+
+  const openNewReview = () => {
+    resetForm();
+    setShowWriteForm(true);
   };
 
   const submitReview = async () => {
@@ -184,6 +194,7 @@ export default function ReviewsScreen() {
         },
       });
       resetForm();
+      setShowWriteForm(false);
       await load();
       Alert.alert("Saved", "Your review was submitted.");
     } catch (e) {
@@ -241,6 +252,8 @@ export default function ReviewsScreen() {
                 You have no active reservations yet. Book a dormitory from
                 Browse to leave a review.
               </Text>
+            ) : !showWriteForm ? (
+              <Button label="Add another review" onPress={openNewReview} />
             ) : (
               <>
                 <Text style={styles.fieldLabel}>Dormitory / room</Text>
@@ -319,11 +332,14 @@ export default function ReviewsScreen() {
                     disabled={!roomId}
                     loading={saving}
                   />
-                  {(roomId || rating > 0 || title || comment) && !saving ? (
+                  {!saving ? (
                     <Button
-                      label="Clear"
+                      label="Cancel"
                       variant="outline"
-                      onPress={resetForm}
+                      onPress={() => {
+                        resetForm();
+                        setShowWriteForm(false);
+                      }}
                     />
                   ) : null}
                 </View>

@@ -23,8 +23,11 @@ export async function GET() {
       room_no: string | null;
       property_name: string | null;
       reporter_name: string;
+      landlord_reply: string | null;
+      landlord_replied_at: Date | null;
     }>(
       `SELECT r.id, r.title, r.description, r.status, r.image_urls, r.created_at,
+              r.landlord_reply, r.landlord_replied_at,
               lr.room_no, p.name AS property_name, rep.full_name AS reporter_name
        FROM public.dorm_incident_reports r
        LEFT JOIN public.landlord_rooms lr ON lr.id = r.room_id
@@ -47,6 +50,10 @@ export async function GET() {
         roomNo: x.room_no,
         propertyName: x.property_name,
         reporterName: x.reporter_name,
+        landlordReply: x.landlord_reply,
+        landlordRepliedAt: x.landlord_replied_at
+          ? new Date(x.landlord_replied_at).toISOString()
+          : null,
       })),
     });
   } catch (e) {

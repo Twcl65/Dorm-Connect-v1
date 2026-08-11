@@ -436,7 +436,7 @@ export default function OsaMonitoringPage() {
                     <TableHead>Tenants</TableHead>
                     <TableHead>Rooms (occ./total)</TableHead>
                     <TableHead>Compliance</TableHead>
-                    <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                    <TableHead className="pr-4 font-semibold text-slate-600">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -473,7 +473,7 @@ export default function OsaMonitoringPage() {
                         <ComplianceBadge compliance={dorm.compliance} />
                       </TableCell>
                       <TableCell className="pr-4">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-center gap-2">
                           <Button
                             variant="destructive"
                             size="sm"

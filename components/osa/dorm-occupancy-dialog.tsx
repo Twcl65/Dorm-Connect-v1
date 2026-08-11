@@ -231,7 +231,7 @@ export function DormOccupancyDialog({
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto rounded-md border border-slate-200">
+                <div className="overflow-x-auto rounded-md">
                   <Table bordered={false}>
                     <TableHeader>
                       <TableRow>

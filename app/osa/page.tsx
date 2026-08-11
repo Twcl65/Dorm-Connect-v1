@@ -231,7 +231,7 @@ export default function OsaDashboardPage() {
                     <TableHead>Landlord</TableHead>
                     <TableHead>Submitted</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right pr-4 text-slate-600">
+                    <TableHead className="pr-4 text-slate-600">
                       Review
                     </TableHead>
                   </TableRow>
@@ -267,7 +267,7 @@ export default function OsaDashboardPage() {
                         {req.status}
                       </TableCell>
                       <TableCell className="px-6 pr-4">
-                        <div className="flex justify-end">
+                        <div className="flex justify-center">
                           <Button
                             variant="outline"
                             size="sm"

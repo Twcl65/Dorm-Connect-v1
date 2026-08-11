@@ -405,7 +405,7 @@ export default function OsaAccreditationPage() {
                 <TableHead>Landlord</TableHead>
                 <TableHead>Date Submitted</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -441,7 +441,7 @@ export default function OsaAccreditationPage() {
                     <RequestStatusBadge status={req.status} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -557,7 +557,7 @@ export default function OsaAccreditationPage() {
                 <TableHead>Status</TableHead>
                 <TableHead>Validity Period</TableHead>
                 <TableHead>Compliance</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
                 </TableHead>
               </TableRow>
@@ -593,7 +593,7 @@ export default function OsaAccreditationPage() {
                     <ComplianceBadge compliance={dorm.compliance} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-center gap-2">
                       <Button
                         size="sm"
                         variant="destructive"

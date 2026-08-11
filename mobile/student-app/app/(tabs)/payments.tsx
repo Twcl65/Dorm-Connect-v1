@@ -6,8 +6,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Modal,
-  ScrollView,
   Image,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -18,6 +16,7 @@ import {
   type UnpaidRentMonth,
 } from "@/lib/api";
 import { PaymentDetailModal } from "@/components/payment-detail-modal";
+import { KeyboardAwareModal } from "@/components/keyboard-aware-modal";
 import { Ionicons } from "@expo/vector-icons";
 import { SelectField } from "@/components/select-field";
 import {
@@ -367,99 +366,97 @@ export default function PaymentsScreen() {
       )}
 
       {/* Pay Modal */}
-      <Modal visible={payModalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Submit GCash Payment</Text>
-              <Pressable
-                onPress={() => setPayModalVisible(false)}
-                hitSlop={8}
-                style={styles.closeBtn}
-              >
-                <Text style={styles.closeBtnText}>Close</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView style={styles.modalScroll} contentContainerStyle={{ paddingBottom: 24 }}>
-              {payError && <Text style={styles.modalError}>{payError}</Text>}
-
-              <Text style={styles.modalLabel}>Select rent month to pay</Text>
-              {unpaidMonths.map((m) => {
-                const isSelected = selectedMonth?.monthNumber === m.monthNumber;
-                return (
-                  <Pressable
-                    key={m.monthNumber}
-                    onPress={() => {
-                      setSelectedMonth(m);
-                      setPayAmount(String(m.amount));
-                    }}
-                    style={[
-                      styles.monthSelectBtn,
-                      isSelected && styles.monthSelectBtnActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.monthSelectText,
-                        isSelected && styles.monthSelectTextActive,
-                      ]}
-                    >
-                      Month {m.monthNumber} ({m.monthLabel}) - ₱{m.amount.toLocaleString()}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-
-              <Text style={[styles.modalLabel, { marginTop: 14 }]}>Amount (₱)</Text>
-              <Input
-                keyboardType="numeric"
-                value={payAmount}
-                onChangeText={setPayAmount}
-                placeholder="0.00"
-              />
-
-              <Text style={styles.modalLabel}>Attach GCash Receipt screenshot</Text>
-              {payProofImage ? (
-                <View style={styles.imagePreviewWrap}>
-                  <Image source={{ uri: payProofImage.uri }} style={styles.imagePreview} />
-                  <Text style={styles.imageName}>{payProofImage.fileName}</Text>
-                  <Button
-                    label="Change Photo"
-                    variant="outline"
-                    onPress={async () => {
-                      const picked = await pickImagesFromLibrary(1);
-                      if (picked && picked[0]) {
-                        setPayProofImage(picked[0]);
-                      }
-                    }}
-                  />
-                </View>
-              ) : (
-                <Button
-                  label="Select GCash Receipt Photo"
-                  variant="outline"
-                  onPress={async () => {
-                    const picked = await pickImagesFromLibrary(1);
-                    if (picked && picked[0]) {
-                      setPayProofImage(picked[0]);
-                    }
-                  }}
-                />
-              )}
-
-              <View style={{ marginTop: 24 }}>
-                <Button
-                  label={paySubmitting ? "Submitting..." : "Submit Payment"}
-                  variant="brand"
-                  disabled={paySubmitting || !selectedMonth || !payAmount || !payProofImage}
-                  onPress={handlePaySubmit}
-                />
-              </View>
-            </ScrollView>
-          </View>
+      <KeyboardAwareModal
+        visible={payModalVisible}
+        onRequestClose={() => setPayModalVisible(false)}
+        sheetStyle={styles.modalSheet}
+      >
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Submit GCash Payment</Text>
+          <Pressable
+            onPress={() => setPayModalVisible(false)}
+            hitSlop={8}
+            style={styles.closeBtn}
+          >
+            <Text style={styles.closeBtnText}>Close</Text>
+          </Pressable>
         </View>
-      </Modal>
+
+        {payError && <Text style={styles.modalError}>{payError}</Text>}
+
+        <Text style={styles.modalLabel}>Select rent month to pay</Text>
+        {unpaidMonths.map((m) => {
+          const isSelected = selectedMonth?.monthNumber === m.monthNumber;
+          return (
+            <Pressable
+              key={m.monthNumber}
+              onPress={() => {
+                setSelectedMonth(m);
+                setPayAmount(String(m.amount));
+              }}
+              style={[
+                styles.monthSelectBtn,
+                isSelected && styles.monthSelectBtnActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.monthSelectText,
+                  isSelected && styles.monthSelectTextActive,
+                ]}
+              >
+                Month {m.monthNumber} ({m.monthLabel}) - ₱{m.amount.toLocaleString()}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        <Text style={[styles.modalLabel, { marginTop: 14 }]}>Amount (₱)</Text>
+        <Input
+          keyboardType="numeric"
+          value={payAmount}
+          onChangeText={setPayAmount}
+          placeholder="0.00"
+        />
+
+        <Text style={styles.modalLabel}>Attach GCash Receipt screenshot</Text>
+        {payProofImage ? (
+          <View style={styles.imagePreviewWrap}>
+            <Image source={{ uri: payProofImage.uri }} style={styles.imagePreview} />
+            <Text style={styles.imageName}>{payProofImage.fileName}</Text>
+            <Button
+              label="Change Photo"
+              variant="outline"
+              onPress={async () => {
+                const picked = await pickImagesFromLibrary(1);
+                if (picked && picked[0]) {
+                  setPayProofImage(picked[0]);
+                }
+              }}
+            />
+          </View>
+        ) : (
+          <Button
+            label="Select GCash Receipt Photo"
+            variant="outline"
+            onPress={async () => {
+              const picked = await pickImagesFromLibrary(1);
+              if (picked && picked[0]) {
+                setPayProofImage(picked[0]);
+              }
+            }}
+          />
+        )}
+
+        <View style={{ marginTop: 24, marginBottom: 24 }}>
+          <Button
+            label={paySubmitting ? "Submitting..." : "Submit Payment"}
+            variant="brand"
+            disabled={paySubmitting || !selectedMonth || !payAmount || !payProofImage}
+            onPress={handlePaySubmit}
+          />
+        </View>
+      </KeyboardAwareModal>
 
       <PaymentDetailModal
         visible={selected != null}

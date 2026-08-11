@@ -251,7 +251,7 @@ export default function StudentPaymentsPage() {
                 <TableHead>Date (Month)</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right pr-4 font-semibold text-slate-600">
+                <TableHead className="pr-4 font-semibold text-slate-600">
                   Action
                 </TableHead>
               </TableRow>
@@ -303,11 +303,11 @@ export default function StudentPaymentsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="pr-4">
-                      <div className="flex justify-end flex-wrap gap-1">
+                      <div className="flex flex-nowrap items-center justify-center gap-1.5">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[0.65rem]"
+                          className="h-7 shrink-0 px-2 text-[0.65rem]"
                           asChild
                         >
                           <Link href={`/student/payments/receipt/${payment.id}`}>
@@ -317,7 +317,7 @@ export default function StudentPaymentsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                          className="h-7 shrink-0 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
                           onClick={() => {
                             setSelectedPayment(payment);
                             setShowDetailsDialog(true);
