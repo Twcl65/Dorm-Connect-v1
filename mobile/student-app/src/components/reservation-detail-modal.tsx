@@ -6,10 +6,11 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageGallery } from "@/components/image-gallery";
 import type { StudentReservation } from "@/lib/api";
-import { showRoomDetailsAside } from "@/lib/listing-utils";
+import { showRoomDetailsAside, formatLeaseEndLabel } from "@/lib/listing-utils";
 import { Badge, Button, Card, colors } from "@/components/ui";
 
 type Props = {
@@ -25,7 +26,11 @@ export function ReservationDetailModal({
   onClose,
   onPay,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
   if (!reservation) return null;
+
+  const bottomPad = Math.max(insets.bottom, 16);
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -64,11 +69,25 @@ export function ReservationDetailModal({
               <Text style={styles.value}>{reservation.date}</Text>
               <Text style={styles.label}>Move-in</Text>
               <Text style={styles.value}>{reservation.moveInDate}</Text>
-              <Text style={styles.label}>Lease</Text>
+              <Text style={styles.label}>Lease period</Text>
               <Text style={styles.value}>
-                {reservation.leasePeriod ??
-                  `${reservation.leaseMonths} months`}
+                {reservation.leaseMonths}{" "}
+                {reservation.leaseMonths === 1 ? "month" : "months"}
               </Text>
+              {reservation.leaseEndDate ? (
+                <>
+                  <Text style={styles.label}>Last day of lease</Text>
+                  <Text style={styles.value}>
+                    {formatLeaseEndLabel(reservation.leaseEndDate)}
+                  </Text>
+                </>
+              ) : null}
+              {reservation.leasePeriod ? (
+                <>
+                  <Text style={styles.label}>Calendar range</Text>
+                  <Text style={styles.value}>{reservation.leasePeriod}</Text>
+                </>
+              ) : null}
               <Text style={styles.label}>Monthly rent</Text>
               <Text style={styles.value}>
                 ₱{reservation.monthlyRent.toLocaleString()}
@@ -117,13 +136,13 @@ export function ReservationDetailModal({
             )}
           </ScrollView>
 
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: bottomPad }]}>
             {onPay &&
               (reservation.status === "Approved" ||
                 reservation.status === "Active") && (
-                <Button label="Go to payments" onPress={onPay} />
+                <Button label="Go to payments" fullWidth onPress={onPay} />
               )}
-            <Button label="Close" variant="outline" onPress={onClose} />
+            <Button label="Close" variant="outline" fullWidth onPress={onClose} />
           </View>
         </View>
       </View>
@@ -142,7 +161,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     maxHeight: "92%",
-    paddingBottom: 16,
   },
   header: {
     flexDirection: "row",

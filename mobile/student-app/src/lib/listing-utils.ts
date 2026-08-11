@@ -30,6 +30,48 @@ export function addMonthsIso(start: string, months: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Inclusive calendar month count between lease start and end (matches server). */
+export function countLeaseMonths(
+  leaseStart: string | Date,
+  leaseEnd: string | Date
+): number {
+  const toDate = (v: string | Date) =>
+    typeof v === "string"
+      ? new Date(`${v.slice(0, 10)}T12:00:00`)
+      : new Date(v);
+  const s = toDate(leaseStart);
+  const e = toDate(leaseEnd);
+  s.setHours(12, 0, 0, 0);
+  e.setHours(12, 0, 0, 0);
+  let months =
+    (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()) + 1;
+  if (months < 1) months = 1;
+  return months;
+}
+
+export function formatLeaseEndLabel(iso: string): string {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  return d.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function formatLeaseSummary(
+  moveInDate: string,
+  leaseEndDate: string
+): { months: number; label: string; endLabel: string } {
+  const months = countLeaseMonths(moveInDate, leaseEndDate);
+  const endLabel = formatLeaseEndLabel(leaseEndDate);
+  const monthWord = months === 1 ? "month" : "months";
+  return {
+    months,
+    label: `${months} ${monthWord}`,
+    endLabel,
+  };
+}
+
 export const RESERVATION_TERMS = [
   "Reservations are requests until the landlord confirms availability and terms.",
   "Rent, deposits, and utilities follow the landlord's policy and your signed lease.",

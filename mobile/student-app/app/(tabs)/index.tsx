@@ -25,6 +25,7 @@ import {
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { formatLeaseEndLabel } from "@/lib/listing-utils";
 
 export default function HomeScreen() {
   const { token, user } = useAuth();
@@ -102,7 +103,14 @@ export default function HomeScreen() {
           <Card>
             <Text style={styles.cardTitle}>{active.dormName}</Text>
             <Text style={styles.meta}>Room {active.roomNo}</Text>
-            <Text style={styles.meta}>{active.leasePeriod}</Text>
+            <Text style={styles.meta}>
+              {active.leaseMonths != null
+                ? `${active.leaseMonths} ${active.leaseMonths === 1 ? "month" : "months"}`
+                : active.leasePeriod}
+              {active.leaseEndDate
+                ? ` · ends ${formatLeaseEndLabel(active.leaseEndDate)}`
+                : ""}
+            </Text>
             <Badge
               label={`Stay: ${active.reservationStatus}`}
               tone={active.reservationStatus === "Active" ? "success" : "warning"}

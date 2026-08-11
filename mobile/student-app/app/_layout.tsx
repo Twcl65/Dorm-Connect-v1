@@ -1,14 +1,16 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/app-header";
 import { colors } from "@/components/ui";
 import { AuthProvider } from "@/context/AuthContext";
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <StatusBar style="light" backgroundColor={colors.brand} />
-      <Stack screenOptions={{ headerShown: false }}>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar style="light" backgroundColor={colors.brand} />
+        <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
         <Stack.Screen name="(tabs)" />
@@ -55,6 +57,7 @@ export default function RootLayout() {
           }}
         />
       </Stack>
-    </AuthProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

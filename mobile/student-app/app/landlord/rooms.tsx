@@ -117,6 +117,7 @@ export default function LandlordRoomsScreen() {
         <Button
           label="Add room"
           variant="brand"
+          fullWidth
           onPress={() =>
             router.push({
               pathname: "/landlord/add-room",
@@ -127,6 +128,7 @@ export default function LandlordRoomsScreen() {
         <Button
           label="Post listing"
           variant="outline"
+          fullWidth
           onPress={() =>
             router.push({
               pathname: "/landlord/post-listing",
@@ -217,7 +219,7 @@ export default function LandlordRoomsScreen() {
 
 const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.muted, marginBottom: 12 },
-  actions: { flexDirection: "row", gap: 8, marginBottom: 12, flexWrap: "wrap" },
+  actions: { gap: 10, marginBottom: 12 },
   propertyRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
   propertyChip: {
     paddingHorizontal: 10,

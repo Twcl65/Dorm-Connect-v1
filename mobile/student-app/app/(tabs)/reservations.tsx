@@ -19,6 +19,15 @@ import {
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { formatLeaseEndLabel } from "@/lib/listing-utils";
+
+function leaseLine(item: StudentReservation): string {
+  const months = `${item.leaseMonths} ${item.leaseMonths === 1 ? "month" : "months"}`;
+  if (item.leaseEndDate) {
+    return `${months} · ends ${formatLeaseEndLabel(item.leaseEndDate)}`;
+  }
+  return item.leasePeriod ?? months;
+}
 
 export default function ReservationsScreen() {
   const { token } = useAuth();
@@ -90,7 +99,7 @@ export default function ReservationsScreen() {
             <Text style={styles.name}>
               {item.dorm} · Room {item.room}
             </Text>
-            <Text style={styles.meta}>{item.leasePeriod ?? item.moveInDate}</Text>
+            <Text style={styles.meta}>{leaseLine(item)}</Text>
             <Text style={styles.meta}>{item.location}</Text>
             <Text style={styles.meta}>Landlord: {item.landlord}</Text>
             <Text style={styles.meta}>

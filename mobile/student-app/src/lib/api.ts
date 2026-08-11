@@ -201,6 +201,8 @@ export type OverviewResponse = {
     dormName: string;
     roomNo: string;
     leasePeriod: string;
+    leaseMonths?: number;
+    leaseEndDate?: string;
     reservationStatus: string;
     paymentStatus: string;
     monthlyRent: number;
@@ -233,6 +235,7 @@ export type StudentReservation = {
   status: string;
   date: string;
   moveInDate: string;
+  leaseEndDate?: string;
   leaseMonths: number;
   monthlyRent: number;
   location: string;

@@ -17,12 +17,12 @@ import {
   type RoomReview,
 } from "@/lib/api";
 import { ImageGallery } from "@/components/image-gallery";
+import { DateField } from "@/components/date-field";
 import {
   Badge,
   Button,
   Card,
   CenteredLoader,
-  Input,
   Screen,
   Subtitle,
   Title,
@@ -31,7 +31,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import {
   RESERVATION_TERMS,
-  addMonthsIso,
+  formatLeaseSummary,
   listingImageUrls,
   showRoomDetailsAside,
 } from "@/lib/listing-utils";
@@ -60,7 +60,7 @@ export default function ListingDetailScreen() {
   const [showTerms, setShowTerms] = useState(false);
   const [bookingStep, setBookingStep] = useState<0 | 2 | 3>(0);
   const [moveInDate, setMoveInDate] = useState("");
-  const [leaseMonths, setLeaseMonths] = useState("12");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -114,29 +114,45 @@ export default function ListingDetailScreen() {
     }
     if (hasReservation) return;
     setSubmitError(null);
-    setMoveInDate(new Date().toISOString().slice(0, 10));
-    setLeaseMonths("12");
+    const today = new Date().toISOString().slice(0, 10);
+    setMoveInDate(today);
+    const defaultEnd = new Date(`${today}T12:00:00`);
+    defaultEnd.setMonth(defaultEnd.getMonth() + 12);
+    defaultEnd.setDate(defaultEnd.getDate() - 1);
+    setLeaseEndDate(defaultEnd.toISOString().slice(0, 10));
     setShowTerms(true);
   };
 
+  const leasePreview =
+    moveInDate.trim() && leaseEndDate.trim()
+      ? formatLeaseSummary(moveInDate.trim(), leaseEndDate.trim())
+      : null;
+
+  const minLeaseEnd = moveInDate.trim()
+    ? new Date(`${moveInDate.trim()}T12:00:00`)
+    : new Date();
+
   const submitReservation = async () => {
-    if (!token || !listing || !moveInDate.trim()) return;
-    const months = Number(leaseMonths);
-    if (!months || months < 1) {
-      setSubmitError("Choose a valid lease duration.");
+    if (!token || !listing || !moveInDate.trim() || !leaseEndDate.trim()) return;
+    if (leaseEndDate.trim() <= moveInDate.trim()) {
+      setSubmitError("Lease end date must be after move-in date.");
+      return;
+    }
+    const preview = formatLeaseSummary(moveInDate.trim(), leaseEndDate.trim());
+    if (preview.months < 1) {
+      setSubmitError("Lease period must be at least 1 month.");
       return;
     }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const leaseEnd = addMonthsIso(moveInDate.trim(), months);
       await apiRequest("/api/student/reservations", {
         method: "POST",
         token,
         body: {
           roomId: listing.id,
           leaseStart: moveInDate.trim(),
-          leaseEnd,
+          leaseEnd: leaseEndDate.trim(),
           guestName: user?.name,
         },
       });
@@ -403,39 +419,39 @@ export default function ListingDetailScreen() {
       <Modal visible={bookingStep === 3} animationType="slide" transparent>
         <KeyboardAwareSheet sheetStyle={styles.modalCardInner}>
           <Text style={styles.modalTitle}>Confirm reservation</Text>
-          <Text style={styles.muted}>Choose move-in date and lease duration.</Text>
+          <Text style={styles.muted}>Choose move-in and lease end dates on the calendar.</Text>
           {submitError ? (
             <Text style={styles.error}>{submitError}</Text>
           ) : null}
-          <Text style={styles.inputLabel}>Move-in date (YYYY-MM-DD)</Text>
-          <Input
+          <DateField
+            label="Move-in date"
             value={moveInDate}
-            onChangeText={setMoveInDate}
-            placeholder="2026-06-01"
-            autoCapitalize="none"
+            onChange={(iso) => {
+              setMoveInDate(iso);
+              if (leaseEndDate && leaseEndDate <= iso) {
+                const next = new Date(`${iso}T12:00:00`);
+                next.setMonth(next.getMonth() + 1);
+                next.setDate(next.getDate() - 1);
+                setLeaseEndDate(next.toISOString().slice(0, 10));
+              }
+            }}
+            minimumDate={new Date()}
           />
-          <Text style={styles.inputLabel}>Lease duration</Text>
-          <View style={styles.durationRow}>
-            {(["6", "12", "18"] as const).map((m) => {
-              const active = leaseMonths === m;
-              return (
-                <Pressable
-                  key={m}
-                  style={[styles.durationBtn, active && styles.durationBtnActive]}
-                  onPress={() => setLeaseMonths(m)}
-                >
-                  <Text
-                    style={[
-                      styles.durationBtnText,
-                      active && styles.durationBtnTextActive,
-                    ]}
-                  >
-                    {m} months
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <DateField
+            label="Lease end date"
+            value={leaseEndDate}
+            onChange={setLeaseEndDate}
+            minimumDate={minLeaseEnd}
+          />
+          {leasePreview ? (
+            <View style={styles.leasePreview}>
+              <Text style={styles.leasePreviewTitle}>Lease period</Text>
+              <Text style={styles.leasePreviewValue}>{leasePreview.label}</Text>
+              <Text style={styles.muted}>
+                Last day of lease: {leasePreview.endLabel}
+              </Text>
+            </View>
+          ) : null}
           <Text style={styles.muted}>
             Final terms are subject to landlord confirmation.
           </Text>
@@ -452,7 +468,9 @@ export default function ListingDetailScreen() {
                 label={submitting ? "Submitting…" : "Confirm"}
                 onPress={() => void submitReservation()}
                 loading={submitting}
-                disabled={!moveInDate.trim() || submitting}
+                disabled={
+                  !moveInDate.trim() || !leaseEndDate.trim() || submitting
+                }
               />
             </View>
           </View>
@@ -540,20 +558,25 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
-  durationRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
-  durationBtn: {
-    flex: 1,
-    paddingVertical: 12,
+  leasePreview: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 12,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#f8fafc",
-    alignItems: "center",
-  },
-  durationBtnActive: {
-    borderColor: colors.brand,
     backgroundColor: colors.brandMuted,
+    borderWidth: 1,
+    borderColor: colors.brand,
   },
-  durationBtnText: { fontSize: 13, color: colors.text, fontWeight: "500" },
-  durationBtnTextActive: { color: colors.navy, fontWeight: "700" },
+  leasePreviewTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+    textTransform: "uppercase",
+  },
+  leasePreviewValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.navy,
+    marginTop: 4,
+  },
 });

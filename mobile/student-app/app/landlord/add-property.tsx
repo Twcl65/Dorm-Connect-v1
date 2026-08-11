@@ -9,6 +9,11 @@ import {
 } from "react-native";
 import { apiRequest, formatSignInError } from "@/lib/api";
 import {
+  normalizeLandlordPropertyForm,
+  validateLandlordPropertyForm,
+  type PropertyType,
+} from "@/lib/landlord-property-validation";
+import {
   pickImagesFromLibrary,
   uploadMobileImages,
 } from "@/lib/landlord-rooms";
@@ -21,7 +26,7 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
-type PropertyType = "Dormitory" | "Boarding House";
+const isBoardingHouse = (t: PropertyType) => t === "Boarding House";
 
 export default function AddPropertyScreen() {
   const { token } = useAuth();
@@ -61,10 +66,29 @@ export default function AddPropertyScreen() {
 
   const submit = async () => {
     if (!token) return;
-    if (!name.trim()) {
-      setError("Property name is required.");
+
+    const formFields = {
+      name,
+      propertyType,
+      description,
+      address,
+      city,
+      contactPhone,
+      contactEmail,
+      totalRooms,
+      maxOccupancyCapacity: maxOccupancy,
+      latitude,
+      longitude,
+    };
+
+    const validationErrors = validateLandlordPropertyForm(formFields);
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join("\n"));
       return;
     }
+
+    const normalized = normalizeLandlordPropertyForm(formFields);
+
     setSaving(true);
     setError(null);
     try {
@@ -84,26 +108,11 @@ export default function AddPropertyScreen() {
         galleryImageUrls = await uploadMobileImages(token, galleryAssets);
       }
 
-      const lat = latitude.trim() ? Number(latitude) : null;
-      const lng = longitude.trim() ? Number(longitude) : null;
-
       await apiRequest("/api/landlord/properties", {
         token,
         method: "POST",
         body: {
-          name: name.trim(),
-          propertyType,
-          description: description.trim(),
-          address: address.trim() || undefined,
-          city: city.trim() || null,
-          contactPhone: contactPhone.trim() || null,
-          contactEmail: contactEmail.trim() || null,
-          totalRooms: totalRooms.trim() ? Number(totalRooms) : null,
-          maxOccupancyCapacity: maxOccupancy.trim()
-            ? Number(maxOccupancy)
-            : null,
-          latitude: lat != null && !Number.isNaN(lat) ? lat : null,
-          longitude: lng != null && !Number.isNaN(lng) ? lng : null,
+          ...normalized,
           coverImageUrl: coverImageUrl ?? null,
           galleryImageUrls,
         },
@@ -124,6 +133,17 @@ export default function AddPropertyScreen() {
         correctly for students.
       </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      {isBoardingHouse(propertyType) ? (
+        <View style={styles.requirementsBox}>
+          <Text style={styles.requirementsTitle}>Boarding house requirements</Text>
+          <Text style={styles.requirementsText}>
+            Address, city, contact phone, description, total rooms, max occupancy,
+            and map coordinates are required. Use coordinates from the website map
+            pin or GPS (e.g. 8.4542, 124.6319 near USTP).
+          </Text>
+        </View>
+      ) : null}
 
       <ScrollView keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>Property name *</Text>
@@ -152,22 +172,26 @@ export default function AddPropertyScreen() {
           ))}
         </View>
 
-        <Text style={styles.label}>Description</Text>
+        <Text style={styles.label}>Description{isBoardingHouse(propertyType) ? " *" : ""}</Text>
         <Input
           value={description}
           onChangeText={setDescription}
           multiline
           style={styles.textArea}
-          placeholder="Brief description of your property"
+          placeholder={
+            isBoardingHouse(propertyType)
+              ? "Describe rooms, amenities, house rules, and nearby landmarks (min. 20 characters)"
+              : "Brief description of your property"
+          }
         />
 
-        <Text style={styles.label}>Address</Text>
+        <Text style={styles.label}>Address{isBoardingHouse(propertyType) ? " *" : ""}</Text>
         <Input value={address} onChangeText={setAddress} placeholder="Street address" />
 
-        <Text style={styles.label}>City</Text>
-        <Input value={city} onChangeText={setCity} placeholder="City" />
+        <Text style={styles.label}>City{isBoardingHouse(propertyType) ? " *" : ""}</Text>
+        <Input value={city} onChangeText={setCity} placeholder="e.g. Cagayan de Oro" />
 
-        <Text style={styles.label}>Contact phone</Text>
+        <Text style={styles.label}>Contact phone{isBoardingHouse(propertyType) ? " *" : ""}</Text>
         <Input
           value={contactPhone}
           onChangeText={setContactPhone}
@@ -184,7 +208,9 @@ export default function AddPropertyScreen() {
           placeholder="e.g. landlord@email.com"
         />
 
-        <Text style={styles.label}>Total rooms (optional)</Text>
+        <Text style={styles.label}>
+          Total rooms{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+        </Text>
         <Input
           value={totalRooms}
           onChangeText={setTotalRooms}
@@ -192,7 +218,9 @@ export default function AddPropertyScreen() {
           placeholder="e.g. 20"
         />
 
-        <Text style={styles.label}>Max occupancy (optional)</Text>
+        <Text style={styles.label}>
+          Max occupancy{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+        </Text>
         <Input
           value={maxOccupancy}
           onChangeText={setMaxOccupancy}
@@ -200,7 +228,9 @@ export default function AddPropertyScreen() {
           placeholder="e.g. 40"
         />
 
-        <Text style={styles.label}>Latitude (optional)</Text>
+        <Text style={styles.label}>
+          Latitude{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+        </Text>
         <Input
           value={latitude}
           onChangeText={setLatitude}
@@ -208,7 +238,9 @@ export default function AddPropertyScreen() {
           placeholder="e.g. 8.4542"
         />
 
-        <Text style={styles.label}>Longitude (optional)</Text>
+        <Text style={styles.label}>
+          Longitude{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+        </Text>
         <Input
           value={longitude}
           onChangeText={setLongitude}
@@ -230,6 +262,7 @@ export default function AddPropertyScreen() {
           <Button
             label={saving ? "Saving…" : "Create property"}
             variant="brand"
+            fullWidth
             loading={saving}
             onPress={() => void submit()}
           />
@@ -241,7 +274,26 @@ export default function AddPropertyScreen() {
 
 const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.muted, marginBottom: 12 },
-  error: { color: colors.red, fontSize: 13, marginBottom: 8 },
+  error: { color: colors.red, fontSize: 13, marginBottom: 8, lineHeight: 18 },
+  requirementsBox: {
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  requirementsTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.brandDark ?? colors.brand,
+    marginBottom: 4,
+  },
+  requirementsText: {
+    fontSize: 12,
+    color: "#9a3412",
+    lineHeight: 17,
+  },
   label: {
     fontSize: 12,
     fontWeight: "600",

@@ -80,11 +80,14 @@ export default function LandlordPaymentsTab() {
       <Title style={{ color: colors.brand }}>Payment</Title>
       <Subtitle>Tenants and payment history</Subtitle>
 
-      <Button
-        label="Add onsite payment"
-        variant="brand"
-        onPress={() => router.push("/landlord/onsite-payment")}
-      />
+      <View style={styles.onsiteBtnWrap}>
+        <Button
+          label="Add onsite payment"
+          variant="brand"
+          fullWidth
+          onPress={() => router.push("/landlord/onsite-payment")}
+        />
+      </View>
 
       <Input
         placeholder="Search tenant, room, lease…"
@@ -189,6 +192,7 @@ export default function LandlordPaymentsTab() {
 }
 
 const styles = StyleSheet.create({
+  onsiteBtnWrap: { marginBottom: 10 },
   search: { marginBottom: 8 },
   error: { color: colors.red, fontSize: 13, marginBottom: 8 },
   empty: { fontSize: 13, color: colors.muted },

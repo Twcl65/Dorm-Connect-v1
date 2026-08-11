@@ -160,6 +160,16 @@ export default function PaymentsScreen() {
     [items, unpaidMonths]
   );
 
+  const monthOptions = useMemo(
+    () =>
+      unpaidMonths.map((m) => ({
+        value: String(m.monthNumber),
+        label: `Month ${m.monthNumber} (${m.monthLabel})`,
+        subtitle: `₱${m.amount.toLocaleString()} · Due ${m.dueDate}`,
+      })),
+    [unpaidMonths]
+  );
+
   const showUnpaidMonths = filter === "not_yet_paid";
 
   if (loading && items.length === 0 && unpaidMonths.length === 0) {
@@ -384,32 +394,20 @@ export default function PaymentsScreen() {
 
         {payError && <Text style={styles.modalError}>{payError}</Text>}
 
-        <Text style={styles.modalLabel}>Select rent month to pay</Text>
-        {unpaidMonths.map((m) => {
-          const isSelected = selectedMonth?.monthNumber === m.monthNumber;
-          return (
-            <Pressable
-              key={m.monthNumber}
-              onPress={() => {
-                setSelectedMonth(m);
-                setPayAmount(String(m.amount));
-              }}
-              style={[
-                styles.monthSelectBtn,
-                isSelected && styles.monthSelectBtnActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.monthSelectText,
-                  isSelected && styles.monthSelectTextActive,
-                ]}
-              >
-                Month {m.monthNumber} ({m.monthLabel}) - ₱{m.amount.toLocaleString()}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <SelectField
+          label="Select rent month to pay"
+          placeholder="Choose a month"
+          value={selectedMonth ? String(selectedMonth.monthNumber) : ""}
+          options={monthOptions}
+          onChange={(val) => {
+            const month = unpaidMonths.find((m) => String(m.monthNumber) === val);
+            if (month) {
+              setSelectedMonth(month);
+              setPayAmount(String(month.amount));
+            }
+          }}
+          emptyMessage="No unpaid rent months"
+        />
 
         <Text style={[styles.modalLabel, { marginTop: 14 }]}>Amount (₱)</Text>
         <Input
@@ -427,6 +425,7 @@ export default function PaymentsScreen() {
             <Button
               label="Change Photo"
               variant="outline"
+              fullWidth
               onPress={async () => {
                 const picked = await pickImagesFromLibrary(1);
                 if (picked && picked[0]) {
@@ -439,6 +438,7 @@ export default function PaymentsScreen() {
           <Button
             label="Select GCash Receipt Photo"
             variant="outline"
+            fullWidth
             onPress={async () => {
               const picked = await pickImagesFromLibrary(1);
               if (picked && picked[0]) {
@@ -448,10 +448,11 @@ export default function PaymentsScreen() {
           />
         )}
 
-        <View style={{ marginTop: 24, marginBottom: 24 }}>
+        <View style={{ marginTop: 24 }}>
           <Button
             label={paySubmitting ? "Submitting..." : "Submit Payment"}
             variant="brand"
+            fullWidth
             disabled={paySubmitting || !selectedMonth || !payAmount || !payProofImage}
             onPress={handlePaySubmit}
           />
@@ -578,29 +579,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 6,
   },
-  monthSelectBtn: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    backgroundColor: "#f8fafc",
-  },
-  monthSelectBtnActive: {
-    borderColor: colors.brand,
-    backgroundColor: colors.brandMuted,
-  },
-  monthSelectText: {
-    fontSize: 13,
-    color: colors.text,
-    fontWeight: "500",
-  },
-  monthSelectTextActive: {
-    color: colors.brandDark,
-    fontWeight: "600",
-  },
   imagePreviewWrap: {
-    alignItems: "center",
+    alignSelf: "stretch",
+    width: "100%",
     marginVertical: 12,
     borderWidth: 1,
     borderColor: colors.border,

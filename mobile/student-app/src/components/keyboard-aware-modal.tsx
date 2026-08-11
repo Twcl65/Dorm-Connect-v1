@@ -10,6 +10,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type KeyboardAwareModalProps = {
   visible: boolean;
@@ -26,6 +27,8 @@ export function KeyboardAwareModal({
   sheetStyle,
   scrollable = true,
 }: KeyboardAwareModalProps) {
+  const insets = useSafeAreaInsets();
+
   const content = scrollable ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -49,7 +52,10 @@ export function KeyboardAwareModal({
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <Pressable style={styles.overlay} onPress={onRequestClose}>
+        <Pressable
+          style={[styles.overlay, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          onPress={onRequestClose}
+        >
           <Pressable
             style={[styles.sheet, sheetStyle]}
             onPress={(e) => e.stopPropagation()}

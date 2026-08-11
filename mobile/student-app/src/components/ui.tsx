@@ -117,12 +117,14 @@ export function Button({
   variant = "primary",
   disabled,
   loading,
+  fullWidth,
 }: {
   label: string;
   onPress: () => void;
   variant?: "primary" | "brand" | "outline" | "danger";
   disabled?: boolean;
   loading?: boolean;
+  fullWidth?: boolean;
 }) {
   return (
     <Pressable
@@ -130,6 +132,7 @@ export function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
+        fullWidth && styles.buttonFullWidth,
         variant === "brand" && styles.buttonBrand,
         variant === "outline" && styles.buttonOutline,
         variant === "danger" && styles.buttonDanger,
@@ -240,6 +243,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
+  },
+  buttonFullWidth: {
+    alignSelf: "stretch",
+    width: "100%",
   },
   buttonBrand: {
     backgroundColor: colors.brand,

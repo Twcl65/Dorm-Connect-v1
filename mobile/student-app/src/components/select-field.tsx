@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/components/ui";
 
 export type SelectOption = {
@@ -37,6 +38,7 @@ export function SelectField({
   emptyMessage,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const selected = useMemo(
     () => options.find((o) => o.value === value) ?? null,
@@ -81,7 +83,10 @@ export function SelectField({
 
       <Modal visible={open} transparent animationType="slide">
         <Pressable style={styles.overlay} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheet} onPress={() => {}}>
+          <Pressable
+            style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
+            onPress={() => {}}
+          >
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>{label}</Text>
               <Pressable onPress={() => setOpen(false)} hitSlop={8}>
@@ -184,7 +189,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    paddingBottom: 24,
   },
   sheetHeader: {
     flexDirection: "row",

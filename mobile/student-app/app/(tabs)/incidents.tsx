@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -15,6 +16,8 @@ import {
   type IncidentRoom,
   formatSignInError,
 } from "@/lib/api";
+import { KeyboardAwareModal } from "@/components/keyboard-aware-modal";
+import { SelectField } from "@/components/select-field";
 import {
   Badge,
   Button,
@@ -23,6 +26,7 @@ import {
   Input,
   Screen,
   Subtitle,
+  Title,
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
@@ -71,6 +75,17 @@ export default function IncidentsTab() {
     }, [load])
   );
 
+  const closeForm = () => {
+    setShowForm(false);
+    setTitle("");
+    setDescription("");
+  };
+
+  const openForm = () => {
+    setShowForm(true);
+    setRoomId((prev) => prev || rooms[0]?.roomId || "");
+  };
+
   const submit = async () => {
     if (!token) return;
     if (!title.trim() || !description.trim()) {
@@ -89,9 +104,7 @@ export default function IncidentsTab() {
           imageUrls: [],
         },
       });
-      setTitle("");
-      setDescription("");
-      setShowForm(false);
+      closeForm();
       await load();
       Alert.alert("Submitted", "Your incident report was sent to the landlord.");
     } catch (e) {
@@ -104,55 +117,27 @@ export default function IncidentsTab() {
     }
   };
 
+  const roomOptions = rooms.map((r) => ({
+    value: r.roomId,
+    label: `${r.propertyName} · Room ${r.roomNo}`,
+  }));
+
   if (loading && reports.length === 0) return <CenteredLoader />;
 
   return (
     <Screen>
+      <Title>Incident Report</Title>
       <Subtitle>Report issues for rooms on your active reservations.</Subtitle>
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Button
-        label={showForm ? "Cancel new report" : "New incident report"}
-        variant="outline"
-        onPress={() => setShowForm((v) => !v)}
-      />
-
-      {showForm && (
-        <Card>
-          {rooms.length === 0 ? (
-            <Text style={styles.hint}>
-              You need an active reservation before you can file a report.
-            </Text>
-          ) : (
-            <>
-              <Text style={styles.label}>Room</Text>
-              <View style={styles.roomList}>
-                {rooms.map((r) => (
-                  <Button
-                    key={r.roomId}
-                    label={`${r.propertyName} · ${r.roomNo}`}
-                    variant={roomId === r.roomId ? "primary" : "outline"}
-                    onPress={() => setRoomId(r.roomId)}
-                  />
-                ))}
-              </View>
-              <Input placeholder="Title" value={title} onChangeText={setTitle} />
-              <Input
-                placeholder="Describe the issue…"
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                style={styles.textArea}
-              />
-              <Button
-                label="Submit report"
-                onPress={() => void submit()}
-                loading={saving}
-              />
-            </>
-          )}
-        </Card>
-      )}
+      <View style={styles.newReportWrap}>
+        <Button
+          label="New incident report"
+          variant="brand"
+          fullWidth
+          onPress={openForm}
+        />
+      </View>
 
       <FlatList
         data={reports}
@@ -179,7 +164,7 @@ export default function IncidentsTab() {
         }
         renderItem={({ item }) => (
           <Card>
-            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.reportTitle}>{item.title}</Text>
             <Text style={styles.meta}>
               {[item.propertyName, item.roomNo && `Room ${item.roomNo}`]
                 .filter(Boolean)
@@ -204,18 +189,68 @@ export default function IncidentsTab() {
           </Card>
         )}
       />
+
+      <KeyboardAwareModal
+        visible={showForm}
+        onRequestClose={closeForm}
+        sheetStyle={styles.modalSheet}
+      >
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>New incident report</Text>
+          <Pressable onPress={closeForm} hitSlop={8}>
+            <Text style={styles.closeText}>Close</Text>
+          </Pressable>
+        </View>
+
+        {rooms.length === 0 ? (
+          <Text style={styles.hint}>
+            You need an active reservation before you can file a report.
+          </Text>
+        ) : (
+          <>
+            <SelectField
+              label="Room"
+              placeholder="Select room"
+              value={roomId}
+              options={roomOptions}
+              onChange={setRoomId}
+            />
+            <Input placeholder="Title" value={title} onChangeText={setTitle} />
+            <Input
+              placeholder="Describe the issue…"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              style={styles.textArea}
+            />
+            <View style={styles.modalActions}>
+              <Button
+                label="Submit report"
+                fullWidth
+                onPress={() => void submit()}
+                loading={saving}
+              />
+              <Button
+                label="Cancel"
+                variant="outline"
+                fullWidth
+                onPress={closeForm}
+              />
+            </View>
+          </>
+        )}
+      </KeyboardAwareModal>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   error: { color: "#dc2626", fontSize: 13, marginBottom: 8 },
+  newReportWrap: { marginTop: 4, marginBottom: 16 },
   hint: { fontSize: 13, color: "#64748b", lineHeight: 18 },
   empty: { fontSize: 13, color: "#64748b" },
-  label: { fontSize: 12, fontWeight: "600", color: "#64748b", marginBottom: 8 },
-  roomList: { gap: 8, marginBottom: 8 },
   textArea: { minHeight: 88, textAlignVertical: "top" },
-  title: { fontSize: 15, fontWeight: "600", color: colors.text },
+  reportTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
   meta: { fontSize: 12, color: "#64748b", marginTop: 4 },
   body: { fontSize: 14, color: "#334155", marginTop: 8, lineHeight: 20 },
   replyBox: {
@@ -228,4 +263,29 @@ const styles = StyleSheet.create({
   },
   replyLabel: { fontSize: 11, fontWeight: "600", color: colors.sky, marginBottom: 4 },
   replyBody: { fontSize: 13, color: "#334155", lineHeight: 19 },
+  modalSheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: "90%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.navy,
+  },
+  closeText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.muted,
+  },
+  modalActions: { marginTop: 16, gap: 10 },
 });

@@ -10,14 +10,11 @@ import {
 import { useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import type { NotificationItem } from "@/lib/api";
+import { formatNotificationSentAt } from "@/lib/format-notification-time";
 import { Badge, Button, Card, colors } from "@/components/ui";
 
 function formatWhen(iso: string) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
+  return formatNotificationSentAt(iso);
 }
 
 type Props = {
