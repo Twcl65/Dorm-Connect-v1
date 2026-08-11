@@ -25,6 +25,7 @@
   --input: 214 32% 91%;
   --ring: 32 100% 57%;
   --radius: 0.75rem;
+  --modal-backdrop: 215 22% 20% / 0.60;
 }
 
 .dark {
@@ -51,10 +52,47 @@
   --border: 217 32% 24%;
   --input: 217 32% 24%;
   --ring: 213 90% 60%;
+  --modal-backdrop: 222 47% 8% / 0.85;
 }
 
 body {
-  @apply bg-background text-foreground antialiased;
+  @apply bg-muted text-foreground antialiased;
+}
+
+@layer components {
+  /* Modal backdrop — full-viewport gray dim (not semi-transparent over white body) */
+  .fixed.inset-0.z-50.flex.justify-center[class*="bg-black"] {
+    z-index: 100 !important;
+    background: transparent !important;
+    isolation: isolate;
+  }
+
+  .fixed.inset-0.z-50.flex.justify-center[class*="bg-black"]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-color: hsl(var(--modal-backdrop));
+    pointer-events: none;
+  }
+
+  .fixed.inset-0.z-50.flex.justify-center[class*="bg-black"] > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Modal/dialog cards — white body; solid gray header band */
+  .fixed.inset-0 .rounded-xl.border.border-gray-300.bg-white,
+  .fixed.inset-0 .rounded-xl.border.border-gray-300.bg-card {
+    overflow: hidden;
+    background-color: hsl(var(--card)) !important;
+  }
+
+  .fixed.inset-0 .rounded-xl.border.border-gray-300 > .border-b:first-child {
+    background-color: hsl(var(--muted)) !important;
+    border-top-left-radius: var(--radius);
+    border-top-right-radius: var(--radius);
+  }
 }
 
 /* Leaflet (property / dorm maps) */

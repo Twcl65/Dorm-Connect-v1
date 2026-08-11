@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidateStudentUser } from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
 
@@ -39,6 +40,7 @@ export async function PATCH(req: Request, context: Ctx) {
       );
     }
 
+    invalidateStudentUser(studentId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to update";

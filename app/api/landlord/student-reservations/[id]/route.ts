@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidateLandlordUser } from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import {
   landlordLog,
@@ -235,6 +236,7 @@ export async function PATCH(req: Request, context: Ctx) {
       /* non-fatal */
     }
 
+    invalidateLandlordUser(session.sub);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to update";

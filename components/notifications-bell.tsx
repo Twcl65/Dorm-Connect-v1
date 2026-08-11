@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { cn } from "@/components/ui/utils";
+import { formatNotificationSentAt } from "@/lib/format-notification-time";
 
 type NotificationItem = {
   id: string;
@@ -126,7 +127,7 @@ export function NotificationsBell() {
                       {n.body}
                     </p>
                     <p className="mt-1 text-[0.6rem] text-slate-400">
-                      {new Date(n.createdAt).toLocaleString()}
+                      {formatNotificationSentAt(n.createdAt)}
                     </p>
                   </button>
                 ))

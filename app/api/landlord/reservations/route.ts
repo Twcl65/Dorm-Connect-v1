@@ -1,4 +1,12 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  invalidateLandlordUser,
+  invalidatePublicProperties,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
 import {
@@ -28,6 +36,12 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   const ownerId = session.sub;
+
+  const cacheK = cacheKey(["landlord", ownerId, "reservations"]);
+  const hit = getCached<Record<string, unknown>>(cacheK);
+  if (hit) {
+    return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+  }
 
   try {
     const pool = await getPool();
@@ -165,7 +179,9 @@ export async function GET() {
       ).length,
     };
 
-    return NextResponse.json({ reservations: list, stats });
+    const payload = { reservations: list, stats };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load reservations";
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -249,6 +265,7 @@ export async function POST(req: Request) {
       ownerId,
       `Reservation ${status} for ${guestName}`
     );
+    invalidateLandlordUser(ownerId);
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to create reservation";

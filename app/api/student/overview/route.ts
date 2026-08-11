@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import {
   buildStudentPaymentReminderHint,
@@ -12,6 +18,7 @@ import {
   formatLeasePeriod,
   reservationLifecycle,
 } from "@/lib/student-db";
+import { countLeaseMonths } from "@/lib/payment-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +36,12 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   const studentId = session.sub;
+
+  const cacheK = cacheKey(["student", studentId, "overview"]);
+  const hit = getCached<Record<string, unknown>>(cacheK);
+  if (hit) {
+    return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+  }
 
   try {
     const pool = await getPool();
@@ -56,8 +69,9 @@ export async function GET() {
     const now = new Date();
     const reservations = await Promise.all(
       rows.map(async (x) => {
-        const ls = new Date(x.lease_start);
-        const le = new Date(x.lease_end);
+        const ls = new Date(`${x.lease_start.slice(0, 10)}T12:00:00`);
+        const le = new Date(`${x.lease_end.slice(0, 10)}T12:00:00`);
+        const leaseMonths = countLeaseMonths(ls, le);
         const reservationStatus = reservationLifecycle(x.status, le, now);
         let paymentStatus = mapRentPayment(x.rent_payment_status);
         if (x.status === "Confirmed") {
@@ -78,6 +92,8 @@ export async function GET() {
           dormName: x.property_name,
           roomNo: x.room_no,
           leasePeriod: formatLeasePeriod(ls, le),
+          leaseMonths,
+          leaseEndDate: x.lease_end.slice(0, 10),
           reservationStatus,
           paymentStatus,
           monthlyRent: Number(x.monthly_rent),
@@ -206,13 +222,15 @@ export async function GET() {
       activeReservation?.dormName ?? null
     );
 
-    return NextResponse.json({
+    const payload = {
       reservations,
       activeReservation,
       latestPayment,
       paymentHint,
       upcomingUnpaidMonths,
-    });
+    };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load overview";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
@@ -11,6 +17,12 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   const ownerId = session.sub;
+
+  const cacheK = cacheKey(["landlord", ownerId, "overview"]);
+  const hit = getCached<Record<string, unknown>>(cacheK);
+  if (hit) {
+    return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+  }
 
   try {
     const pool = await getPool();
@@ -112,7 +124,7 @@ export async function GET() {
     const formatPhp = (n: number) =>
       `₱${n.toLocaleString("en-PH", { maximumFractionDigits: 0 })}`;
 
-    return NextResponse.json({
+    const payload = {
       propertiesCount: Number(propRows[0]?.c ?? 0),
       rooms: {
         total: Number(roomStats[0]?.total ?? 0),
@@ -154,7 +166,9 @@ export async function GET() {
               ? "Overdue"
               : "Pending",
       })),
-    });
+    };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load overview";
     return NextResponse.json({ error: msg }, { status: 500 });

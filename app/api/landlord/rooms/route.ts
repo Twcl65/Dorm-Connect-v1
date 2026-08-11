@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  invalidateLandlordUser,
+  invalidatePublicProperties,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
@@ -84,6 +88,8 @@ export async function POST(req: Request) {
       ownerId,
       `Added room ${roomNo} (${status}, ₱${rate}/mo)`
     );
+    invalidateLandlordUser(ownerId);
+    invalidatePublicProperties();
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
   } catch (e: unknown) {
     const err = e as { code?: string };

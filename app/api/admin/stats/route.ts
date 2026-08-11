@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { requireIctAdminUnlessBootstrapEmpty } from "@/lib/admin-api-guard";
 
@@ -9,6 +15,13 @@ export async function GET() {
     if (!(await requireIctAdminUnlessBootstrapEmpty())) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
+
+    const cacheK = cacheKey(["admin", "stats"]);
+    const hit = getCached<Record<string, unknown>>(cacheK);
+    if (hit) {
+      return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+    }
+
     const pool = await getPool();
     const { rows } = await pool.query<{
       total_users: string;
@@ -37,7 +50,7 @@ export async function GET() {
           )) AS pending_accreditation`
     );
     const r = rows[0];
-    return NextResponse.json({
+    const payload = {
       totalUsers: Number(r?.total_users ?? 0),
       inactiveAccounts: Number(r?.inactive_accounts ?? 0),
       dormitories: Number(r?.dormitories ?? 0),
@@ -46,7 +59,9 @@ export async function GET() {
       landlordReservations: Number(r?.landlord_reservations ?? 0),
       accredited: Number(r?.accredited ?? 0),
       pendingAccreditation: Number(r?.pending_accreditation ?? 0),
-    });
+    };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load stats";
     return NextResponse.json({ error: msg }, { status: 500 });

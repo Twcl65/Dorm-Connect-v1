@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { requireOsaAdmin } from "@/lib/require-osa";
 
@@ -12,6 +18,12 @@ export async function GET() {
   const session = await requireOsaAdmin();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const cacheK = cacheKey(["osa", session.sub, "overview"]);
+  const hit = getCached<Record<string, unknown>>(cacheK);
+  if (hit) {
+    return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
   }
 
   try {
@@ -69,7 +81,7 @@ export async function GET() {
       count: Number(r.count),
     }));
 
-    return NextResponse.json({
+    const payload = {
       pendingAccreditation: Number(c?.pending ?? 0),
       approvedDorms: Number(c?.approved ?? 0),
       rejectedApplications: Number(c?.rejected ?? 0),
@@ -84,7 +96,9 @@ export async function GET() {
         status: r.status,
       })),
       accreditationProgress,
-    });
+    };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load overview";
     return NextResponse.json({ error: msg }, { status: 500 });

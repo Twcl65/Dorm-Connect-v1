@@ -5,6 +5,9 @@ import {
   fetchMonthlySchedule,
 } from "@/lib/payment-schedule";
 import { getSession } from "@/lib/require-session";
+import {
+  syntheticNotificationSentAt,
+} from "@/lib/format-notification-time";
 
 export const dynamic = "force-dynamic";
 
@@ -75,13 +78,15 @@ export async function GET() {
           (exp.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
         );
         if (diff >= 0 && diff <= 31) {
+          const sentDay = new Date(exp);
+          sentDay.setDate(sentDay.getDate() - 31);
           notifications.unshift({
             id: `synthetic-renewal-${a.id}`,
             category: "accreditation",
             title: "Accreditation renewal",
             body: `Accreditation for “${a.dorm_name}” expires on ${exp.toISOString().slice(0, 10)}. Plan renewal with OSA.`,
             read: false,
-            createdAt: new Date().toISOString(),
+            createdAt: syntheticNotificationSentAt(sentDay),
             synthetic: true,
           });
         }
@@ -128,28 +133,37 @@ export async function GET() {
         const bal = Number(d.balance_remaining ?? 0);
         if (bal <= 0 && diff > 0) continue;
         if (diff === 3 || diff === 2 || diff === 1) {
+          const sentDay = new Date(due);
+          sentDay.setDate(sentDay.getDate() - diff);
           notifications.unshift({
             id: `synthetic-due-${d.id}`,
             category: "payment",
             title: "Rent due soon",
             body: `Payment for ${d.dorm} is due on ${due.toISOString().slice(0, 10)}.`,
             read: false,
-            createdAt: new Date().toISOString(),
+            createdAt: syntheticNotificationSentAt(sentDay),
             synthetic: true,
           });
         } else if (diff < 0 && bal > 0) {
+          const sentDay = new Date(due);
+          sentDay.setDate(sentDay.getDate() + 1);
           notifications.unshift({
             id: `synthetic-overdue-${d.id}`,
             category: "payment",
             title: "Overdue payment",
             body: `Balance for ${d.dorm} was due ${due.toISOString().slice(0, 10)}. Please settle with your landlord.`,
             read: false,
-            createdAt: new Date().toISOString(),
+            createdAt: syntheticNotificationSentAt(sentDay),
             synthetic: true,
           });
         }
       }
     }
+
+    notifications.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     return NextResponse.json({ notifications });
   } catch (e) {

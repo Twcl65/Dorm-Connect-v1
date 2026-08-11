@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidateLandlordUser } from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { landlordLog, refreshRoomFromStudentReservations } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
@@ -94,6 +95,7 @@ export async function PATCH(req: Request, context: Ctx) {
       ownerId,
       `Updated reservation for ${c.guest_name} → ${status}`
     );
+    invalidateLandlordUser(ownerId);
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to update";

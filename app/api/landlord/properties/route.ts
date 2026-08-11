@@ -3,6 +3,18 @@ import {
   canApplyForPropertyAccreditation,
 } from "@/lib/accreditation-eligibility";
 import { expireAccreditationsIfNeeded } from "@/lib/accreditation-expiry";
+import {
+  API_CACHE_TTL_MS,
+  cachedJsonResponse,
+  cacheKey,
+  invalidateLandlordUser,
+  invalidatePublicProperties,
+} from "@/lib/api-cache";
+import {
+  normalizeLandlordPropertyPayload,
+  validateLandlordPropertyPayload,
+  type NormalizedLandlordPropertyPayload,
+} from "@/lib/landlord-property-validation";
 import { getPool } from "@/lib/db";
 import { landlordLog } from "@/lib/landlord-db";
 import { requireLandlord } from "@/lib/require-owner";
@@ -26,7 +38,15 @@ export async function GET(req: Request) {
   const forAccreditation =
     new URL(req.url).searchParams.get("forAccreditation") === "true";
 
+  const key = cacheKey([
+    "landlord",
+    session.sub,
+    "properties",
+    forAccreditation ? "acc" : "all",
+  ]);
+
   try {
+    return await cachedJsonResponse(key, API_CACHE_TTL_MS, async () => {
     const pool = await getPool();
     if (forAccreditation) {
       await expireAccreditationsIfNeeded(pool);
@@ -81,7 +101,7 @@ export async function GET(req: Request) {
     }));
 
     if (!forAccreditation) {
-      return NextResponse.json({ properties: mapped });
+      return { properties: mapped };
     }
 
     const { rows: accRows } = await pool.query<{
@@ -114,10 +134,11 @@ export async function GET(req: Request) {
       canApplyForPropertyAccreditation(latestByProperty.get(p.id))
     );
 
-    return NextResponse.json({
+    return {
       properties,
       totalProperties: mapped.length,
       ineligibleCount: mapped.length - properties.length,
+    };
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load";
@@ -148,39 +169,42 @@ export async function POST(req: Request) {
       galleryImageUrls?: string[];
     };
 
-    const name = (body.name ?? "").trim();
-    if (!name) {
-      return NextResponse.json({ error: "Property name is required." }, { status: 400 });
-    }
-    const propertyType =
-      body.propertyType === "Boarding House" ? "Boarding House" : "Dormitory";
-    const description = (body.description ?? "").trim();
-    const address = (body.address ?? "").trim() || null;
-    const city = body.city != null ? String(body.city).trim() || null : null;
-    const contactPhone =
-      body.contactPhone != null ? String(body.contactPhone).trim() || null : null;
-    const contactEmail =
-      body.contactEmail != null ? String(body.contactEmail).trim() || null : null;
-    const totalRooms =
-      body.totalRooms != null && Number.isFinite(body.totalRooms)
-        ? Math.max(0, Math.floor(Number(body.totalRooms)))
-        : null;
-    const maxOccupancyCapacity =
-      body.maxOccupancyCapacity != null &&
-      Number.isFinite(body.maxOccupancyCapacity)
-        ? Math.max(0, Math.floor(Number(body.maxOccupancyCapacity)))
-        : null;
+    const payload: NormalizedLandlordPropertyPayload = normalizeLandlordPropertyPayload({
+      name: body.name ?? "",
+      propertyType:
+        body.propertyType === "Boarding House" ? "Boarding House" : "Dormitory",
+      description: body.description ?? "",
+      address: body.address ?? null,
+      city: body.city ?? null,
+      contactPhone: body.contactPhone ?? null,
+      contactEmail: body.contactEmail ?? null,
+      totalRooms: body.totalRooms ?? null,
+      maxOccupancyCapacity: body.maxOccupancyCapacity ?? null,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
+    });
 
-    let lat: number | null =
-      body.latitude != null && Number.isFinite(Number(body.latitude))
-        ? Number(body.latitude)
-        : null;
-    let lng: number | null =
-      body.longitude != null && Number.isFinite(Number(body.longitude))
-        ? Number(body.longitude)
-        : null;
-    if (lat !== null && (lat < -90 || lat > 90)) lat = null;
-    if (lng !== null && (lng < -180 || lng > 180)) lng = null;
+    const validationErrors = validateLandlordPropertyPayload(payload);
+    if (validationErrors.length > 0) {
+      return NextResponse.json(
+        { error: validationErrors.join(" ") },
+        { status: 400 }
+      );
+    }
+
+    const {
+      name,
+      propertyType,
+      description,
+      address,
+      city,
+      contactPhone,
+      contactEmail,
+      totalRooms,
+      maxOccupancyCapacity,
+      latitude: lat,
+      longitude: lng,
+    } = payload;
 
     const coverRaw = body.coverImageUrl?.trim() ?? "";
     const cover =
@@ -214,6 +238,8 @@ export async function POST(req: Request) {
     );
     const id = rows[0]?.id;
     await landlordLog(pool, session.sub, `Created property: ${name}`);
+    invalidateLandlordUser(session.sub);
+    invalidatePublicProperties();
     return NextResponse.json({ id }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to create";

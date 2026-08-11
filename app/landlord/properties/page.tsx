@@ -22,6 +22,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { uploadDormConnectFile, uploadDormConnectFiles } from "@/lib/upload-file-client";
+import {
+  normalizeLandlordPropertyForm,
+  validateLandlordPropertyForm,
+} from "@/lib/landlord-property-validation";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 const MapLocationPicker = dynamic(
@@ -139,10 +143,30 @@ export default function LandlordPropertiesPage() {
   };
 
   const submit = async () => {
-    if (!form.name.trim()) {
-      setError("Property name is required.");
+    const validationErrors = validateLandlordPropertyForm({
+      name: form.name,
+      propertyType: form.propertyType,
+      description: form.description,
+      address: form.address,
+      city: form.city,
+      contactPhone: form.contactPhone,
+      contactEmail: form.contactEmail,
+      totalRooms: form.totalRooms,
+      maxOccupancyCapacity: form.maxOccupancyCapacity,
+      latitude:
+        form.latitude != null && Number.isFinite(form.latitude)
+          ? String(form.latitude)
+          : "",
+      longitude:
+        form.longitude != null && Number.isFinite(form.longitude)
+          ? String(form.longitude)
+          : "",
+    });
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join(" "));
       return;
     }
+
     setSaving(true);
     setError(null);
     try {
@@ -156,20 +180,28 @@ export default function LandlordPropertiesPage() {
         gallery = [...gallery, ...up];
       }
 
-      const payload = {
-        name: form.name.trim(),
+      const normalized = normalizeLandlordPropertyForm({
+        name: form.name,
         propertyType: form.propertyType,
-        description: form.description.trim(),
-        address: form.address.trim() || null,
-        city: form.city.trim() || null,
-        contactPhone: form.contactPhone.trim() || null,
-        contactEmail: form.contactEmail.trim() || null,
-        totalRooms: form.totalRooms.trim()
-          ? Number(form.totalRooms)
-          : null,
-        maxOccupancyCapacity: form.maxOccupancyCapacity.trim()
-          ? Number(form.maxOccupancyCapacity)
-          : null,
+        description: form.description,
+        address: form.address,
+        city: form.city,
+        contactPhone: form.contactPhone,
+        contactEmail: form.contactEmail,
+        totalRooms: form.totalRooms,
+        maxOccupancyCapacity: form.maxOccupancyCapacity,
+        latitude:
+          form.latitude != null && Number.isFinite(form.latitude)
+            ? String(form.latitude)
+            : "",
+        longitude:
+          form.longitude != null && Number.isFinite(form.longitude)
+            ? String(form.longitude)
+            : "",
+      });
+
+      const payload = {
+        ...normalized,
         latitude: form.latitude,
         longitude: form.longitude,
         coverImageUrl: cover,
@@ -374,6 +406,12 @@ export default function LandlordPropertiesPage() {
                     <option value="Dormitory">Dormitory</option>
                     <option value="Boarding House">Boarding House</option>
                   </select>
+                  {form.propertyType === "Boarding House" ? (
+                    <p className="text-[0.65rem] text-amber-800">
+                      Boarding houses require address, city, contact phone, description,
+                      total rooms, max occupancy, and a map pin.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-1">
                   <label className="font-medium text-slate-800">Contact number</label>

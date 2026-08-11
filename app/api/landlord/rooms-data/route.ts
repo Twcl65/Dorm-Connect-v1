@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import {
   ensureLandlordProperty,
@@ -20,6 +26,12 @@ export async function GET(req: Request) {
   const ownerId = session.sub;
   const { searchParams } = new URL(req.url);
   let propertyId = (searchParams.get("propertyId") ?? "").trim();
+
+  const cacheK = cacheKey(["landlord", ownerId, "rooms-data", propertyId || "default"]);
+  const hit = getCached<Record<string, unknown>>(cacheK);
+  if (hit) {
+    return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+  }
 
   try {
     const pool = await getPool();
@@ -426,7 +438,7 @@ export async function GET(req: Request) {
       prop[0]?.acc_dorm_name ?? null
     );
 
-    return NextResponse.json({
+    const payload = {
       properties: propList.map((p) => ({
         id: p.id,
         name: p.name,
@@ -445,7 +457,9 @@ export async function GET(req: Request) {
       stats: { total, occupied, available, reserved, maintenance },
       rooms: mappedRooms,
       leaseRows,
-    });
+    };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load rooms";
     return NextResponse.json({ error: msg }, { status: 500 });

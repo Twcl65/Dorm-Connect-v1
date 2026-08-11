@@ -1,4 +1,12 @@
 import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  invalidateLandlordUser,
+  invalidateStudentUser,
+  setCached,
+} from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
 import {
@@ -9,6 +17,7 @@ import {
   formatLeasePeriod,
   landlordStatusToStudentApproved,
 } from "@/lib/student-db";
+import { countLeaseMonths } from "@/lib/payment-schedule";
 import { assertStudentCanReserve } from "@/lib/student-can-reserve";
 import { insertNotification } from "@/lib/notify-user";
 import { refreshRoomFromStudentReservations } from "@/lib/landlord-db";
@@ -22,6 +31,12 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   const studentId = session.sub;
+
+  const cacheK = cacheKey(["student", studentId, "reservations"]);
+  const hit = getCached<{ reservations: unknown[] }>(cacheK);
+  if (hit) {
+    return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+  }
 
   try {
     const pool = await getPool();
@@ -70,12 +85,9 @@ export async function GET() {
     );
 
     const list = rows.map((x) => {
-      const ls = new Date(x.lease_start);
-      const le = new Date(x.lease_end);
-      const months = Math.max(
-        1,
-        Math.round((le.getTime() - ls.getTime()) / (30.44 * 24 * 60 * 60 * 1000))
-      );
+      const ls = new Date(`${x.lease_start.slice(0, 10)}T12:00:00`);
+      const le = new Date(`${x.lease_end.slice(0, 10)}T12:00:00`);
+      const months = countLeaseMonths(ls, le);
       const location =
         x.listing_location?.trim() ||
         [x.property_address, x.property_city].filter(Boolean).join(", ") ||
@@ -104,6 +116,7 @@ export async function GET() {
         status: landlordStatusToStudentApproved(x.status),
         date: new Date(x.created_at).toISOString().slice(0, 10),
         moveInDate: x.lease_start.slice(0, 10),
+        leaseEndDate: x.lease_end.slice(0, 10),
         leaseMonths: months,
         monthlyRent: Number(x.monthly_rent),
         location,
@@ -121,7 +134,9 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ reservations: list });
+    const payload = { reservations: list };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load reservations";
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -312,6 +327,8 @@ export async function POST(req: Request) {
       /* non-fatal */
     }
 
+    invalidateStudentUser(studentId);
+    invalidateLandlordUser(room.owner_user_id);
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to create reservation";
