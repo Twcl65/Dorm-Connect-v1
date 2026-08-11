@@ -269,25 +269,33 @@ export default function StudentBrowseMapPage() {
       </Card>
 
       {propertyDialog && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 px-3 py-8">
-          <Card className="my-auto w-full max-w-2xl max-h-[90vh] overflow-y-auto border bg-white">
-            <CardHeader className="flex flex-row items-start justify-between gap-2 border-b">
-              <div>
-                <CardTitle className="text-lg">{propertyDialog.name}</CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {propertyDialog.propertyType} · {propertyDialog.address}
-                </p>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10"
+          onClick={() => setPropertyDialog(null)}
+        >
+          <Card
+            className="my-auto flex max-h-[min(92vh,900px)] w-full max-w-2xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
+              <div className="flex flex-row items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-lg">{propertyDialog.name}</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {propertyDialog.propertyType} · {propertyDialog.address}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setPropertyDialog(null)}
+                >
+                  Close
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => setPropertyDialog(null)}
-              >
-                Close
-              </Button>
             </CardHeader>
-            <CardContent className="space-y-4 pt-4 text-sm">
+            <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pt-3 text-sm">
               <div className="flex flex-wrap gap-2">
                 {(propertyDialog.propertyImages.length
                   ? propertyDialog.propertyImages

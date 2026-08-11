@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, Loader2 } from "lucide-react";
+import { Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 
 type ReservationStatus =
   | "Active"
@@ -34,6 +34,7 @@ type ReservationRow = {
 };
 
 const ROWS_PER_PAGE = 5;
+const PENDING_PAYMENTS_PREVIEW = 3;
 
 function ReservationStatusBadge({ status }: { status: ReservationStatus }) {
   const colorClasses =
@@ -103,6 +104,7 @@ export default function StudentDashboardPage() {
   const [selectedReservation, setSelectedReservation] =
     useState<ReservationRow | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [pendingPaymentsExpanded, setPendingPaymentsExpanded] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -183,6 +185,14 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     setPage((p) => Math.min(p, Math.max(1, totalPages)));
   }, [totalPages]);
+
+  const visiblePendingPayments = useMemo(() => {
+    if (pendingPaymentsExpanded) return upcomingUnpaidMonths;
+    return upcomingUnpaidMonths.slice(0, PENDING_PAYMENTS_PREVIEW);
+  }, [pendingPaymentsExpanded, upcomingUnpaidMonths]);
+
+  const hasMorePendingPayments =
+    upcomingUnpaidMonths.length > PENDING_PAYMENTS_PREVIEW;
 
   return (
     <div className="space-y-6">
@@ -307,20 +317,47 @@ export default function StudentDashboardPage() {
         </CardHeader>
         <CardContent className="pt-4">
           {upcomingUnpaidMonths.length > 0 ? (
-            <div className="flex flex-wrap gap-3">
-              {upcomingUnpaidMonths.map((m) => (
-                <div
-                  key={`${m.dueDate}-${m.monthNumber}`}
-                  className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-slate-700"
-                >
-                  <p className="font-semibold text-slate-900 whitespace-nowrap">
-                    {m.monthLabel}
-                  </p>
-                  <p className="mt-1 text-muted-foreground whitespace-nowrap">
-                    ₱{m.amount.toLocaleString()} · {m.dueLabel}
-                  </p>
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-3">
+                {visiblePendingPayments.map((m) => (
+                  <div
+                    key={`${m.dueDate}-${m.monthNumber}`}
+                    className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-slate-700"
+                  >
+                    <p className="font-semibold text-slate-900 whitespace-nowrap">
+                      {m.monthLabel}
+                    </p>
+                    <p className="mt-1 text-muted-foreground whitespace-nowrap">
+                      ₱{m.amount.toLocaleString()} · {m.dueLabel}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {hasMorePendingPayments ? (
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-slate-900"
+                    onClick={() =>
+                      setPendingPaymentsExpanded((expanded) => !expanded)
+                    }
+                    aria-expanded={pendingPaymentsExpanded}
+                    aria-label={
+                      pendingPaymentsExpanded
+                        ? "Show fewer pending payments"
+                        : `Show ${upcomingUnpaidMonths.length - PENDING_PAYMENTS_PREVIEW} more pending payments`
+                    }
+                  >
+                    {pendingPaymentsExpanded ? (
+                      <ChevronUp className="h-5 w-5" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5" />
+                    )}
+                  </Button>
                 </div>
-              ))}
+              ) : null}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">

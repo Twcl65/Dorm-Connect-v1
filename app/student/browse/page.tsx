@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,13 @@ function showRoomDetailsAside(
 ): boolean {
   if (!roomDetails?.trim()) return false;
   return !normWs(description).includes(normWs(roomDetails));
+}
+
+function getDormGalleryImages(dorm: Dorm): string[] {
+  const urls = dorm.images.filter(Boolean);
+  if (urls.length > 0) return urls;
+  if (dorm.propertyCoverImageUrl) return [dorm.propertyCoverImageUrl];
+  return [];
 }
 
 type DormReview = {
@@ -110,6 +117,7 @@ export default function StudentBrowseDormsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [ictVerificationStatus, setIctVerificationStatus] = useState<
     string | null
   >(null);
@@ -227,6 +235,10 @@ export default function StudentBrowseDormsPage() {
   useEffect(() => {
     if (!showDormDialog) setLightboxUrl(null);
   }, [showDormDialog]);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [selectedDorm?.id]);
 
   useEffect(() => {
     if (!lightboxUrl) return;
@@ -470,7 +482,7 @@ export default function StudentBrowseDormsPage() {
 
       {roomsDialogPropertyId ? (
         <div
-          className="fixed inset-0 z-[40] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-8"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10"
           role="dialog"
           aria-modal="true"
           aria-labelledby="browse-property-dialog-title"
@@ -482,37 +494,40 @@ export default function StudentBrowseDormsPage() {
           onClick={() => setRoomsDialogPropertyId(null)}
         >
           <Card
-            className="my-auto w-full max-w-4xl border border-gray-300 bg-white"
+            className="my-auto flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <CardHeader className="border-b bg-muted/40">
-              <div className="flex items-start justify-between gap-0 mb-0 pb-0">
-                <CardTitle
-                  id="browse-property-dialog-title"
-                  className="text-base font-semibold leading-snug text-slate-900"
-                ><p className="text-xs font-normal leading-snug text-slate-900">Dormitory Name:</p>
-                  {roomsInPropertyDialog[0]?.propertyName ??
-                    dialogPropertyPin?.name ??
-                    "Dormitory"}
-                             <div className="mt-0 space-y-1">
-                <p
-                  id="browse-property-dialog-location"
-                  className="text-xs leading-relaxed text-slate-700"
-                >
-                  {roomsInPropertyDialog[0]
-                    ? [
-                        roomsInPropertyDialog[0].propertyAddress,
-                        roomsInPropertyDialog[0].propertyCity,
-                      ]
-                        .filter(Boolean)
-                        .join(", ") || roomsInPropertyDialog[0].location
-                    : dialogPropertyPin?.address && dialogPropertyPin.address !== "—"
-                      ? dialogPropertyPin.address
-                      : "—"}
-                </p>
-              </div>
-                </CardTitle>
-                
+            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+                    Dormitory
+                  </p>
+                  <CardTitle
+                    id="browse-property-dialog-title"
+                    className="text-base font-semibold leading-snug text-slate-900"
+                  >
+                    {roomsInPropertyDialog[0]?.propertyName ??
+                      dialogPropertyPin?.name ??
+                      "Dormitory"}
+                  </CardTitle>
+                  <p
+                    id="browse-property-dialog-location"
+                    className="mt-1 text-xs leading-relaxed text-slate-700"
+                  >
+                    {roomsInPropertyDialog[0]
+                      ? [
+                          roomsInPropertyDialog[0].propertyAddress,
+                          roomsInPropertyDialog[0].propertyCity,
+                        ]
+                          .filter(Boolean)
+                          .join(", ") || roomsInPropertyDialog[0].location
+                      : dialogPropertyPin?.address &&
+                          dialogPropertyPin.address !== "—"
+                        ? dialogPropertyPin.address
+                        : "—"}
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
@@ -523,19 +538,17 @@ export default function StudentBrowseDormsPage() {
                   Close
                 </Button>
               </div>
-     
             </CardHeader>
-            <CardContent className="max-h-[min(60vh,800px)] space-y-2 overflow-y-auto pt-2 text-xs">
-              
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 pt-3 text-xs">
               {roomsInPropertyDialog.length === 0 ? (
                 <p className="rounded-md border border-dashed border-slate-200 bg-muted/30 px-3 py-6 text-center text-muted-foreground">
                   No listed rooms for this property in browse results yet. The
                   landlord can post a room listing from{" "}
-                  <span className="font-medium text-slate-700">Rooms</span> for this
-                  building.
+                  <span className="font-medium text-slate-700">Rooms</span> for
+                  this building.
                 </p>
               ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {roomsInPropertyDialog.map((dorm) => (
                     <Card
                       key={dorm.id}
@@ -769,27 +782,30 @@ export default function StudentBrowseDormsPage() {
 
       {showDormDialog && selectedDorm && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
-          <Card className="w-full max-w-4xl border border-gray-300 bg-white max-h-[90vh] overflow-y-auto">
-            <CardHeader className="pb-2 border-b bg-muted/40">
-              <div className="flex items-center justify-between gap-2">
-                <div>
+          <Card
+            className="my-auto flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <CardTitle className="text-base font-semibold text-slate-900">
                     {reservationStep === 1 && selectedDorm.name}
                     {reservationStep === 2 && "Rental Terms Summary"}
                     {reservationStep === 3 && "Confirm Reservation"}
                   </CardTitle>
                   {reservationStep === 1 && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {selectedDorm.location} • {selectedDorm.distance}
                     </p>
                   )}
                   {reservationStep === 2 && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Review the rental terms before continuing.
                     </p>
                   )}
                   {reservationStep === 3 && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Choose your move-in date and lease duration.
                     </p>
                   )}
@@ -798,7 +814,7 @@ export default function StudentBrowseDormsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2 text-[0.7rem]"
+                  className="h-7 shrink-0 px-2 text-[0.7rem]"
                   onClick={() => {
                     setShowDormDialog(false);
                     setReservationStep(1);
@@ -809,7 +825,7 @@ export default function StudentBrowseDormsPage() {
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-4 pt-3">
+            <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-3">
               {submitError && (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
                   {submitError}
@@ -818,59 +834,67 @@ export default function StudentBrowseDormsPage() {
 
               {reservationStep === 1 && (
                 <>
-                  <div className="grid gap-4 md:grid-cols-[2fr,1.3fr]">
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        className="group relative h-52 w-full overflow-hidden rounded-md bg-slate-200 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary"
-                        onClick={() =>
-                          setLightboxUrl(
-                            selectedDorm.images[0] ??
-                              selectedDorm.propertyCoverImageUrl ??
-                              null
-                          )
-                        }
-                        aria-label="View cover photo larger"
-                      >
-                        {selectedDorm.images[0] ||
-                        selectedDorm.propertyCoverImageUrl ? (
-                          <img
-                            src={
-                              selectedDorm.images[0] ??
-                              selectedDorm.propertyCoverImageUrl ??
-                              ""
-                            }
-                            alt={selectedDorm.name}
-                            className="h-full w-full object-cover transition duration-200 group-hover:brightness-[0.97]"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-                            No photo
-                          </div>
-                        )}
-                        <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent px-2 py-2 text-[0.65rem] font-medium text-white opacity-0 transition group-hover:opacity-100">
-                          Click to enlarge
-                        </span>
-                      </button>
-                      {selectedDorm.images.length > 1 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedDorm.images.slice(1).map((src) => (
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
+                    <div className="space-y-2.5">
+                      {(() => {
+                        const galleryImages = getDormGalleryImages(selectedDorm);
+                        const activeImage =
+                          galleryImages[activeImageIndex] ?? galleryImages[0] ?? null;
+                        return (
+                          <>
                             <button
-                              key={src}
                               type="button"
-                              className="relative h-16 w-24 overflow-hidden rounded border border-slate-200 outline-none ring-offset-1 focus-visible:ring-2 focus-visible:ring-primary"
-                              onClick={() => setLightboxUrl(src)}
+                              className="group relative flex aspect-[4/3] min-h-[280px] max-h-[min(65vh,560px)] w-full items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary sm:min-h-[320px]"
+                              onClick={() => {
+                                if (activeImage) setLightboxUrl(activeImage);
+                              }}
                               aria-label="View photo larger"
+                              disabled={!activeImage}
                             >
-                              <img
-                                src={src}
-                                alt=""
-                                className="h-full w-full object-cover transition hover:brightness-95"
-                              />
+                              {activeImage ? (
+                                <img
+                                  src={activeImage}
+                                  alt={selectedDorm.name}
+                                  className="h-full w-full object-contain transition duration-200 group-hover:brightness-[0.97]"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+                                  No photo
+                                </div>
+                              )}
+                              {activeImage ? (
+                                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent px-2 py-2 text-[0.65rem] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                                  Click to enlarge
+                                </span>
+                              ) : null}
                             </button>
-                          ))}
-                        </div>
-                      )}
+                            {galleryImages.length > 1 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {galleryImages.map((src, index) => (
+                                  <button
+                                    key={`${src}-${index}`}
+                                    type="button"
+                                    className={`relative h-20 w-28 shrink-0 overflow-hidden rounded-md border outline-none ring-offset-1 focus-visible:ring-2 focus-visible:ring-primary ${
+                                      index === activeImageIndex
+                                        ? "border-primary ring-2 ring-primary/30"
+                                        : "border-slate-200"
+                                    }`}
+                                    onClick={() => setActiveImageIndex(index)}
+                                    aria-label={`View photo ${index + 1}`}
+                                    aria-pressed={index === activeImageIndex}
+                                  >
+                                    <img
+                                      src={src}
+                                      alt=""
+                                      className="h-full w-full object-cover transition hover:brightness-95"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     <div className="space-y-3 text-sm text-slate-700">
@@ -1094,89 +1118,90 @@ export default function StudentBrowseDormsPage() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-1">
+            </CardContent>
+
+            <CardFooter className="shrink-0 justify-end gap-2 border-t bg-white pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => {
+                  if (reservationStep === 1) {
+                    setShowDormDialog(false);
+                    setReservationStep(1);
+                  } else {
+                    setReservationStep(
+                      (prev) => (prev - 1) as typeof reservationStep
+                    );
+                  }
+                }}
+              >
+                {reservationStep === 1 ? "Cancel" : "Back"}
+              </Button>
+              {reservationStep < 3 ? (
                 <Button
                   type="button"
-                  variant="outline"
                   size="sm"
                   className="h-8 px-3 text-xs"
-                  onClick={() => {
-                    if (reservationStep === 1) {
+                  disabled={reservationStep === 1 && !canBook}
+                  onClick={() =>
+                    setReservationStep(
+                      (prev) => (prev + 1) as typeof reservationStep
+                    )
+                  }
+                >
+                  Next
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={!moveInDate || submitting || !canBook}
+                  onClick={async () => {
+                    if (!selectedDorm || !moveInDate) return;
+                    setSubmitError(null);
+                    setSubmitting(true);
+                    try {
+                      const start = new Date(moveInDate);
+                      const end = new Date(start);
+                      end.setMonth(end.getMonth() + Number(leaseDuration));
+                      const res = await fetch("/api/student/reservations", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          roomId: selectedDorm.id,
+                          leaseStart: moveInDate,
+                          leaseEnd: end.toISOString().slice(0, 10),
+                        }),
+                      });
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
                       setShowDormDialog(false);
                       setReservationStep(1);
-                    } else {
-                      setReservationStep(
-                        (prev) => (prev - 1) as typeof reservationStep
+                      void loadListings();
+                    } catch (e) {
+                      setSubmitError(
+                        e instanceof Error ? e.message : "Reservation failed"
                       );
+                    } finally {
+                      setSubmitting(false);
                     }
                   }}
                 >
-                  {reservationStep === 1 ? "Cancel" : "Back"}
+                  {submitting ? "Submitting…" : "Confirm Reservation"}
                 </Button>
-                {reservationStep < 3 ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
-                    disabled={reservationStep === 1 && !canBook}
-                    onClick={() =>
-                      setReservationStep(
-                        (prev) => (prev + 1) as typeof reservationStep
-                      )
-                    }
-                  >
-                    Next
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
-                    disabled={!moveInDate || submitting || !canBook}
-                    onClick={async () => {
-                      if (!selectedDorm || !moveInDate) return;
-                      setSubmitError(null);
-                      setSubmitting(true);
-                      try {
-                        const start = new Date(moveInDate);
-                        const end = new Date(start);
-                        end.setMonth(end.getMonth() + Number(leaseDuration));
-                        const res = await fetch("/api/student/reservations", {
-                          method: "POST",
-                          credentials: "include",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            roomId: selectedDorm.id,
-                            leaseStart: moveInDate,
-                            leaseEnd: end.toISOString().slice(0, 10),
-                          }),
-                        });
-                        const j = (await res.json()) as { error?: string };
-                        if (!res.ok) throw new Error(j.error ?? "Failed");
-                        setShowDormDialog(false);
-                        setReservationStep(1);
-                        void loadListings();
-                      } catch (e) {
-                        setSubmitError(
-                          e instanceof Error ? e.message : "Reservation failed"
-                        );
-                      } finally {
-                        setSubmitting(false);
-                      }
-                    }}
-                  >
-                    {submitting ? "Submitting…" : "Confirm Reservation"}
-                  </Button>
-                )}
-              </div>
-            </CardContent>
+              )}
+            </CardFooter>
           </Card>
         </div>
       )}
 
       {lightboxUrl ? (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/92 p-3 sm:p-6"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/92 p-4 sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label="Photo preview"
@@ -1184,7 +1209,7 @@ export default function StudentBrowseDormsPage() {
         >
           <button
             type="button"
-            className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white backdrop-blur transition hover:bg-white/20"
+            className="absolute right-3 top-3 z-10 rounded-full bg-white/10 p-2 text-white backdrop-blur transition hover:bg-white/20 sm:right-6 sm:top-6"
             onClick={(e) => {
               e.stopPropagation();
               setLightboxUrl(null);
@@ -1196,7 +1221,7 @@ export default function StudentBrowseDormsPage() {
           <img
             src={lightboxUrl}
             alt=""
-            className="max-h-[min(90vh,900px)] max-w-full object-contain shadow-2xl"
+            className="max-h-[min(90vh,900px)] max-w-[min(100%,1200px)] object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
