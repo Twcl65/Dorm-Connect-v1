@@ -4,9 +4,9 @@ import { Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SectionTabBar } from "@/components/landlord/section-tab-bar";
 import type { RoomsManagementTab } from "@/components/landlord/rooms-management-types";
-import { LandlordRoomsPanel } from "@/app/landlord/rooms/page";
-import { LandlordPropertiesPanel } from "@/app/landlord/properties/page";
-import { LandlordTenantsPanel } from "@/app/landlord/tenants/page";
+import { LandlordRoomsPanel } from "@/components/landlord/landlord-rooms-panel";
+import { LandlordPropertiesPanel } from "@/components/landlord/landlord-properties-panel";
+import { LandlordTenantsPanel } from "@/components/landlord/landlord-tenants-panel";
 
 const TABS: { id: RoomsManagementTab; label: string }[] = [
   { id: "rooms", label: "Rooms" },

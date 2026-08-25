@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { SectionTabBar } from "@/components/landlord/section-tab-bar";
 import type { ReportsManagementTab } from "@/components/landlord/rooms-management-types";
 import { LandlordIncidentsPanel } from "@/components/landlord/incidents-panel";
-import { LandlordDormReportsPanel } from "@/app/landlord/reports/page";
+import { LandlordDormReportsPanel } from "@/components/landlord/landlord-dorm-reports-panel";
 import { LandlordActivityLogsPanel } from "@/components/landlord/activity-logs-panel";
 
 const TABS: { id: ReportsManagementTab; label: string }[] = [
