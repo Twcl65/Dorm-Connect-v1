@@ -52,6 +52,9 @@ export async function GET() {
       property_address: string | null;
       property_city: string | null;
       landlord_name: string;
+      gcash_account_name: string | null;
+      gcash_phone: string | null;
+      gcash_qr_code_url: string | null;
       created_at: Date;
       capacity: number;
       room_size_label: string | null;
@@ -67,7 +70,9 @@ export async function GET() {
               s.lease_start::text, s.lease_end::text, s.status,
               s.monthly_rent::text,
               r.listing_location, p.address AS property_address, p.city AS property_city,
-              u.full_name AS landlord_name, s.created_at,
+              u.full_name AS landlord_name,
+              u.gcash_account_name, u.gcash_phone, u.gcash_qr_code_url,
+              s.created_at,
               r.capacity, r.room_size_label, r.room_details,
               r.listing_description, r.remarks,
               r.listing_image_urls, r.listing_background_url, r.room_image_urls,
@@ -121,6 +126,9 @@ export async function GET() {
         monthlyRent: Number(x.monthly_rent),
         location,
         landlord: x.landlord_name,
+        gcashAccountName: x.gcash_account_name?.trim() || null,
+        gcashPhone: x.gcash_phone?.trim() || null,
+        gcashQrCodeUrl: x.gcash_qr_code_url?.trim() || null,
         distance: "—",
         documentType: "Accredited",
         description,

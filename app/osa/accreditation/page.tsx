@@ -657,8 +657,8 @@ export default function OsaAccreditationPage() {
 
       {showRequestDialog && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
-          <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+          <Card className="flex w-full max-w-3xl max-h-[calc(100vh-3rem)] flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   Dorm Accreditation Request
@@ -674,7 +674,7 @@ export default function OsaAccreditationPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 pt-4 text-xs text-slate-800">
+            <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-4 text-xs text-slate-800">
               <div className="space-y-2">
                 <div className="grid gap-2 md:grid-cols-[130px,1fr] items-center">
                   <span className="text-[0.7rem]">Dorm Name:</span>

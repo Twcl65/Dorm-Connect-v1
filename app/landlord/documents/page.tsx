@@ -128,7 +128,6 @@ export default function LandlordDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Properties list for dropdown (eligible for new accreditation only)
   const [properties, setProperties] = useState<Property[]>([]);
@@ -151,8 +150,6 @@ export default function LandlordDocumentsPage() {
   const [ownerBusinessName, setOwnerBusinessName] = useState("");
   const [ownerContact, setOwnerContact] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
-  const [ownerIdFrontFile, setOwnerIdFrontFile] = useState<File | null>(null);
-  const [ownerIdBackFile, setOwnerIdBackFile] = useState<File | null>(null);
 
   // Step C – Required documents (segregated uploads)
   const [businessPermitFile, setBusinessPermitFile] = useState<File | null>(
@@ -172,13 +169,7 @@ export default function LandlordDocumentsPage() {
   );
   const [supportingDocFiles, setSupportingDocFiles] = useState<File[]>([]);
 
-  // Step D – Safety & compliance
-  const [safetyExits, setSafetyExits] = useState(false);
-  const [safetyExtinguishers, setSafetyExtinguishers] = useState(false);
-  const [safetyContacts, setSafetyContacts] = useState(false);
-  const [safetyRooms, setSafetyRooms] = useState(false);
-
-  // Step E – Declaration
+  // Step D – Declaration
   const [declCertify, setDeclCertify] = useState(false);
   const [declUnderstandSubmit, setDeclUnderstandSubmit] = useState(false);
   const [declUnderstandRevoke, setDeclUnderstandRevoke] = useState(false);
@@ -334,7 +325,7 @@ export default function LandlordDocumentsPage() {
   }, [showWizard]);
 
   const validateWizardStep = useCallback(
-    (step: 1 | 2 | 3 | 4 | 5): string[] => {
+    (step: 1 | 2 | 3 | 4): string[] => {
       const errors: string[] = [];
       if (step === 1) {
         if (!ownerName.trim()) errors.push("Owner full name is required.");
@@ -342,8 +333,6 @@ export default function LandlordDocumentsPage() {
           errors.push("Business name is required.");
         if (!ownerContact.trim()) errors.push("Owner contact number is required.");
         if (!ownerEmail.trim()) errors.push("Owner email address is required.");
-        if (!ownerIdFrontFile) errors.push("Valid ID (front) is required.");
-        if (!ownerIdBackFile) errors.push("Valid ID (back) is required.");
       }
       if (step === 2) {
         if (!selectedPropertyId.trim())
@@ -367,16 +356,6 @@ export default function LandlordDocumentsPage() {
         }
       }
       if (step === 4) {
-        if (!safetyExits)
-          errors.push("Confirm fire exits are marked and accessible.");
-        if (!safetyExtinguishers)
-          errors.push("Confirm fire extinguishers are available and functional.");
-        if (!safetyContacts)
-          errors.push("Confirm emergency contact numbers are posted.");
-        if (!safetyRooms)
-          errors.push("Confirm rooms meet minimum requirements.");
-      }
-      if (step === 5) {
         if (!declCertify)
           errors.push("You must certify that the information provided is accurate.");
         if (!declUnderstandSubmit)
@@ -401,18 +380,12 @@ export default function LandlordDocumentsPage() {
       ownerBusinessName,
       ownerContact,
       ownerEmail,
-      ownerIdFrontFile,
-      ownerIdBackFile,
       businessPermitFile,
       barangayClearanceFile,
       fireSafetyCertFile,
       occupancyPermitFile,
       sanitaryApplicable,
       sanitaryPermitFile,
-      safetyExits,
-      safetyExtinguishers,
-      safetyContacts,
-      safetyRooms,
       declName,
       declCertify,
       declUnderstandSubmit,
@@ -421,20 +394,62 @@ export default function LandlordDocumentsPage() {
     ]
   );
 
-  const goNext = useCallback(() => {
-    const errs = validateWizardStep(wizardStep);
-    if (errs.length > 0) {
-      setWizardErrors(errs);
-      return;
-    }
-    setWizardErrors([]);
-    setWizardStep((s) => (s < 5 ? ((s + 1) as 2 | 3 | 4 | 5) : s));
-  }, [validateWizardStep, wizardStep]);
+  const wizardProgress = useMemo(() => {
+    const checks = [
+      Boolean(ownerName.trim()),
+      Boolean(ownerBusinessName.trim()),
+      Boolean(ownerContact.trim()),
+      Boolean(ownerEmail.trim()),
+      Boolean(selectedPropertyId.trim()),
+      Boolean(dormAddress.trim()),
+      Boolean(dormCity.trim()),
+      Boolean(dormContact.trim()),
+      Boolean(dormEmail.trim()),
+      Boolean(dormRooms.trim()),
+      Boolean(dormCapacity.trim()),
+      Boolean(businessPermitFile),
+      Boolean(barangayClearanceFile),
+      Boolean(fireSafetyCertFile),
+      Boolean(occupancyPermitFile),
+      sanitaryApplicable ? Boolean(sanitaryPermitFile) : true,
+      declCertify,
+      declUnderstandSubmit,
+      declUnderstandRevoke,
+      declUnderstandInspect,
+      Boolean(declName.trim()),
+    ];
+    const filled = checks.filter(Boolean).length;
+    return Math.round((filled / checks.length) * 100);
+  }, [
+    ownerName,
+    ownerBusinessName,
+    ownerContact,
+    ownerEmail,
+    selectedPropertyId,
+    dormAddress,
+    dormCity,
+    dormContact,
+    dormEmail,
+    dormRooms,
+    dormCapacity,
+    businessPermitFile,
+    barangayClearanceFile,
+    fireSafetyCertFile,
+    occupancyPermitFile,
+    sanitaryApplicable,
+    sanitaryPermitFile,
+    declCertify,
+    declUnderstandSubmit,
+    declUnderstandRevoke,
+    declUnderstandInspect,
+    declName,
+  ]);
 
-  const goBack = useCallback(() => {
-    setWizardErrors([]);
-    setWizardStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : s));
-  }, []);
+  const validateAllWizardSteps = useCallback((): string[] => {
+    return ([1, 2, 3, 4] as const).flatMap((step) =>
+      validateWizardStep(step)
+    );
+  }, [validateWizardStep]);
 
   return (
     <div className="space-y-6">
@@ -469,7 +484,6 @@ export default function LandlordDocumentsPage() {
             className="h-8 bg-emerald-500 px-3 text-xs font-medium text-white hover:bg-emerald-600 flex items-center gap-1"
             type="button"
             onClick={() => {
-              setWizardStep(1);
               setSelectedPropertyId("");
               setIneligiblePropertyCount(0);
               setDormName("");
@@ -480,8 +494,6 @@ export default function LandlordDocumentsPage() {
               setDormType("Co-ed");
               setDormRooms("");
               setDormCapacity("");
-              setOwnerIdFrontFile(null);
-              setOwnerIdBackFile(null);
               setBusinessPermitFile(null);
               setBarangayClearanceFile(null);
               setFireSafetyCertFile(null);
@@ -644,7 +656,7 @@ export default function LandlordDocumentsPage() {
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card className="w-full max-w-2xl border border-gray-300 bg-white">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+            <CardHeader className="sticky top-0 z-10 border-b bg-white pb-2">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base font-semibold text-slate-900">
                   Apply For Accreditation
@@ -659,8 +671,28 @@ export default function LandlordDocumentsPage() {
                   Close
                 </Button>
               </div>
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center justify-between text-[0.7rem] text-slate-600">
+                  <span>Application progress</span>
+                  <span className="font-semibold text-slate-900">
+                    {wizardProgress}%
+                  </span>
+                </div>
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full bg-slate-200"
+                  role="progressbar"
+                  aria-valuenow={wizardProgress}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                    style={{ width: `${wizardProgress}%` }}
+                  />
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4 pt-4 text-xs text-slate-800">
+            <CardContent className="max-h-[calc(100vh-8rem)] space-y-6 overflow-y-auto pt-4 text-xs text-slate-800">
               {wizardErrors.length > 0 && (
                 <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[0.7rem] text-red-800">
                   <p className="font-semibold">Please complete the required items:</p>
@@ -671,8 +703,48 @@ export default function LandlordDocumentsPage() {
                   </ul>
                 </div>
               )}
-              {wizardStep === 2 && (
-                <div className="space-y-3">
+                <div className="space-y-3 border-b border-slate-200 pb-6">
+                  <p className="text-[0.8rem] font-semibold text-slate-900">
+                    A. Owner / Landlord Information
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-[160px,1fr] items-center">
+                    <span className="text-[0.7rem] text-slate-700">
+                      Full Name:
+                    </span>
+                    <Input
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <span className="text-[0.7rem] text-slate-700">
+                      Business Name:
+                    </span>
+                    <Input
+                      value={ownerBusinessName}
+                      onChange={(e) => setOwnerBusinessName(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <span className="text-[0.7rem] text-slate-700">
+                      Contact Number:
+                    </span>
+                    <Input
+                      value={ownerContact}
+                      onChange={(e) => setOwnerContact(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <span className="text-[0.7rem] text-slate-700">
+                      Email Address:
+                    </span>
+                    <Input
+                      type="email"
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 border-b border-slate-200 pb-6">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     B. Dorm Information
                   </p>
@@ -723,7 +795,7 @@ export default function LandlordDocumentsPage() {
                           : properties.length === 0
                             ? ineligiblePropertyCount > 0
                               ? "No dorms available — approved until renewal window"
-                              : "No properties — add one in Properties first"
+                              : "No properties — add one in Rooms Management first"
                             : "Select a dorm…"}
                       </option>
                       {properties.map((prop) => (
@@ -805,135 +877,9 @@ export default function LandlordDocumentsPage() {
                       className="h-8 text-xs"
                     />
                   </div>
-                  <div className="flex items-center justify-between pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goBack}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goNext}
-                    >
-                      Next Page &rarr;
-                    </Button>
-                  </div>
                 </div>
-              )}
 
-              {wizardStep === 1 && (
-                <div className="space-y-3">
-                  <p className="text-[0.8rem] font-semibold text-slate-900">
-                    A. Owner / Landlord Information
-                  </p>
-                  <div className="grid gap-2 md:grid-cols-[160px,1fr] items-center">
-                    <span className="text-[0.7rem] text-slate-700">
-                      Full Name:
-                    </span>
-                    <Input
-                      value={ownerName}
-                      onChange={(e) => setOwnerName(e.target.value)}
-                      className="h-8 text-xs"
-                    />
-                    <span className="text-[0.7rem] text-slate-700">
-                      Business Name:
-                    </span>
-                    <Input
-                      value={ownerBusinessName}
-                      onChange={(e) => setOwnerBusinessName(e.target.value)}
-                      className="h-8 text-xs"
-                    />
-                    <span className="text-[0.7rem] text-slate-700">
-                      Contact Number:
-                    </span>
-                    <Input
-                      value={ownerContact}
-                      onChange={(e) => setOwnerContact(e.target.value)}
-                      className="h-8 text-xs"
-                    />
-                    <span className="text-[0.7rem] text-slate-700">
-                      Email Address:
-                    </span>
-                    <Input
-                      type="email"
-                      value={ownerEmail}
-                      onChange={(e) => setOwnerEmail(e.target.value)}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[0.75rem] font-semibold text-slate-900">
-                      Upload Valid ID
-                    </p>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
-                        <p className="text-[0.75rem] font-medium text-slate-800">
-                          Front
-                        </p>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          className="h-8 cursor-pointer text-xs"
-                          onChange={(e) => {
-                            setOwnerIdFrontFile(e.target.files?.[0] ?? null);
-                          }}
-                        />
-                        {ownerIdFrontFile && (
-                          <p className="text-[0.65rem] text-muted-foreground">
-                            {ownerIdFrontFile.name}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
-                        <p className="text-[0.75rem] font-medium text-slate-800">
-                          Back
-                        </p>
-                        <Input
-                          type="file"
-                          accept="image/*"
-                          className="h-8 cursor-pointer text-xs"
-                          onChange={(e) => {
-                            setOwnerIdBackFile(e.target.files?.[0] ?? null);
-                          }}
-                        />
-                        {ownerIdBackFile && (
-                          <p className="text-[0.65rem] text-muted-foreground">
-                            {ownerIdBackFile.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={() => setShowWizard(false)}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goNext}
-                    >
-                      Next Page &rarr;
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {wizardStep === 3 && (
-                <div className="space-y-3">
+                <div className="space-y-3 border-b border-slate-200 pb-6">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     C. Required Documents (Upload)
                   </p>
@@ -1046,102 +992,11 @@ export default function LandlordDocumentsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goBack}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goNext}
-                    >
-                      Next Page &rarr;
-                    </Button>
-                  </div>
                 </div>
-              )}
 
-              {wizardStep === 4 && (
                 <div className="space-y-3">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
-                    D. Safety & Compliance Declaration
-                  </p>
-                  <p className="text-[0.7rem] text-slate-800">
-                    Please confirm the following:
-                  </p>
-                  <div className="space-y-2 text-[0.7rem]">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={safetyExits}
-                        onChange={(e) => setSafetyExits(e.target.checked)}
-                      />
-                      Fire exits are properly marked and accessible.
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={safetyExtinguishers}
-                        onChange={(e) =>
-                          setSafetyExtinguishers(e.target.checked)
-                        }
-                      />
-                      Fire extinguishers are available and functional.
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={safetyContacts}
-                        onChange={(e) => setSafetyContacts(e.target.checked)}
-                      />
-                      Emergency contact numbers are posted.
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3"
-                        checked={safetyRooms}
-                        onChange={(e) => setSafetyRooms(e.target.checked)}
-                      />
-                      Rooms meet minimum space and ventilation requirements.
-                    </label>
-                  </div>
-                  <div className="flex items-center justify-between pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goBack}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={goNext}
-                    >
-                      Next Page &rarr;
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {wizardStep === 5 && (
-                <div className="space-y-3">
-                  <p className="text-[0.8rem] font-semibold text-slate-900">
-                    E. Declaration
+                    D. Declaration
                   </p>
                   <div className="space-y-2 text-[0.7rem] text-slate-800">
                     <label className="flex items-start gap-2">
@@ -1207,33 +1062,23 @@ export default function LandlordDocumentsPage() {
                     />
                   </div>
 
-                  <div className="flex justify-between gap-2 pt-3">
+                  <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       className="h-8 px-3 text-xs"
-                      onClick={goBack}
+                      onClick={() => setShowWizard(false)}
                     >
-                      Back
+                      Cancel
                     </Button>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-3 text-xs"
-                        onClick={() => setShowWizard(false)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-8 px-3 text-xs"
-                        disabled={submitting}
-                        onClick={async () => {
-                          const errs = validateWizardStep(5);
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      disabled={submitting}
+                      onClick={async () => {
+                          const errs = validateAllWizardSteps();
                           if (errs.length > 0) {
                             setWizardErrors(errs);
                             return;
@@ -1245,8 +1090,6 @@ export default function LandlordDocumentsPage() {
                           setSubmitting(true);
                           try {
                             const [
-                              ownerIdFrontUrl,
-                              ownerIdBackUrl,
                               businessPermitUrl,
                               barangayClearanceUrl,
                               fireSafetyCertificateUrl,
@@ -1254,12 +1097,6 @@ export default function LandlordDocumentsPage() {
                               sanitaryPermitUrl,
                               supportingUrls,
                             ] = await (async () => {
-                              const idFront = await uploadDormConnectFile(
-                                ownerIdFrontFile!
-                              );
-                              const idBack = await uploadDormConnectFile(
-                                ownerIdBackFile!
-                              );
                               const bp = await uploadDormConnectFile(
                                 businessPermitFile!
                               );
@@ -1279,21 +1116,10 @@ export default function LandlordDocumentsPage() {
                                 supportingDocFiles.length > 0
                                   ? await uploadDormConnectFiles(supportingDocFiles)
                                   : [];
-                              return [
-                                idFront,
-                                idBack,
-                                bp,
-                                bc,
-                                fs,
-                                op,
-                                sp,
-                                supporting,
-                              ] as const;
+                              return [bp, bc, fs, op, sp, supporting] as const;
                             })();
 
                             const allAttachmentUrls = [
-                              ownerIdFrontUrl,
-                              ownerIdBackUrl,
                               businessPermitUrl,
                               barangayClearanceUrl,
                               fireSafetyCertificateUrl,
@@ -1326,10 +1152,6 @@ export default function LandlordDocumentsPage() {
                                     businessName: ownerBusinessName,
                                     contact: ownerContact,
                                     email: ownerEmail,
-                                    idFrontFileName: ownerIdFrontFile?.name,
-                                    idBackFileName: ownerIdBackFile?.name,
-                                    ownerIdFrontUrl,
-                                    ownerIdBackUrl,
                                   },
                                   documents: {
                                     businessPermit: {
@@ -1361,12 +1183,6 @@ export default function LandlordDocumentsPage() {
                                   },
                                   // Back-compat convenience array for previews
                                   attachmentUrls: allAttachmentUrls,
-                                  safety: {
-                                    exits: safetyExits,
-                                    extinguishers: safetyExtinguishers,
-                                    contacts: safetyContacts,
-                                    rooms: safetyRooms,
-                                  },
                                   declaration: {
                                     name: declName,
                                     checklist: {
@@ -1382,8 +1198,6 @@ export default function LandlordDocumentsPage() {
                             const j = (await res.json()) as { error?: string };
                             if (!res.ok) throw new Error(j.error ?? "Failed");
                             setShowWizard(false);
-                            setOwnerIdFrontFile(null);
-                            setOwnerIdBackFile(null);
                             setBusinessPermitFile(null);
                             setBarangayClearanceFile(null);
                             setFireSafetyCertFile(null);
@@ -1405,10 +1219,8 @@ export default function LandlordDocumentsPage() {
                       >
                         {submitting ? "Submitting…" : "Submit"}
                       </Button>
-                    </div>
                   </div>
                 </div>
-              )}
             </CardContent>
           </Card>
         </div>

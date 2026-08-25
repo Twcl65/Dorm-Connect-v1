@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { RoomsManagementTab } from "@/components/landlord/rooms-management-types";
 import {
   Card,
   CardContent,
@@ -78,7 +80,15 @@ const emptyForm = () => ({
   galleryImageUrls: [] as string[],
 });
 
-export default function LandlordPropertiesPage() {
+export type LandlordPropertiesPanelProps = {
+  embedded?: boolean;
+  onSwitchTab?: (tab: RoomsManagementTab) => void;
+};
+
+export function LandlordPropertiesPanel({
+  embedded = false,
+  onSwitchTab,
+}: LandlordPropertiesPanelProps = {}) {
   const [items, setItems] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -263,19 +273,37 @@ export default function LandlordPropertiesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Properties</h1>
-          <p className="text-sm text-muted-foreground">
-            Add dormitories or boarding houses, set contact details, upload images,
-            and pin the exact location on the map (OpenStreetMap).
-          </p>
-          <Link
-            href="/landlord/rooms"
-            className="mt-1 inline-block text-xs text-primary underline"
-          >
-            Manage rooms per property
-          </Link>
-        </div>
+        {!embedded ? (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Properties</h1>
+            <p className="text-sm text-muted-foreground">
+              Add dormitories or boarding houses, set contact details, upload images,
+              and pin the exact location on the map (OpenStreetMap).
+            </p>
+            <Link
+              href="/landlord/rooms-management"
+              className="mt-1 inline-block text-xs text-primary underline"
+            >
+              Manage rooms per property
+            </Link>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Add dormitories or boarding houses, set contact details, upload images,
+              and pin the exact location on the map (OpenStreetMap).
+            </p>
+            {onSwitchTab ? (
+              <button
+                type="button"
+                className="mt-1 inline-block text-xs text-primary underline"
+                onClick={() => onSwitchTab("rooms")}
+              >
+                Manage rooms per property
+              </button>
+            ) : null}
+          </div>
+        )}
         <Button
           size="sm"
           className="h-8 gap-1 text-xs"
@@ -572,4 +600,12 @@ export default function LandlordPropertiesPage() {
       )}
     </div>
   );
+}
+
+export default function LandlordPropertiesPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/landlord/rooms-management?tab=properties");
+  }, [router]);
+  return null;
 }

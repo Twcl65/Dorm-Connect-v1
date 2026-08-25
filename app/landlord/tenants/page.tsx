@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -131,7 +132,13 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   );
 }
 
-export default function LandlordTenantsPage() {
+export type LandlordTenantsPanelProps = {
+  embedded?: boolean;
+};
+
+export function LandlordTenantsPanel({
+  embedded = false,
+}: LandlordTenantsPanelProps = {}) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
@@ -322,15 +329,22 @@ export default function LandlordTenantsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Tenants
-          </h1>
+        {!embedded ? (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Tenants
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Track tenants and upcoming rent due dates (e.g. May 19, Jun 19 each
+              month).
+            </p>
+          </div>
+        ) : (
           <p className="text-sm text-muted-foreground">
             Track tenants and upcoming rent due dates (e.g. May 19, Jun 19 each
             month).
           </p>
-        </div>
+        )}
         <div className="flex flex-wrap justify-end gap-2">
           <Button
             type="button"
@@ -1194,4 +1208,11 @@ export default function LandlordTenantsPage() {
   );
 }
 
+export default function LandlordTenantsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/landlord/rooms-management?tab=tenants");
+  }, [router]);
+  return null;
+}
 

@@ -9,15 +9,10 @@ export default function LandlordLayout({ children }: { children: ReactNode }) {
       roleLabel="Landlord / Dorm Owner"
       sidebarItems={[
         { label: "Dashboard", href: "/landlord", icon: RoleIcons.dashboard },
-        { label: "Properties", href: "/landlord/properties", icon: RoleIcons.dorms },
-        { label: "Rooms", href: "/landlord/rooms", icon: RoleIcons.rooms },
-        { label: "Tenants", href: "/landlord/tenants", icon: RoleIcons.tenants },
-        { label: "Reservations", href: "/landlord/reservations", icon: RoleIcons.reservations },
-        { label: "Payments", href: "/landlord/payments", icon: RoleIcons.payments },
+        { label: "Rooms Management", href: "/landlord/rooms-management", icon: RoleIcons.rooms },
+        { label: "Reservations & Payments", href: "/landlord/reservations", icon: RoleIcons.reservations },
         { label: "View Reviews", href: "/landlord/reviews", icon: RoleIcons.reviews },
-        { label: "Incident reports", href: "/landlord/incidents", icon: RoleIcons.reports },
-        { label: "Manage Dorm Reports", href: "/landlord/reports", icon: RoleIcons.documents },
-        { label: "Activity Logs", href: "/landlord/reports/activity-logs", icon: RoleIcons.accreditation },
+        { label: "Reports Management", href: "/landlord/incidents", icon: RoleIcons.reports },
         { label: "Announcements", href: "/landlord/announcements", icon: RoleIcons.announcements },
         { label: "Accreditation Documents", href: "/landlord/documents", icon: RoleIcons.documents },
         { label: "Account & settings", href: "/landlord/settings", icon: RoleIcons.settings }

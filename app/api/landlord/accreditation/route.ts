@@ -6,6 +6,7 @@ import {
 import { expireAccreditationsIfNeeded } from "@/lib/accreditation-expiry";
 import { getPool } from "@/lib/db";
 import { ensureLandlordProperty, landlordLog } from "@/lib/landlord-db";
+import { insertNotification } from "@/lib/notify-user";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -120,12 +121,6 @@ export async function POST(req: Request) {
     const docsCount = urls.length;
     const errors: string[] = [];
 
-    const owner = (formData.owner ?? {}) as Record<string, unknown>;
-    if (typeof owner.ownerIdFrontUrl !== "string")
-      errors.push("Owner ID front upload is required.");
-    if (typeof owner.ownerIdBackUrl !== "string")
-      errors.push("Owner ID back upload is required.");
-
     const docs = (formData.documents ?? {}) as Record<string, unknown>;
     const requiredDocKeys = [
       "businessPermit",
@@ -140,16 +135,6 @@ export async function POST(req: Request) {
       if (typeof url !== "string") {
         errors.push(`${k} upload is required.`);
       }
-    }
-
-    const safety = (formData.safety ?? {}) as Record<string, unknown>;
-    for (const [k, label] of [
-      ["exits", "Fire exits confirmation is required."],
-      ["extinguishers", "Fire extinguishers confirmation is required."],
-      ["contacts", "Emergency contacts confirmation is required."],
-      ["rooms", "Room requirements confirmation is required."],
-    ] as const) {
-      if (safety[k] !== true) errors.push(label);
     }
 
     const declaration = (formData.declaration ?? {}) as Record<string, unknown>;
@@ -235,6 +220,29 @@ export async function POST(req: Request) {
       ownerId,
       `Submitted accreditation: ${dormName}`
     );
+
+    try {
+      const landlordName = session.name?.trim() || "A landlord";
+      const { rows: osaAdmins } = await pool.query<{ id: string }>(
+        `SELECT id FROM public.boarding_house_app_users
+         WHERE status = 'Active' AND role = 'OSA/SAS Admin'`
+      );
+      for (const admin of osaAdmins) {
+        await insertNotification(
+          pool,
+          admin.id,
+          "New accreditation request",
+          `${landlordName} submitted an accreditation application for "${dormName}".`,
+          "accreditation"
+        );
+      }
+    } catch (notifyErr) {
+      console.error(
+        "[landlord-accreditation] Failed to notify OSA admins:",
+        notifyErr
+      );
+    }
+
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to submit";

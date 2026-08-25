@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 import { Loader2, Shield, UserRound, Building2, FileText } from "lucide-react";
+import { LandlordGcashSettingsCard } from "@/components/landlord/gcash-settings-card";
 
 type LatestAccreditation = {
   id: string;
@@ -573,6 +574,8 @@ export function AccountSettingsClient() {
           </Button>
         </CardContent>
       </Card>
+
+      {profile.role === "Landlord" && <LandlordGcashSettingsCard />}
 
       {profile.role === "Landlord" && profile.latestAccreditation && (
         <AccreditationReadonly acc={profile.latestAccreditation} />

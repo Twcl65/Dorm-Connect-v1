@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "dormconnect-student",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "notification": {
       "icon": "./assets/icon.png",
@@ -15,7 +15,7 @@
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f1f5f9"
+      "backgroundColor": "#020617"
     },
     "ios": {
       "supportsTablet": true,
@@ -26,9 +26,10 @@
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#f1f5f9"
+        "backgroundColor": "#020617"
       },
       "package": "com.dormconnect.student",
       "permissions": [
@@ -42,7 +43,15 @@
       "expo-secure-store",
       "expo-asset",
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#020617",
+          "image": "./assets/icon.png",
+          "imageWidth": 120,
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-notifications",
         {

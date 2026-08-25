@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -19,6 +20,7 @@ import { PaymentReceiptCard } from "@/components/payments/payment-receipt-card";
 import type { PaymentReceiptData } from "@/lib/payment-receipt-data";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 import { LeasePaymentMonitoringCard } from "@/components/landlord/lease-payment-monitoring-card";
+import { LandlordGcashSettingsCard } from "@/components/landlord/gcash-settings-card";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
 type PaymentMethod =
@@ -117,7 +119,13 @@ function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   );
 }
 
-export default function LandlordPaymentsPage() {
+export type LandlordPaymentsPanelProps = {
+  embedded?: boolean;
+};
+
+export function LandlordPaymentsPanel({
+  embedded = false,
+}: LandlordPaymentsPanelProps = {}) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">(
@@ -487,14 +495,23 @@ export default function LandlordPaymentsPage() {
 
   return (
     <div className="space-y-6">
+      <LandlordGcashSettingsCard compact={embedded} />
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+        {!embedded ? (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+            <p className="text-sm text-muted-foreground">
+              Manual landlord entries and payments submitted by students for your
+              rooms.
+            </p>
+          </div>
+        ) : (
           <p className="text-sm text-muted-foreground">
             Manual landlord entries and payments submitted by students for your
             rooms.
           </p>
-        </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -1726,5 +1743,13 @@ export default function LandlordPaymentsPage() {
       )}
     </div>
   );
+}
+
+export default function LandlordPaymentsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/landlord/reservations?tab=payments");
+  }, [router]);
+  return null;
 }
 

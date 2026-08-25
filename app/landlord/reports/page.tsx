@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +76,13 @@ function formatPhp(n: number) {
   return `₱${n.toLocaleString("en-PH", { maximumFractionDigits: 0 })}`;
 }
 
-export default function LandlordManageDormReportsPage() {
+export type LandlordDormReportsPanelProps = {
+  embedded?: boolean;
+};
+
+export function LandlordDormReportsPanel({
+  embedded = false,
+}: LandlordDormReportsPanelProps = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -152,33 +159,55 @@ export default function LandlordManageDormReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Manage Dorm Reports
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Transaction reports and activity monitoring for your dorm operations.
-          </p>
+      {!embedded ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Manage Dorm Reports
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Transaction reports and activity monitoring for your dorm operations.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs self-start sm:self-auto"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Loading…
+              </>
+            ) : (
+              "Refresh"
+            )}
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 text-xs self-start sm:self-auto"
-          onClick={() => void load()}
-          disabled={loading}
-        >
-          {loading ? (
-            <>
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              Loading…
-            </>
-          ) : (
-            "Refresh"
-          )}
-        </Button>
-      </div>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Loading…
+              </>
+            ) : (
+              "Refresh"
+            )}
+          </Button>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
@@ -359,7 +388,7 @@ export default function LandlordManageDormReportsPage() {
                 </p>
               </div>
               <Link
-                href="/landlord/reports/activity-logs"
+                href="/landlord/incidents?tab=activity-logs"
                 className="text-xs font-medium text-sky-700 hover:underline"
               >
                 View all
@@ -398,5 +427,13 @@ export default function LandlordManageDormReportsPage() {
       </div>
     </div>
   );
+}
+
+export default function LandlordManageDormReportsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/landlord/incidents?tab=dorm-reports");
+  }, [router]);
+  return null;
 }
 

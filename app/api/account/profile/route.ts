@@ -33,8 +33,12 @@ export async function GET() {
       role: string;
       student_id: string | null;
       profile_image_url: string | null;
+      gcash_account_name: string | null;
+      gcash_phone: string | null;
+      gcash_qr_code_url: string | null;
     }>(
-      `SELECT full_name, email, role, student_id, profile_image_url
+      `SELECT full_name, email, role, student_id, profile_image_url,
+              gcash_account_name, gcash_phone, gcash_qr_code_url
        FROM public.boarding_house_app_users
        WHERE id = $1::uuid`,
       [session.sub]
@@ -92,6 +96,9 @@ export async function GET() {
         role: u.role,
         studentId: u.student_id?.trim() ? u.student_id.trim() : null,
         profileImageUrl: u.profile_image_url?.trim() || null,
+        gcashAccountName: u.gcash_account_name?.trim() || null,
+        gcashPhone: u.gcash_phone?.trim() || null,
+        gcashQrCodeUrl: u.gcash_qr_code_url?.trim() || null,
         latestAccreditation,
       },
     });
@@ -112,6 +119,9 @@ export async function PATCH(req: Request) {
       fullName?: string;
       studentId?: string | null;
       profileImageUrl?: string | null;
+      gcashAccountName?: string | null;
+      gcashPhone?: string | null;
+      gcashQrCodeUrl?: string | null;
     };
 
     const pool = await getPool();
@@ -131,6 +141,9 @@ export async function PATCH(req: Request) {
     let nextName = row.full_name;
     let nextStudentId: string | null | undefined;
     let nextAvatar: string | null | undefined;
+    let nextGcashName: string | null | undefined;
+    let nextGcashPhone: string | null | undefined;
+    let nextGcashQr: string | null | undefined;
 
     if (body.fullName !== undefined) {
       const fn = body.fullName.trim();
@@ -189,6 +202,61 @@ export async function PATCH(req: Request) {
       nextAvatar = raw || null;
     }
 
+    if (
+      body.gcashAccountName !== undefined ||
+      body.gcashPhone !== undefined ||
+      body.gcashQrCodeUrl !== undefined
+    ) {
+      if (row.role !== "Landlord") {
+        return NextResponse.json(
+          { error: "GCash settings can only be updated by dorm owners." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (body.gcashAccountName !== undefined) {
+      const name =
+        body.gcashAccountName === null || body.gcashAccountName === ""
+          ? ""
+          : String(body.gcashAccountName).trim();
+      if (name.length > 200) {
+        return NextResponse.json(
+          { error: "GCash account name is too long (max 200 characters)." },
+          { status: 400 }
+        );
+      }
+      nextGcashName = name || null;
+    }
+
+    if (body.gcashPhone !== undefined) {
+      const ph =
+        body.gcashPhone === null || body.gcashPhone === ""
+          ? ""
+          : String(body.gcashPhone).trim();
+      if (ph.length > 32) {
+        return NextResponse.json(
+          { error: "GCash phone number is too long (max 32 characters)." },
+          { status: 400 }
+        );
+      }
+      nextGcashPhone = ph || null;
+    }
+
+    if (body.gcashQrCodeUrl !== undefined) {
+      const raw =
+        body.gcashQrCodeUrl === null || body.gcashQrCodeUrl === ""
+          ? ""
+          : String(body.gcashQrCodeUrl).trim();
+      if (raw && !isSafeProfileImageUrl(raw)) {
+        return NextResponse.json(
+          { error: "Invalid GCash QR code image URL." },
+          { status: 400 }
+        );
+      }
+      nextGcashQr = raw || null;
+    }
+
     const updates: string[] = [];
     const vals: unknown[] = [];
     let i = 1;
@@ -204,6 +272,18 @@ export async function PATCH(req: Request) {
     if (nextAvatar !== undefined) {
       updates.push(`profile_image_url = $${i++}`);
       vals.push(nextAvatar);
+    }
+    if (nextGcashName !== undefined) {
+      updates.push(`gcash_account_name = $${i++}`);
+      vals.push(nextGcashName);
+    }
+    if (nextGcashPhone !== undefined) {
+      updates.push(`gcash_phone = $${i++}`);
+      vals.push(nextGcashPhone);
+    }
+    if (nextGcashQr !== undefined) {
+      updates.push(`gcash_qr_code_url = $${i++}`);
+      vals.push(nextGcashQr);
     }
 
     if (updates.length === 0) {

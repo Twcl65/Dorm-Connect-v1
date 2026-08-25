@@ -21,8 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PenSquare, Eye, Settings, Loader2, Trash2 } from "lucide-react";
 import { uploadDormConnectFiles } from "@/lib/upload-file-client";
+import type { RoomsManagementTab } from "@/components/landlord/rooms-management-types";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
 type RoomStatus = "Occupied" | "Available" | "Reserved" | "Maintenance";
@@ -165,7 +167,15 @@ function PostStatusBadge({ listed }: { listed: boolean }) {
   );
 }
 
-export default function LandlordRoomsPage() {
+export type LandlordRoomsPanelProps = {
+  embedded?: boolean;
+  onSwitchTab?: (tab: RoomsManagementTab) => void;
+};
+
+export function LandlordRoomsPanel({
+  embedded = false,
+  onSwitchTab,
+}: LandlordRoomsPanelProps = {}) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] =
@@ -390,20 +400,50 @@ export default function LandlordRoomsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Rooms
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Manage room assignments, leases, and payment status.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Link
-              href="/landlord/properties"
-              className="text-xs font-medium text-primary underline"
-            >
-              Property &amp; map settings
-            </Link>
+        {!embedded ? (
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Rooms
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Manage room assignments, leases, and payment status.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Link
+                href="/landlord/rooms-management?tab=properties"
+                className="text-xs font-medium text-primary underline"
+              >
+                Property &amp; map settings
+              </Link>
+              {propertyOptions.length > 0 ? (
+                <select
+                  className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
+                  value={selectedPropertyId}
+                  onChange={(e) => setSelectedPropertyId(e.target.value)}
+                >
+                  {propertyOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">
+              Manage room assignments, leases, and payment status.
+            </p>
+            {onSwitchTab ? (
+              <button
+                type="button"
+                className="text-xs font-medium text-primary underline"
+                onClick={() => onSwitchTab("properties")}
+              >
+                Property &amp; map settings
+              </button>
+            ) : null}
             {propertyOptions.length > 0 ? (
               <select
                 className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
@@ -418,7 +458,7 @@ export default function LandlordRoomsPage() {
               </select>
             ) : null}
           </div>
-        </div>
+        )}
         <Button
           type="button"
           variant="outline"
@@ -832,12 +872,22 @@ export default function LandlordRoomsPage() {
                       ) : (
                         <span className="text-amber-800">
                           Not set — open{" "}
-                          <Link
-                            href="/landlord/properties"
-                            className="underline font-medium text-primary"
-                          >
-                            Property &amp; map settings
-                          </Link>{" "}
+                          {embedded && onSwitchTab ? (
+                            <button
+                              type="button"
+                              className="underline font-medium text-primary"
+                              onClick={() => onSwitchTab("properties")}
+                            >
+                              Property &amp; map settings
+                            </button>
+                          ) : (
+                            <Link
+                              href="/landlord/rooms-management?tab=properties"
+                              className="underline font-medium text-primary"
+                            >
+                              Property &amp; map settings
+                            </Link>
+                          )}{" "}
                           to pin this property on the map.
                         </span>
                       )}
@@ -1787,5 +1837,13 @@ export default function LandlordRoomsPage() {
       )}
     </div>
   );
+}
+
+export default function LandlordRoomsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace("/landlord/rooms-management");
+  }, [router]);
+  return null;
 }
 

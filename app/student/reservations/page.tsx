@@ -45,6 +45,9 @@ type Reservation = {
   monthlyRent: number;
   location: string;
   landlord: string;
+  gcashAccountName?: string | null;
+  gcashPhone?: string | null;
+  gcashQrCodeUrl?: string | null;
   distance: string;
   documentType: string;
   description: string;
@@ -901,21 +904,38 @@ export default function StudentReservationsPage() {
                       <p>
                         Landlord:{" "}
                         <span className="font-semibold">
-                          {selectedReservation.landlord}
+                          {selectedReservation.gcashAccountName?.trim() ||
+                            selectedReservation.landlord}
                         </span>
                       </p>
+                      {selectedReservation.gcashPhone?.trim() ? (
+                        <p>
+                          GCash number:{" "}
+                          <span className="font-semibold">
+                            {selectedReservation.gcashPhone}
+                          </span>
+                        </p>
+                      ) : null}
                       <div className="flex items-center gap-3">
-                        <div className="h-24 w-24 overflow-hidden rounded-md bg-white shadow-sm">
-                          <img
-                            src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=GCASH-PAYMENT"
-                            alt="GCash QR code"
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
+                        {selectedReservation.gcashQrCodeUrl ? (
+                          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-md bg-white shadow-sm">
+                            <img
+                              src={selectedReservation.gcashQrCodeUrl}
+                              alt="GCash QR code"
+                              className="h-full w-full object-contain"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 bg-white px-2 text-center text-[0.65rem] text-muted-foreground">
+                            Landlord has not uploaded a QR code yet
+                          </div>
+                        )}
                         <p className="flex-1 text-[0.7rem] text-slate-700">
-                          Scan this QR code using your GCash app to pay the
-                          total amount. After payment, upload a screenshot of
-                          your receipt for the landlord to review.
+                          {selectedReservation.gcashQrCodeUrl
+                            ? "Scan this QR code using your GCash app to pay the total amount."
+                            : "Use the GCash number above or ask your landlord for payment details."}{" "}
+                          After payment, upload a screenshot of your receipt for
+                          the landlord to review.
                         </p>
                       </div>
                       <div className="space-y-1 pt-1">
