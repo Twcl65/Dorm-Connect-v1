@@ -17,6 +17,7 @@ import {
   resolveUpcomingUnpaidMonthsFromSchedule,
 } from "@/lib/payment-schedule";
 import { isAllowedStoredFileUrl } from "@/lib/upload-url";
+import { getLandlordGcashForStudentReservation } from "@/lib/landlord-gcash";
 
 function getScheduleMonthLabel(leaseStart: string | null, monthNumber: number | null): string | undefined {
   if (!leaseStart || !monthNumber) return undefined;
@@ -329,15 +330,19 @@ export async function GET() {
         new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
-    let unpaidMonths: ReturnType<typeof resolveUpcomingUnpaidMonthsFromSchedule> =
-      [];
     const { rows: activeRes } = await pool.query<{
       id: string;
       property_name: string | null;
       room_no: string;
       acc_dorm_name: string | null;
+      gcash_account_name: string | null;
+      gcash_phone: string | null;
+      gcash_qr_code_url: string | null;
+      landlord_name: string | null;
     }>(
       `SELECT s.id, p.name AS property_name, r.room_no,
+              u.full_name AS landlord_name,
+              u.gcash_account_name, u.gcash_phone, u.gcash_qr_code_url,
               (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
                WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
                  AND trim(a.dorm_name) <> ''
@@ -346,13 +351,22 @@ export async function GET() {
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
+       JOIN public.boarding_house_app_users u
+         ON u.id = COALESCE(p.owner_user_id, r.owner_user_id)
        WHERE s.student_user_id = $1::uuid AND s.status = 'Confirmed'
-       ORDER BY s.lease_start DESC
-       LIMIT 1`,
+       ORDER BY s.lease_start DESC`,
       [studentId]
     );
-    const active = activeRes[0];
-    if (active) {
+    const unpaidMonths: (ReturnType<typeof resolveUpcomingUnpaidMonthsFromSchedule>[number] & {
+      dormName: string;
+      roomNo: string;
+      reservationId: string;
+      gcashAccountName: string | null;
+      gcashPhone: string | null;
+      gcashQrCodeUrl: string | null;
+      landlordName: string | null;
+    })[] = [];
+    for (const active of activeRes) {
       const schedule = await fetchMonthlySchedule(pool, {
         reservationId: active.id,
       });
@@ -361,14 +375,33 @@ export async function GET() {
         active.acc_dorm_name,
         "Your dorm"
       );
-      unpaidMonths = resolveUpcomingUnpaidMonthsFromSchedule(schedule).map(
-        (m) => ({
+      for (const m of resolveUpcomingUnpaidMonthsFromSchedule(schedule)) {
+        const gcash = await getLandlordGcashForStudentReservation(
+          pool,
+          active.id,
+          studentId
+        );
+        unpaidMonths.push({
           ...m,
           dormName,
           roomNo: active.room_no,
           reservationId: active.id,
-        })
-      );
+          gcashAccountName:
+            gcash?.gcashAccountName ||
+            active.gcash_account_name?.trim() ||
+            null,
+          gcashPhone:
+            gcash?.gcashPhone || active.gcash_phone?.trim() || null,
+          gcashQrCodeUrl:
+            gcash?.gcashQrCodeUrl ||
+            active.gcash_qr_code_url?.trim() ||
+            null,
+          landlordName:
+            gcash?.landlordName ||
+            active.landlord_name?.trim() ||
+            null,
+        });
+      }
     }
 
     return NextResponse.json({ payments, unpaidMonths });

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
+import { LandlordProfileDialog } from "@/components/student/landlord-profile-dialog";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 import { spreadOverlappingMarkers } from "@/lib/spread-map-markers";
 import type { StudentMapMarker } from "@/components/maps/student-properties-map";
@@ -37,6 +38,8 @@ type MapRoom = {
   id: string;
   roomNo: string;
   capacity: number;
+  occupied?: number;
+  availableSlots?: number;
   price: number;
   status: string;
   description: string;
@@ -84,6 +87,9 @@ export default function StudentBrowseMapPage() {
   const [studentIdFile, setStudentIdFile] = useState<File | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [landlordProfilePropertyId, setLandlordProfilePropertyId] = useState<
+    string | null
+  >(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -268,7 +274,7 @@ export default function StudentBrowseMapPage() {
         </CardContent>
       </Card>
 
-      {propertyDialog && (
+      {propertyDialog && !landlordProfilePropertyId && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10"
           onClick={() => setPropertyDialog(null)}
@@ -317,7 +323,15 @@ export default function StudentBrowseMapPage() {
               </p>
               <p>
                 <span className="font-medium">Landlord:</span>{" "}
-                {propertyDialog.landlordName}
+                <button
+                  type="button"
+                  className="font-medium text-sky-700 underline-offset-2 hover:underline"
+                  onClick={() =>
+                    setLandlordProfilePropertyId(propertyDialog.id)
+                  }
+                >
+                  {propertyDialog.landlordName}
+                </button>
               </p>
               <p className="text-slate-700 whitespace-pre-wrap">
                 {propertyDialog.description}
@@ -341,8 +355,13 @@ export default function StudentBrowseMapPage() {
                         <p className="text-xs text-muted-foreground line-clamp-2">
                           {r.description}
                         </p>
+                        <p className="text-[0.7rem] text-slate-600">
+                          Capacity {r.capacity} · {r.occupied ?? 0} occupied ·{" "}
+                          {r.availableSlots ??
+                            Math.max(0, r.capacity - (r.occupied ?? 0))}{" "}
+                          available
+                        </p>
                         <div className="flex flex-wrap gap-2 text-xs">
-                          <Badge variant="outline">Cap {r.capacity}</Badge>
                           <Badge variant="outline">₱{r.price}/mo</Badge>
                           <Badge variant="secondary">{r.status}</Badge>
                         </div>
@@ -385,7 +404,11 @@ export default function StudentBrowseMapPage() {
                   {bookRoom.price.toLocaleString()}
                 </p>
                 <p>
-                  <span className="font-medium">Capacity:</span> {bookRoom.capacity}
+                  <span className="font-medium">Occupancy:</span> Capacity{" "}
+                  {bookRoom.capacity} · {bookRoom.occupied ?? 0} occupied ·{" "}
+                  {bookRoom.availableSlots ??
+                    Math.max(0, bookRoom.capacity - (bookRoom.occupied ?? 0))}{" "}
+                  available
                 </p>
               </div>
               <div className="space-y-1">
@@ -498,6 +521,13 @@ export default function StudentBrowseMapPage() {
           </Card>
         </div>
       )}
+
+      {landlordProfilePropertyId ? (
+        <LandlordProfileDialog
+          propertyId={landlordProfilePropertyId}
+          onClose={() => setLandlordProfilePropertyId(null)}
+        />
+      ) : null}
     </div>
   );
 }

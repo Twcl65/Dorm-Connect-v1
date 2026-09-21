@@ -10,11 +10,12 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
-import { Eye, Loader2 } from "lucide-react";
+import { Eye, Loader2, X } from "lucide-react";
 import { ProofMedia } from "@/components/proof-media";
 import { Input } from "@/components/ui/input";
+import { uploadDormConnectFile } from "@/lib/upload-file-client";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed" | "Overdue";
 
@@ -44,6 +45,23 @@ type Payment = {
   leasePeriod?: string;
 };
 
+type UnpaidMonth = {
+  dueDate: string;
+  amount: number;
+  monthNumber: number;
+  monthLabel: string;
+  dueLabel: string;
+  dormName: string;
+  roomNo: string;
+  reservationId: string;
+  gcashAccountName: string | null;
+  gcashPhone: string | null;
+  gcashQrCodeUrl: string | null;
+  landlordName: string | null;
+};
+
+type TabFilter = "all" | "paid" | "unpaid";
+
 const ROWS_PER_PAGE = 5;
 
 const PLACEHOLDER_IMG =
@@ -53,20 +71,30 @@ function formatMonthYear(dateStr: string) {
   const date = new Date(`${dateStr}T12:00:00`);
   return date.toLocaleString("en-US", {
     month: "long",
-    year: "numeric"
+    year: "numeric",
   });
 }
 
 export default function StudentPaymentsPage() {
   const [paymentsList, setPaymentsList] = useState<Payment[]>([]);
+  const [unpaidMonths, setUnpaidMonths] = useState<UnpaidMonth[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] =
-    useState<PaymentStatus | "all">("all");
-  const [methodFilter, setMethodFilter] = useState<string>("all");
+  const [tabFilter, setTabFilter] = useState<TabFilter>("all");
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [payMonth, setPayMonth] = useState<UnpaidMonth | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [submittingPay, setSubmittingPay] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [liveGcash, setLiveGcash] = useState<{
+    gcashAccountName: string | null;
+    gcashPhone: string | null;
+    gcashQrCodeUrl: string | null;
+    landlordName: string | null;
+  } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -77,18 +105,20 @@ export default function StudentPaymentsPage() {
       });
       const json = (await payRes.json()) as {
         payments?: Payment[];
+        unpaidMonths?: UnpaidMonth[];
         error?: string;
       };
       if (!payRes.ok) throw new Error(json.error ?? "Failed to load");
       const list = (json.payments ?? []).map((p) => ({
         ...p,
-        images:
-          p.images?.length > 0 ? p.images : [PLACEHOLDER_IMG],
+        images: p.images?.length > 0 ? p.images : [PLACEHOLDER_IMG],
       }));
       setPaymentsList(list);
+      setUnpaidMonths(json.unpaidMonths ?? []);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
       setPaymentsList([]);
+      setUnpaidMonths([]);
     } finally {
       setLoading(false);
     }
@@ -107,23 +137,58 @@ export default function StudentPaymentsPage() {
     };
   }, [showDetailsDialog]);
 
-  const methods = useMemo(
-    () =>
-      Array.from(new Set(paymentsList.map((p) => p.method))).sort((a, b) =>
-        a.localeCompare(b)
-      ),
-    [paymentsList]
+  useEffect(() => {
+    if (!payMonth) {
+      setLiveGcash(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/student/gcash?reservationId=${encodeURIComponent(payMonth.reservationId)}`,
+          { credentials: "include" }
+        );
+        const json = (await res.json()) as {
+          gcashAccountName?: string | null;
+          gcashPhone?: string | null;
+          gcashQrCodeUrl?: string | null;
+          landlordName?: string | null;
+        };
+        if (!res.ok || cancelled) return;
+        setLiveGcash({
+          gcashAccountName: json.gcashAccountName ?? null,
+          gcashPhone: json.gcashPhone ?? null,
+          gcashQrCodeUrl: json.gcashQrCodeUrl ?? null,
+          landlordName: json.landlordName ?? null,
+        });
+      } catch {
+        if (!cancelled) setLiveGcash(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [payMonth]);
+
+  const counts = useMemo(
+    () => ({
+      all: paymentsList.length,
+      paid: paymentsList.filter((p) => p.status === "Paid").length,
+      unpaid: unpaidMonths.length,
+    }),
+    [paymentsList, unpaidMonths]
   );
 
+  const showUnpaid = tabFilter === "unpaid";
+
   const filteredPayments = useMemo(() => {
-    return paymentsList.filter((payment) => {
-      const matchesStatus =
-        statusFilter === "all" || payment.status === statusFilter;
-      const matchesMethod =
-        methodFilter === "all" || payment.method === methodFilter;
-      return matchesStatus && matchesMethod;
-    });
-  }, [paymentsList, statusFilter, methodFilter]);
+    if (tabFilter === "unpaid") return [];
+    if (tabFilter === "paid") {
+      return paymentsList.filter((p) => p.status === "Paid");
+    }
+    return paymentsList;
+  }, [paymentsList, tabFilter]);
 
   const totalPages = Math.max(
     1,
@@ -132,37 +197,48 @@ export default function StudentPaymentsPage() {
 
   const paginatedPayments = useMemo(() => {
     const start = (page - 1) * ROWS_PER_PAGE;
-    const end = start + ROWS_PER_PAGE;
-    return filteredPayments.slice(start, end);
+    return filteredPayments.slice(start, start + ROWS_PER_PAGE);
   }, [filteredPayments, page]);
 
   const from =
-    filteredPayments.length === 0
-      ? 0
-      : (page - 1) * ROWS_PER_PAGE + 1;
+    filteredPayments.length === 0 ? 0 : (page - 1) * ROWS_PER_PAGE + 1;
   const to =
     filteredPayments.length === 0
       ? 0
       : Math.min(page * ROWS_PER_PAGE, filteredPayments.length);
 
-  const handlePageChange = (newPage: number) => {
-    if (newPage < 1 || newPage > totalPages) return;
-    setPage(newPage);
-  };
+  useEffect(() => {
+    setPage(1);
+  }, [tabFilter]);
 
   useEffect(() => {
     setPage((p) => Math.min(p, Math.max(1, totalPages)));
   }, [totalPages]);
 
+  const gcashName =
+    liveGcash?.gcashAccountName?.trim() ||
+    payMonth?.gcashAccountName?.trim() ||
+    liveGcash?.landlordName ||
+    payMonth?.landlordName ||
+    "Landlord";
+  const gcashPhone =
+    liveGcash?.gcashPhone?.trim() || payMonth?.gcashPhone?.trim() || "";
+  const gcashQr =
+    liveGcash?.gcashQrCodeUrl?.trim() || payMonth?.gcashQrCodeUrl?.trim() || "";
+
+  const receiptFile =
+    selectedPayment?.receiptUrl ||
+    selectedPayment?.proofImageUrl ||
+    selectedPayment?.landlordProofUrl ||
+    null;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Payments
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
           <p className="text-sm text-muted-foreground">
-            History of payments for your dorm reservations.
+            All recorded payments, paid receipts, and months not yet paid.
           </p>
         </div>
         <Button
@@ -183,229 +259,239 @@ export default function StudentPaymentsPage() {
         </div>
       )}
 
-      <Card className="border border-gray-300 bg-white">
-        <CardHeader className="pb-3 border-b bg-muted/40">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <CardTitle className="text-sm font-semibold text-slate-800">
-                Payments
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Billing history for your dorm reservations.
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["all", "All", counts.all],
+            ["paid", "Paid", counts.paid],
+            ["unpaid", "Not yet paid", counts.unpaid],
+          ] as const
+        ).map(([key, label, count]) => (
+          <Button
+            key={key}
+            type="button"
+            size="sm"
+            variant={tabFilter === key ? "default" : "outline"}
+            className="h-8 text-xs"
+            onClick={() => setTabFilter(key)}
+          >
+            {label}
+            {count > 0 ? ` (${count})` : ""}
+          </Button>
+        ))}
+      </div>
+
+      {showUnpaid ? (
+        <Card className="border border-gray-300 bg-white">
+          <CardHeader className="border-b bg-muted/40 pb-3">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Not yet paid
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Upcoming rent months that still need a GCash payment.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-4">
+            {unpaidMonths.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                All scheduled rent months are paid. Thank you!
               </p>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-2">
-                <span className="text-[0.7rem] text-muted-foreground">
-                  Status
-                </span>
-                <select
-                  className="h-8 w-32 rounded-md border border-gray-300 bg-white px-2 text-xs"
-                  value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(
-                      e.target.value === "all"
-                        ? "all"
-                        : (e.target.value as PaymentStatus)
-                    )
-                  }
+            ) : (
+              unpaidMonths.map((m) => (
+                <div
+                  key={`${m.reservationId}-${m.monthNumber}`}
+                  className="flex flex-col gap-2 rounded-md border border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <option value="all">All statuses</option>
-                  <option value="Paid">Paid</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Failed">Failed</option>
-                  <option value="Overdue">Overdue</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[0.7rem] text-muted-foreground">
-                  Method
-                </span>
-                <select
-                  className="h-8 w-32 rounded-md border border-gray-300 bg-white px-2 text-xs"
-                  value={methodFilter}
-                  onChange={(e) => setMethodFilter(e.target.value)}
-                >
-                  <option value="all">All methods</option>
-                  {methods.map((method) => (
-                    <option key={method} value={method}>
-                      {method}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-3 pt-0">
-          <Table bordered={false}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Dorm Name</TableHead>
-                <TableHead>Room No.</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Date (Month)</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="pr-4 font-semibold text-slate-600">
-                  Action
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedPayments.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="py-6 text-center text-sm text-muted-foreground"
+                  <div className="text-xs">
+                    <p className="font-semibold text-slate-900">
+                      {m.dormName} · Room {m.roomNo}
+                    </p>
+                    <p className="text-slate-700">{m.monthLabel}</p>
+                    <p className="text-muted-foreground">
+                      ₱{m.amount.toLocaleString()} · {m.dueLabel}
+                    </p>
+                    <p className="text-muted-foreground">Due {m.dueDate}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 bg-orange-500 text-xs text-white hover:bg-orange-600"
+                    onClick={() => {
+                      setPayError(null);
+                      setProofFile(null);
+                      setPayMonth(m);
+                    }}
                   >
-                    {loading ? "Loading…" : "No payments found."}
-                  </TableCell>
+                    Pay now
+                  </Button>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border border-gray-300 bg-white">
+          <CardHeader className="border-b bg-muted/40 pb-3">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Payments
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Billing history for your dorm reservations.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            <Table bordered={false}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Dorm Name</TableHead>
+                  <TableHead>Room No.</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Date (Month)</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="pr-4 font-semibold text-slate-600">
+                    Action
+                  </TableHead>
                 </TableRow>
-              ) : (
-                paginatedPayments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell className="text-xs font-mono text-slate-500">
-                      {payment.id.slice(0, 8)}…
+              </TableHeader>
+              <TableBody>
+                {paginatedPayments.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="py-6 text-center text-sm text-muted-foreground"
+                    >
+                      {loading
+                        ? "Loading…"
+                        : tabFilter === "paid"
+                          ? "No paid payments yet."
+                          : "No payments recorded yet."}
                     </TableCell>
-                    <TableCell className="text-sm font-medium text-slate-800">
-                      {payment.dormName}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-700">
-                      {payment.roomNo}
-                    </TableCell>
-                    <TableCell className="text-sm font-semibold text-slate-900">
-                      ₱{payment.amount.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-700">
-                      {formatMonthYear(payment.date)}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-700">
-                      {payment.method}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
-                          payment.status === "Paid"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : payment.status === "Pending"
-                            ? "bg-amber-100 text-amber-800"
-                            : payment.status === "Overdue"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {payment.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="pr-4">
-                      <div className="flex flex-nowrap items-center justify-center gap-1.5">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 shrink-0 px-2 text-[0.65rem]"
-                          asChild
+                  </TableRow>
+                ) : (
+                  paginatedPayments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell className="font-mono text-xs text-slate-500">
+                        {payment.id.slice(0, 8)}…
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-slate-800">
+                        {payment.dormName}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {payment.roomNo}
+                      </TableCell>
+                      <TableCell className="text-sm font-semibold text-slate-900">
+                        ₱{payment.amount.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {formatMonthYear(payment.date)}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {payment.method}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                            payment.status === "Paid"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : payment.status === "Pending"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-red-100 text-red-800"
+                          }`}
                         >
-                          <Link href={`/student/payments/receipt/${payment.id}`}>
-                            Receipt
-                          </Link>
-                        </Button>
+                          {payment.status === "Paid" ? "Paid" : payment.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="pr-4">
                         <Button
-                          variant="outline"
                           size="sm"
-                          className="h-7 shrink-0 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                          className="h-7 px-2 text-[0.7rem] bg-sky-600 text-white hover:bg-sky-700"
                           onClick={() => {
                             setSelectedPayment(payment);
                             setShowDetailsDialog(true);
                           }}
                         >
-                          <Eye className="h-3 w-3" />
-                          View
+                          <Eye className="mr-1 h-3 w-3" />
+                          View details
                         </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-
-          <div className="flex flex-col gap-2 border-t px-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[0.7rem] text-muted-foreground">
-              Showing {from}–{to} of {filteredPayments.length} payments
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => handlePageChange(page - 1)}
-                disabled={page === 1}
-                className="inline-flex h-7 items-center rounded-md border bg-background px-2 text-[0.7rem] font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <div className="flex items-center gap-1 text-[0.7rem]">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (pageNumber) => (
-                    <button
-                      key={pageNumber}
-                      type="button"
-                      onClick={() => handlePageChange(pageNumber)}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border px-0 text-[0.7rem] ${
-                        pageNumber === page
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background text-foreground"
-                      }`}
-                    >
-                      {pageNumber}
-                    </button>
-                  )
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
-              </div>
-              <button
-                type="button"
-                onClick={() => handlePageChange(page + 1)}
-                disabled={page === totalPages}
-                className="inline-flex h-7 items-center rounded-md border bg-background px-2 text-[0.7rem] font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              </TableBody>
+            </Table>
 
-      {/* Payment details dialog */}
+            <div className="flex flex-col gap-2 border-t px-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[0.7rem] text-muted-foreground">
+                Showing {from}–{to} of {filteredPayments.length} payments
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="inline-flex h-7 items-center rounded-md border bg-background px-2 text-[0.7rem] font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1 text-[0.7rem]">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (pageNumber) => (
+                      <button
+                        key={pageNumber}
+                        type="button"
+                        onClick={() => setPage(pageNumber)}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-md border px-0 text-[0.7rem] ${
+                          pageNumber === page
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-background text-foreground"
+                        }`}
+                      >
+                        {pageNumber}
+                      </button>
+                    )
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="inline-flex h-7 items-center rounded-md border bg-background px-2 text-[0.7rem] font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {showDetailsDialog && selectedPayment && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
           <Card className="my-auto flex max-h-[min(92vh,calc(100dvh-2rem))] w-full max-w-5xl flex-col overflow-hidden border border-gray-300 bg-white">
-            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
-              <div className="flex items-center justify-between gap-2">
+            <CardHeader className="shrink-0 border-b bg-white pb-2">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
-                    Payment Details
+                    {selectedPayment.dormName} – Room {selectedPayment.roomNo}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Dorm information, rental terms, and your payment receipt.
+                    Payment details and receipt.
                   </p>
                 </div>
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[0.7rem]"
+                  className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   onClick={() => setShowDetailsDialog(false)}
+                  aria-label="Close"
                 >
-                  Close
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pt-3 text-xs text-slate-800">
               <div className="grid gap-4 md:grid-cols-[2fr,1.4fr]">
-                {/* Dorm information */}
                 <div className="space-y-2">
                   <div className="h-44 w-full overflow-hidden rounded-md bg-slate-200">
                     <img
@@ -414,41 +500,12 @@ export default function StudentPaymentsPage() {
                       className="h-full w-full object-cover"
                     />
                   </div>
-                  {selectedPayment.images.length > 1 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedPayment.images.slice(1, 6).map((src) => (
-                        <img
-                          key={src}
-                          src={src}
-                          alt=""
-                          className="h-14 w-20 rounded border border-slate-200 object-cover"
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {selectedPayment.roomDescription ? (
-                    <div className="space-y-1">
-                      <p className="text-[0.75rem] font-semibold text-slate-900">
-                        About this room
-                      </p>
-                      <p className="whitespace-pre-line text-[0.7rem] text-slate-700">
-                        {selectedPayment.roomDescription}
-                      </p>
-                    </div>
-                  ) : null}
                   <div className="space-y-1">
                     <p className="text-sm font-semibold text-slate-900">
                       {selectedPayment.dormName} – Room {selectedPayment.roomNo}
                     </p>
                     <p className="text-[0.7rem] text-muted-foreground">
-                      Payment ID:{" "}
-                      <span className="font-mono">{selectedPayment.id}</span>
-                    </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
                       Location: {selectedPayment.location}
-                    </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Distance: {selectedPayment.distance}
                     </p>
                     <p className="text-[0.7rem] text-muted-foreground">
                       Move-in date:{" "}
@@ -456,164 +513,275 @@ export default function StudentPaymentsPage() {
                         {selectedPayment.moveInDate}
                       </span>
                     </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Lease period:{" "}
-                      <span className="font-medium text-slate-900">
-                        {selectedPayment.leaseMonths} months
-                      </span>
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[0.75rem] font-semibold text-slate-900">
-                      Rental Information
-                    </p>
+                    {selectedPayment.leasePeriod ? (
+                      <p className="text-[0.7rem] text-muted-foreground">
+                        Lease: {selectedPayment.leasePeriod}
+                      </p>
+                    ) : null}
                     <p className="text-[0.7rem] text-muted-foreground">
                       Monthly rent:{" "}
                       <span className="font-semibold text-slate-900">
                         ₱{selectedPayment.monthlyRent.toLocaleString()}
                       </span>
                     </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Advance payment (1 month): ₱
-                      {selectedPayment.monthlyRent.toLocaleString()}
-                    </p>
-                    <p className="text-[0.7rem] text-muted-foreground">
-                      Security deposit (1 month): ₱
-                      {selectedPayment.monthlyRent.toLocaleString()}
-                    </p>
-                    <p className="mt-1 text-[0.65rem] text-slate-700">
-                      <span className="font-semibold">Advance</span> is applied
-                      to your first month&apos;s rent.{" "}
-                      <span className="font-semibold">Security deposit</span> is
-                      refundable at end of lease if there are no damages and all
-                      dues are settled.
-                    </p>
                   </div>
                 </div>
 
-                {/* Payment summary and receipt */}
                 <div className="space-y-3">
                   <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
                     <p className="text-[0.8rem] font-semibold text-slate-900">
-                      Payment Summary
+                      Payment summary
                     </p>
                     <div className="mt-1 space-y-1 text-[0.7rem]">
                       <p>
-                        <span className="font-semibold">Status:</span>{" "}
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-medium ${
-                            selectedPayment.status === "Paid"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : selectedPayment.status === "Pending"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
+                        Status:{" "}
+                        <span className="font-medium">
                           {selectedPayment.status}
                         </span>
                       </p>
-                      {selectedPayment.source === "landlord_entry" && (
-                        <p className="text-[0.65rem] text-muted-foreground">
+                      <p>
+                        Method:{" "}
+                        <span className="font-medium">
+                          {selectedPayment.method}
+                        </span>
+                      </p>
+                      <p>
+                        Amount:{" "}
+                        <span className="font-semibold">
+                          ₱{selectedPayment.amount.toLocaleString()}
+                        </span>
+                      </p>
+                      {selectedPayment.paidAt ? (
+                        <p>Paid on: {selectedPayment.paidAt}</p>
+                      ) : null}
+                      {selectedPayment.referenceNo ? (
+                        <p>Reference: {selectedPayment.referenceNo}</p>
+                      ) : null}
+                      {selectedPayment.source === "landlord_entry" ? (
+                        <p className="text-muted-foreground">
                           Recorded by landlord (onsite / manual entry).
                         </p>
-                      )}
-                      {selectedPayment.referenceNo ? (
-                        <p>
-                          <span className="font-semibold">Reference:</span>{" "}
-                          {selectedPayment.referenceNo}
-                        </p>
                       ) : null}
-                      <p>
-                        <span className="font-semibold">Method:</span>{" "}
-                        {selectedPayment.method}
-                      </p>
-                      <p>
-                        <span className="font-semibold">Amount paid:</span>{" "}
-                        ₱{selectedPayment.amount.toLocaleString()}
-                      </p>
-                      {selectedPayment.paidAt && (
-                        <p>
-                          <span className="font-semibold">Paid on:</span>{" "}
-                          {selectedPayment.paidAt}
-                        </p>
-                      )}
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <p className="text-[0.75rem] font-semibold text-slate-900">
-                      Proof & attachments
+                  {receiptFile ? (
+                    <div className="overflow-hidden rounded-md border bg-slate-50 p-1">
+                      <ProofMedia
+                        url={receiptFile}
+                        className="max-h-44 w-full rounded object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      No proof image attached.
                     </p>
-                    {selectedPayment.proofImageUrl ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                        <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 p-1 sm:max-w-[200px]">
-                          <ProofMedia
-                            url={selectedPayment.proofImageUrl}
-                            className="max-h-36 w-full rounded object-contain"
-                          />
-                        </div>
-                        <p className="flex-1 text-[0.7rem] text-slate-700">
-                          Payment proof attachment.
-                        </p>
-                      </div>
-                    ) : null}
-                    {selectedPayment.landlordProofUrl ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                        <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 p-1 sm:max-w-[200px]">
-                          <ProofMedia
-                            url={selectedPayment.landlordProofUrl}
-                            className="max-h-36 w-full rounded object-contain"
-                          />
-                        </div>
-                        <p className="flex-1 text-[0.7rem] text-slate-700">
-                          Proof uploaded when the landlord recorded this payment.
-                        </p>
-                      </div>
-                    ) : null}
-                    {selectedPayment.receiptUrl ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                        <div className="shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100 p-1 sm:max-w-[200px]">
-                          <ProofMedia
-                            url={selectedPayment.receiptUrl}
-                            className="max-h-36 w-full rounded object-contain"
-                          />
-                        </div>
-                        <p className="flex-1 text-[0.7rem] text-slate-700">
-                          Uploaded receipt reference.
-                        </p>
-                      </div>
-                    ) : null}
-                    {!selectedPayment.proofImageUrl &&
-                      !selectedPayment.landlordProofUrl &&
-                      !selectedPayment.receiptUrl && (
-                        <p className="text-[0.7rem] text-muted-foreground">
-                          No proof image attached.
-                        </p>
-                      )}
-                    <Button type="button" size="sm" className="h-8 text-xs" asChild>
-                      <Link href={`/student/payments/receipt/${selectedPayment.id}`}>
-                        Open printable receipt
-                      </Link>
-                    </Button>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              <div className="flex justify-end pt-1">
+              <div className="flex flex-wrap gap-2 border-t pt-3">
+                {receiptFile ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    asChild
+                  >
+                    <a href={receiptFile} target="_blank" rel="noreferrer">
+                      Download / view receipt file
+                    </a>
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setShowDetailsDialog(false)}
+                  className="h-8 bg-sky-600 text-xs text-white hover:bg-sky-700"
+                  asChild
                 >
-                  Close
+                  <Link
+                    href={`/student/payments/receipt/${selectedPayment.id}`}
+                  >
+                    Open printable receipt
+                  </Link>
                 </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
+
+      {payMonth ? (
+        lightboxUrl ? (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <button
+              type="button"
+              className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxUrl(null);
+              }}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="GCash QR"
+              className="max-h-[90vh] max-w-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        ) : (
+        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-8">
+          <Card className="w-full max-w-lg border bg-white">
+            <CardHeader className="border-b pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">Pay now</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {payMonth.dormName} · {payMonth.monthLabel} · ₱
+                    {payMonth.amount.toLocaleString()}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setPayMonth(null)}
+                >
+                  Close
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs">
+              {payError ? (
+                <p className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-red-800">
+                  {payError}
+                </p>
+              ) : null}
+              <div className="space-y-1">
+                <label className="font-medium">Month</label>
+                <select
+                  className="h-8 w-full rounded-md border px-2"
+                  value={String(payMonth.monthNumber)}
+                  onChange={(e) => {
+                    const next = unpaidMonths.find(
+                      (m) => String(m.monthNumber) === e.target.value
+                    );
+                    if (next) setPayMonth(next);
+                  }}
+                >
+                  {unpaidMonths.map((m) => (
+                    <option key={m.monthNumber} value={String(m.monthNumber)}>
+                      {m.monthLabel} · ₱{m.amount.toLocaleString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2 rounded-md border border-sky-100 bg-sky-50 px-3 py-2">
+                <p className="font-semibold">Pay with GCash</p>
+                <p>
+                  Account name: <span className="font-semibold">{gcashName}</span>
+                </p>
+                <p>
+                  GCash number:{" "}
+                  <span className="font-semibold">
+                    {gcashPhone || "Not uploaded"}
+                  </span>
+                </p>
+                {gcashQr ? (
+                  <button
+                    type="button"
+                    className="h-32 w-32 overflow-hidden rounded-md bg-white"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setLightboxUrl(gcashQr);
+                    }}
+                  >
+                    <img
+                      src={gcashQr}
+                      alt="GCash QR"
+                      className="h-full w-full object-contain"
+                    />
+                  </button>
+                ) : (
+                  <p className="text-muted-foreground">
+                    QR code not uploaded yet.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="unpaid-proof">Upload payment screenshot</label>
+                <Input
+                  id="unpaid-proof"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="h-8 cursor-pointer text-xs"
+                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                />
+                {proofFile ? (
+                  <p className="text-muted-foreground">
+                    Selected: {proofFile.name}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 bg-orange-500 text-xs text-white hover:bg-orange-600"
+                  disabled={submittingPay || !proofFile}
+                  onClick={async () => {
+                    if (!payMonth || !proofFile) return;
+                    setSubmittingPay(true);
+                    setPayError(null);
+                    try {
+                      const proofImageUrl = await uploadDormConnectFile(
+                        proofFile
+                      );
+                      const res = await fetch("/api/student/payments", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          reservationId: payMonth.reservationId,
+                          amount: payMonth.amount,
+                          method: "GCash",
+                          status: "Pending",
+                          proofImageUrl,
+                          description: `GCash rent — ${payMonth.monthLabel}`,
+                          scheduleMonthNumber: payMonth.monthNumber,
+                          paidOnDate: new Date().toISOString().slice(0, 10),
+                        }),
+                      });
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
+                      setPayMonth(null);
+                      setProofFile(null);
+                      await loadData();
+                    } catch (e) {
+                      setPayError(
+                        e instanceof Error ? e.message : "Payment failed"
+                      );
+                    } finally {
+                      setSubmittingPay(false);
+                    }
+                  }}
+                >
+                  {submittingPay ? "Submitting…" : "Submit payment"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        )
+      ) : null}
     </div>
   );
 }
-

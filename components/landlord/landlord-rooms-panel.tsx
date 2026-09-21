@@ -227,6 +227,7 @@ export function LandlordRoomsPanel({
   );
   const [previewRoomImages, setPreviewRoomImages] = useState<string[]>([]);
 
+  const [selectedRoomLeases, setSelectedRoomLeases] = useState<LeaseRow[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<LeaseRow | null>(null);
   const [showTenantEditDialog, setShowTenantEditDialog] = useState(false);
   const [showTenantDetailsDialog, setShowTenantDetailsDialog] = useState(false);
@@ -623,7 +624,8 @@ export function LandlordRoomsPanel({
                 </TableRow>
               )}
               {paginatedRooms.map((room) => {
-                const lease = leaseRows.find((l) => l.roomId === room.id);
+                const roomLeases = leaseRows.filter((l) => l.roomId === room.id);
+                const lease = roomLeases[0]; // Primary lease to show in table
                 return (
                   <TableRow key={room.id}>
                     <TableCell className="text-xs font-mono text-slate-500">
@@ -639,11 +641,11 @@ export function LandlordRoomsPanel({
                       <PostStatusBadge listed={Boolean(room.isListed)} />
                     </TableCell>
                     <TableCell className="text-sm font-medium text-slate-800">
-                      {room.occupants || lease?.name || (
+                      {room.occupants || (roomLeases.length > 0 ? roomLeases.map(l => l.name).join(", ") : (
                         <span className="font-normal text-muted-foreground">
                           —
                         </span>
-                      )}
+                      ))}
                     </TableCell>
                     <TableCell className="text-xs text-slate-700">
                       {lease ? (
@@ -682,15 +684,16 @@ export function LandlordRoomsPanel({
                         <Button
                           variant="secondary"
                           size="sm"
-                          disabled={!lease}
+                          disabled={roomLeases.length === 0}
                           className="h-7 px-2 text-[0.7rem] disabled:opacity-50"
                           onClick={() => {
-                            if (!lease) return;
-                            setSelectedTenant(lease);
-                            setEditTenantName(lease.name);
-                            setEditLeaseStart(lease.leaseStart);
-                            setEditLeaseEnd(lease.leaseEnd);
-                            setEditTenantPaymentStatus(lease.paymentStatus);
+                            if (roomLeases.length === 0) return;
+                            setSelectedRoomLeases(roomLeases);
+                            setSelectedTenant(roomLeases[0]);
+                            setEditTenantName(roomLeases[0].name);
+                            setEditLeaseStart(roomLeases[0].leaseStart);
+                            setEditLeaseEnd(roomLeases[0].leaseEnd);
+                            setEditTenantPaymentStatus(roomLeases[0].paymentStatus);
                             setShowTenantEditDialog(true);
                           }}
                         >
@@ -1622,6 +1625,35 @@ export function LandlordRoomsPanel({
                   className="h-8 text-xs bg-muted"
                 />
               </div>
+
+              {selectedRoomLeases.length > 1 && (
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-medium text-slate-800">
+                    Select Tenant to Edit
+                  </label>
+                  <select
+                    className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                    value={selectedTenant.id}
+                    onChange={(e) => {
+                      const t = selectedRoomLeases.find((x) => x.id === e.target.value);
+                      if (t) {
+                        setSelectedTenant(t);
+                        setEditTenantName(t.name);
+                        setEditLeaseStart(t.leaseStart);
+                        setEditLeaseEnd(t.leaseEnd);
+                        setEditTenantPaymentStatus(t.paymentStatus);
+                      }
+                    }}
+                  >
+                    {selectedRoomLeases.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-[0.75rem] font-medium text-slate-800">
                   Tenant Name

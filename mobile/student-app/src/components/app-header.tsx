@@ -7,6 +7,7 @@ import { NotificationsModal } from "@/components/notifications-modal";
 import { colors } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/hooks/use-notifications";
+import { hrefForNotification } from "@/lib/notification-href";
 
 type Props = {
   showBack?: boolean;
@@ -93,6 +94,11 @@ export function AppHeader({ showBack, onBack }: Props) {
         onRefresh={() => load()}
         onMarkRead={(id) => void markRead(id)}
         onMarkAllRead={() => void markAllRead()}
+        onOpen={(item) => {
+          if (!item.read) void markRead(item.id);
+          setNotifOpen(false);
+          router.push(hrefForNotification(item.category, isLandlord));
+        }}
       />
     </>
   );

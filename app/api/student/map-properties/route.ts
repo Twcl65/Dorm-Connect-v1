@@ -29,13 +29,14 @@ export async function GET() {
       longitude: number;
       property_type: string;
       landlord_name: string;
+      landlord_user_id: string;
       operational_status: string;
     }>(
       `SELECT p.id, p.name, p.address, p.city, p.contact_phone,
               COALESCE(NULLIF(trim(p.description), ''), '') AS description,
               p.cover_image_url, p.gallery_image_urls,
               p.latitude, p.longitude, p.property_type,
-              u.full_name AS landlord_name, p.operational_status
+              u.full_name AS landlord_name, u.id AS landlord_user_id, p.operational_status
        FROM public.landlord_properties p
        JOIN public.boarding_house_app_users u ON u.id = p.owner_user_id
        WHERE p.latitude IS NOT NULL
@@ -62,6 +63,7 @@ export async function GET() {
         capacity: number;
         monthly_rate: string;
         status: string;
+        occupied_count: number;
         listing_description: string | null;
         remarks: string | null;
         room_details: string | null;
@@ -71,7 +73,25 @@ export async function GET() {
       }>(
         `SELECT r.id, r.room_no, r.capacity, r.monthly_rate::text, r.status,
                 r.listing_description, r.remarks, r.room_details,
-                r.listing_image_urls, r.listing_background_url, r.room_image_urls
+                r.listing_image_urls, r.listing_background_url, r.room_image_urls,
+                COALESCE((
+                  SELECT COUNT(*)::int FROM (
+                    SELECT l.id FROM public.landlord_tenant_leases l
+                    WHERE l.room_id = r.id
+                    UNION ALL
+                    SELECT s.id FROM public.student_dorm_reservations s
+                    WHERE s.room_id = r.id
+                      AND s.status IN ('Pending', 'Confirmed')
+                      AND NOT EXISTS (
+                        SELECT 1 FROM public.landlord_tenant_leases l2
+                        WHERE l2.student_reservation_id = s.id
+                      )
+                    UNION ALL
+                    SELECT lr.id FROM public.landlord_reservations lr
+                    WHERE lr.room_id = r.id
+                      AND lr.status IN ('Pending', 'Confirmed')
+                  ) occ
+                ), 0) AS occupied_count
          FROM public.landlord_rooms r
          WHERE r.property_id = $1::uuid
            AND r.is_listed = true
@@ -97,6 +117,7 @@ export async function GET() {
         contactPhone: p.contact_phone?.trim() || "—",
         description: p.description || "No description provided.",
         landlordName: p.landlord_name,
+        landlordUserId: p.landlord_user_id,
         latitude: p.latitude,
         longitude: p.longitude,
         coverImageUrl: cover,
@@ -114,10 +135,15 @@ export async function GET() {
             r.room_details,
             `Room ${r.room_no}`
           );
+          const occupied = Math.max(0, Number(r.occupied_count) || 0);
+          const capacity = Math.max(1, Number(r.capacity) || 1);
+          const availableSlots = Math.max(0, capacity - occupied);
           return {
             id: r.id,
             roomNo: r.room_no,
-            capacity: r.capacity,
+            capacity,
+            occupied,
+            availableSlots,
             price: Number(r.monthly_rate),
             status: r.status,
             description: desc,

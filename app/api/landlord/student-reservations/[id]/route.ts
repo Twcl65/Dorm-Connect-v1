@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { invalidateLandlordUser } from "@/lib/api-cache";
+import { invalidateLandlordUser, invalidateStudentUser } from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import {
   landlordLog,
@@ -8,6 +8,10 @@ import {
 import { insertNotification } from "@/lib/notify-user";
 import { fetchStudentUnpaidStaysElsewhere } from "@/lib/student-outstanding-balance";
 import { requireLandlord } from "@/lib/require-owner";
+import {
+  applyApprovedLeaseExtension,
+  ensureLeaseExtensionColumns,
+} from "@/lib/lease-extension";
 
 export const dynamic = "force-dynamic";
 
@@ -38,9 +42,11 @@ export async function PATCH(req: Request, context: Ctx) {
       nextPaymentDueDate?: string | null;
       notes?: string;
       holdApplication?: boolean;
+      leaseExtension?: "Approved" | "Rejected";
     };
 
     const pool = await getPool();
+    await ensureLeaseExtensionColumns(pool);
     const { rows: cur } = await pool.query<{
       room_id: string;
       student_user_id: string;
@@ -50,9 +56,12 @@ export async function PATCH(req: Request, context: Ctx) {
       property_name: string;
       property_id: string;
       room_no: string;
+      lease_extension_status: string | null;
+      lease_extension_requested_end: string | null;
     }>(
       `SELECT s.room_id, s.student_user_id, s.status, s.rent_payment_status, s.guest_name,
-              p.name AS property_name, p.id AS property_id, r.room_no
+              p.name AS property_name, p.id AS property_id, r.room_no,
+              s.lease_extension_status, s.lease_extension_requested_end::text
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -63,6 +72,53 @@ export async function PATCH(req: Request, context: Ctx) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
     const row = cur[0];
+
+    if (body.leaseExtension === "Approved" || body.leaseExtension === "Rejected") {
+      if (row.lease_extension_status !== "Pending" || !row.lease_extension_requested_end) {
+        return NextResponse.json(
+          { error: "No pending lease extension to review." },
+          { status: 400 }
+        );
+      }
+      const nextEnd = row.lease_extension_requested_end.slice(0, 10);
+      if (body.leaseExtension === "Approved") {
+        await applyApprovedLeaseExtension(pool, {
+          reservationId: id,
+          roomId: row.room_id,
+          studentUserId: row.student_user_id,
+          ownerUserId: ownerId,
+          nextEnd,
+          propertyName: row.property_name,
+          roomNo: row.room_no,
+        });
+        await landlordLog(
+          pool,
+          ownerId,
+          `Approved lease extension for ${row.guest_name} through ${nextEnd}`
+        );
+      } else {
+        await pool.query(
+          `UPDATE public.student_dorm_reservations
+           SET lease_extension_status = 'Rejected', updated_at = now()
+           WHERE id = $1::uuid`,
+          [id]
+        );
+        try {
+          await insertNotification(
+            pool,
+            row.student_user_id,
+            "Lease extension declined",
+            `Your request to extend ${row.property_name} · Room ${row.room_no} was not approved.`,
+            "reservation"
+          );
+        } catch {
+          /* non-fatal */
+        }
+        invalidateLandlordUser(ownerId);
+        invalidateStudentUser(row.student_user_id);
+      }
+      return NextResponse.json({ ok: true });
+    }
 
     let status = row.status;
     if (body.holdApplication === true) {

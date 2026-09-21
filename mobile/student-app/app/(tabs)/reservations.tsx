@@ -1,8 +1,8 @@
-import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { ReservationDetailModal } from "@/components/reservation-detail-modal";
+import { InfoGrid } from "@/components/info-grid";
 import {
   apiRequest,
   formatSignInError,
@@ -16,22 +16,12 @@ import {
   Screen,
   Subtitle,
   Title,
-  colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { formatLeaseEndLabel } from "@/lib/listing-utils";
 
-function leaseLine(item: StudentReservation): string {
-  const months = `${item.leaseMonths} ${item.leaseMonths === 1 ? "month" : "months"}`;
-  if (item.leaseEndDate) {
-    return `${months} · ends ${formatLeaseEndLabel(item.leaseEndDate)}`;
-  }
-  return item.leasePeriod ?? months;
-}
-
 export default function ReservationsScreen() {
   const { token } = useAuth();
-  const router = useRouter();
   const [items, setItems] = useState<StudentReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,7 +35,11 @@ export default function ReservationsScreen() {
       "/api/student/reservations",
       { token }
     );
-    setItems(res.reservations ?? []);
+    const next = res.reservations ?? [];
+    setItems(next);
+    setSelected((prev) =>
+      prev ? next.find((r) => r.id === prev.id) ?? prev : prev
+    );
   }, [token]);
 
   useFocusEffect(
@@ -96,32 +90,52 @@ export default function ReservationsScreen() {
         }
         renderItem={({ item }) => (
           <Card>
-            <Text style={styles.name}>
-              {item.dorm} · Room {item.room}
-            </Text>
-            <Text style={styles.meta}>{leaseLine(item)}</Text>
-            <Text style={styles.meta}>{item.location}</Text>
-            <Text style={styles.meta}>Landlord: {item.landlord}</Text>
-            <Text style={styles.meta}>
-              ₱{item.monthlyRent.toLocaleString()} / month
-            </Text>
-            <Badge
-              label={item.status}
-              tone={
-                item.status === "Approved" || item.status === "Active"
-                  ? "success"
-                  : item.status === "Cancelled"
-                    ? "danger"
-                    : "warning"
-              }
+            <InfoGrid
+              rows={[
+                [
+                  { label: "Dorm name", value: item.dorm },
+                  { label: "Room #", value: `Room ${item.room}` },
+                ],
+                [
+                  {
+                    label: "Lease duration",
+                    value: `${item.leaseMonths} ${item.leaseMonths === 1 ? "month" : "months"}`,
+                  },
+                  {
+                    label: "Move-out date",
+                    value: item.leaseEndDate
+                      ? formatLeaseEndLabel(item.leaseEndDate)
+                      : "—",
+                  },
+                ],
+                [
+                  { label: "Stay", value: item.stayLabel ?? item.status },
+                  { label: "Rent", value: item.rentLabel ?? "—" },
+                ],
+              ]}
             />
-            {item.paymentSent && (
-              <Badge label="Payment submitted" tone="success" />
-            )}
+            <View style={styles.badges}>
+              <Badge
+                label={item.stayLabel ?? item.status}
+                tone={
+                  item.status === "Approved" || item.status === "Active"
+                    ? "success"
+                    : item.status === "Cancelled"
+                      ? "danger"
+                      : "warning"
+                }
+              />
+              {item.paymentSent ? (
+                <Badge label="Payment submitted" tone="success" />
+              ) : null}
+              {item.leaseExtension?.status === "Pending" ? (
+                <Badge label="Extension pending" tone="warning" />
+              ) : null}
+            </View>
             <View style={styles.actions}>
               <Button
                 label="View details"
-                variant="outline"
+                variant="sky"
                 onPress={() => setSelected(item)}
               />
             </View>
@@ -133,9 +147,8 @@ export default function ReservationsScreen() {
         visible={selected != null}
         reservation={selected}
         onClose={() => setSelected(null)}
-        onPay={() => {
-          setSelected(null);
-          router.push("/(tabs)/payments");
+        onChanged={() => {
+          void load();
         }}
       />
     </Screen>
@@ -144,8 +157,7 @@ export default function ReservationsScreen() {
 
 const styles = StyleSheet.create({
   error: { color: "#dc2626", fontSize: 13, marginBottom: 8 },
-  name: { fontSize: 15, fontWeight: "600", color: colors.text },
-  meta: { fontSize: 13, color: "#64748b", marginTop: 4 },
   empty: { fontSize: 13, color: "#64748b" },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
   actions: { marginTop: 12 },
 });

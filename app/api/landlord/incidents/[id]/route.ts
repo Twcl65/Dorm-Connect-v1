@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireOwner } from "@/lib/require-owner";
+import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 
@@ -45,18 +46,33 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      const { rows } = await pool.query<{ id: string }>(
+      const { rows } = await pool.query<{
+        id: string;
+        reporter_user_id: string;
+        title: string;
+      }>(
         `UPDATE public.dorm_incident_reports
          SET landlord_reply = $1,
              landlord_replied_at = now(),
              status = CASE WHEN status = 'Open' THEN 'Acknowledged' ELSE status END,
              updated_at = now()
          WHERE id = $2::uuid AND owner_user_id = $3::uuid
-         RETURNING id`,
+         RETURNING id, reporter_user_id, title`,
         [reply, id, ownerId]
       );
       if (!rows[0]) {
         return NextResponse.json({ error: "Report not found." }, { status: 404 });
+      }
+      try {
+        await insertNotification(
+          pool,
+          rows[0].reporter_user_id,
+          "Landlord replied to your incident",
+          `Your report “${rows[0].title}” has a new reply from the landlord.`,
+          "incident"
+        );
+      } catch {
+        /* non-fatal */
       }
       return NextResponse.json({ ok: true });
     }

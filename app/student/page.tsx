@@ -14,7 +14,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Eye, ChevronDown, ChevronUp, Loader2, X } from "lucide-react";
+import { formatLongDate } from "@/lib/student-db";
 
 type ReservationStatus =
   | "Active"
@@ -28,6 +29,7 @@ type ReservationRow = {
   dormName: string;
   roomNo: string;
   leasePeriod: string;
+  leaseEndDate?: string;
   reservationStatus: ReservationStatus;
   paymentStatus: PaymentStatus;
   monthlyRent: number;
@@ -240,8 +242,16 @@ export default function StudentDashboardPage() {
                 <p className="font-semibold text-slate-900">
                   {activeReservation.dormName} – Room {activeReservation.roomNo}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Lease period: {activeReservation.leasePeriod}
+                <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>Lease period: {activeReservation.leasePeriod}</span>
+                  {activeReservation.leaseEndDate ? (
+                    <span>
+                      Move out:{" "}
+                      <span className="font-medium text-slate-900">
+                        {formatLongDate(activeReservation.leaseEndDate)}
+                      </span>
+                    </span>
+                  ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-2">
                   Reservation:{" "}
@@ -532,15 +542,14 @@ export default function StudentDashboardPage() {
                     Summary of this reservation.
                   </p>
                 </div>
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[0.7rem]"
+                  className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   onClick={() => setShowDetailsDialog(false)}
+                  aria-label="Close"
                 >
-                  Close
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
@@ -555,6 +564,9 @@ export default function StudentDashboardPage() {
                 </p>
                 <p className="text-muted-foreground">
                   Lease: {selectedReservation.leasePeriod}
+                  {selectedReservation.leaseEndDate
+                    ? ` · Move out: ${formatLongDate(selectedReservation.leaseEndDate)}`
+                    : ""}
                 </p>
                 <p className="text-muted-foreground">
                   Monthly rent: ₱
@@ -581,16 +593,6 @@ export default function StudentDashboardPage() {
                     status={selectedReservation.paymentStatus}
                   />
                 </div>
-              </div>
-              <div className="flex justify-end pt-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setShowDetailsDialog(false)}
-                >
-                  Close
-                </Button>
               </div>
             </CardContent>
           </Card>

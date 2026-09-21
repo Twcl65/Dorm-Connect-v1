@@ -158,6 +158,7 @@ export type Listing = {
   description: string;
   distance: string;
   landlord: string;
+  landlordUserId?: string;
   roomType: string;
   capacity: string;
   roomSizeLabel?: string | null;
@@ -193,6 +194,10 @@ export type UnpaidRentMonth = {
   dormName?: string;
   roomNo?: string;
   reservationId?: string;
+  gcashAccountName?: string | null;
+  gcashPhone?: string | null;
+  gcashQrCodeUrl?: string | null;
+  landlordName?: string | null;
 };
 
 export type OverviewResponse = {
@@ -204,7 +209,9 @@ export type OverviewResponse = {
     leaseMonths?: number;
     leaseEndDate?: string;
     reservationStatus: string;
+    stayLabel?: string;
     paymentStatus: string;
+    rentLabel?: string;
     monthlyRent: number;
   }[];
   activeReservation: OverviewResponse["reservations"][0] | null;
@@ -250,6 +257,15 @@ export type StudentReservation = {
   images?: string[];
   leasePeriod?: string;
   paymentSent?: boolean;
+  gcashAccountName?: string | null;
+  gcashPhone?: string | null;
+  gcashQrCodeUrl?: string | null;
+  stayLabel?: string;
+  rentLabel?: string;
+  leaseExtension?: {
+    status: "Pending" | "Approved" | "Rejected";
+    requestedEnd: string;
+  } | null;
 };
 
 export type PaymentRow = {
@@ -376,6 +392,8 @@ export type MapPropertyRoom = {
   id: string;
   roomNo: string;
   capacity: number;
+  occupied?: number;
+  availableSlots?: number;
   price: number;
   status: string;
   description: string;
@@ -390,12 +408,47 @@ export type MapProperty = {
   contactPhone: string;
   description: string;
   landlordName: string;
+  landlordUserId?: string;
   latitude: number;
   longitude: number;
   coverImageUrl: string | null;
   galleryImageUrls: string[];
   propertyImages: string[];
   rooms: MapPropertyRoom[];
+};
+
+export type LandlordPublicProfile = {
+  landlord: {
+    id: string;
+    name: string;
+    gcashAccountName: string | null;
+    gcashPhone: string | null;
+    gcashQrCodeUrl: string | null;
+  };
+  property: {
+    id: string;
+    name: string;
+    address: string;
+    contactPhone: string | null;
+    description: string | null;
+  };
+  accreditation: {
+    status: string;
+    dormName: string;
+    submittedAt: string | null;
+    expiresAt: string | null;
+  };
+  certifications?: { label: string; url: string }[];
+  reviewSummary: { avg: number | null; count: number };
+  reviews: {
+    author: string;
+    date: string;
+    title: string;
+    comment: string;
+    rating: number;
+    roomNo: string;
+    propertyName: string;
+  }[];
 };
 
 export type LandlordOverview = {
@@ -433,6 +486,7 @@ export type LandlordOverview = {
 
 export type LandlordReservation = {
   id: string;
+  source?: "manual" | "student";
   roomNo: string;
   name: string;
   leasePeriod: string;
@@ -440,6 +494,11 @@ export type LandlordReservation = {
   dormName: string;
   rentPaymentStatus?: string;
   createdAt: string;
+  leaseEndDate?: string;
+  leaseExtension?: {
+    status: "Pending" | "Approved" | "Rejected";
+    requestedEnd: string;
+  } | null;
 };
 
 export type LandlordPayment = {
@@ -464,6 +523,8 @@ export type LandlordLease = {
   id: string;
   roomNo: string;
   name: string;
+  leaseStart?: string;
+  leaseEnd?: string;
   leasePeriod: string;
   paymentStatus: string;
   dueLabel?: string;

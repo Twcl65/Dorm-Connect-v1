@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, Check, Loader2, AlertTriangle, PauseCircle } from "lucide-react";
+import { Eye, Check, Loader2, AlertTriangle, PauseCircle, X } from "lucide-react";
 import { cn } from "@/components/ui/utils";
 
 type ReservationStatus = "Confirmed" | "Pending" | "Cancelled";
@@ -40,6 +40,11 @@ type Reservation = {
   notes?: string;
   hasUnpaidElsewhere?: boolean;
   unpaidElsewhere?: UnpaidElsewhere[];
+  leaseEndDate?: string;
+  leaseExtension?: {
+    status: "Pending" | "Approved" | "Rejected";
+    requestedEnd: string;
+  } | null;
 };
 
 const ROWS_PER_PAGE = 5;
@@ -260,6 +265,36 @@ export function LandlordReservationsPanel({
     }
   };
 
+  const decideLeaseExtension = async (
+    res: Reservation,
+    decision: "Approved" | "Rejected"
+  ) => {
+    if (res.source !== "student") return;
+    setSaving(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(
+        `/api/landlord/student-reservations/${res.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ leaseExtension: decision }),
+        }
+      );
+      const j = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(j.error ?? "Failed to update extension");
+      setShowDetailsDialog(false);
+      await loadData();
+    } catch (e) {
+      setLoadError(
+        e instanceof Error ? e.message : "Failed to update extension"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -303,6 +338,78 @@ export function LandlordReservationsPanel({
           {loadError}
         </div>
       )}
+
+      <Card className="border-sky-200 bg-sky-50/50 shadow-sm">
+        <CardHeader className="pb-3 border-b border-sky-100 bg-sky-50">
+          <CardTitle className="text-base font-semibold text-sky-900 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-sky-600" />
+            Pending Lease Extensions
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {!reservationsData.some((r) => r.leaseExtension?.status === "Pending") ? (
+            <div className="text-sm text-sky-800 py-2">
+              No pending lease extension requests from students.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {reservationsData
+                .filter((r) => r.leaseExtension?.status === "Pending")
+                .map((res) => (
+                  <div
+                    key={res.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-lg border border-sky-200 shadow-sm"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-900">{res.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({res.dormName} - Room {res.roomNo})
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Requested to extend stay until{" "}
+                        <span className="font-medium text-sky-700">
+                          {res.leaseExtension?.requestedEnd
+                            ? new Date(`${res.leaseExtension.requestedEnd}T12:00:00`).toLocaleDateString(
+                                undefined,
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )
+                            : ""}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        disabled={saving}
+                        onClick={() => void decideLeaseExtension(res, "Rejected")}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Decline
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={saving}
+                        onClick={() => void decideLeaseExtension(res, "Approved")}
+                      >
+                        <Check className="h-4 w-4 mr-1" />
+                        Approve
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => (
@@ -433,6 +540,14 @@ export function LandlordReservationsPanel({
                             Unpaid at other BH
                           </Badge>
                         )}
+                      {res.leaseExtension?.status === "Pending" && (
+                        <Badge
+                          variant="outline"
+                          className="rounded-full bg-sky-100 px-2 py-0 text-[0.65rem] font-semibold text-sky-900 ring-1 ring-sky-300"
+                        >
+                          Extension request
+                        </Badge>
+                      )}
                       {res.source === "student" && res.rentPaymentStatus && (
                         <span className="text-[0.65rem] leading-snug text-muted-foreground">
                           {res.rentPaymentStatus}
@@ -466,6 +581,29 @@ export function LandlordReservationsPanel({
                           <Check className="h-3 w-3" />
                           Confirm reservation
                         </Button>
+                      )}
+                      {res.leaseExtension?.status === "Pending" && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-sky-600 text-white hover:bg-sky-700"
+                            disabled={saving}
+                            onClick={() => void decideLeaseExtension(res, "Approved")}
+                          >
+                            <Check className="h-3 w-3" />
+                            Approve extension
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-red-300 text-red-700 hover:bg-red-50"
+                            disabled={saving}
+                            onClick={() => void decideLeaseExtension(res, "Rejected")}
+                          >
+                            <X className="h-3 w-3" />
+                            Decline
+                          </Button>
+                        </>
                       )}
                     </div>
                   </TableCell>
@@ -564,6 +702,16 @@ export function LandlordReservationsPanel({
                     {selectedReservation.leasePeriod}
                   </span>
                 </p>
+                {selectedReservation.leaseExtension?.status === "Pending" && (
+                  <p className="text-[0.7rem] rounded border border-sky-200 bg-sky-50 px-2 py-1.5 text-sky-950">
+                    <span className="font-semibold">Lease extension request: </span>
+                    student asked to stay through{" "}
+                    {new Date(
+                      `${selectedReservation.leaseExtension.requestedEnd}T12:00:00`
+                    ).toLocaleDateString()}
+                    . Approve to add extra months to the rent schedule.
+                  </p>
+                )}
                 {selectedReservation.email && (
                   <p className="text-[0.7rem] text-muted-foreground">
                     Email:{" "}
@@ -645,6 +793,39 @@ export function LandlordReservationsPanel({
                   >
                     Confirm reservation
                   </Button>
+                )}
+                {selectedReservation.leaseExtension?.status === "Pending" && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 px-3 text-xs bg-sky-600 text-white hover:bg-sky-700"
+                      disabled={saving}
+                      onClick={() =>
+                        void decideLeaseExtension(
+                          selectedReservation,
+                          "Approved"
+                        )
+                      }
+                    >
+                      Approve extension
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                      disabled={saving}
+                      onClick={() =>
+                        void decideLeaseExtension(
+                          selectedReservation,
+                          "Rejected"
+                        )
+                      }
+                    >
+                      Decline extension
+                    </Button>
+                  </>
                 )}
                 <Button
                   type="button"

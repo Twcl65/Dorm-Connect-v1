@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
@@ -6,7 +7,7 @@ import {
   formatSignInError,
   type AnnouncementRow,
 } from "@/lib/api";
-import { Badge, Card, colors } from "@/components/ui";
+import { Badge, colors } from "@/components/ui";
 import { CollapsibleAnnouncementList } from "@/components/collapsible-announcement-list";
 import { useAuth } from "@/context/AuthContext";
 
@@ -52,36 +53,50 @@ export function AnnouncementsCard() {
     source: item.source,
     propertyName: item.propertyName,
   }));
+  const hasNew = rows.some((r) => isNew(r.date));
 
   return (
-    <Card>
+    <View style={styles.card}>
       <View style={styles.head}>
-        <Text style={styles.title}>Announcements</Text>
+        <Ionicons name="megaphone-outline" size={22} color={colors.navy} />
+        <View style={styles.headText}>
+          <Text style={styles.title}>Announcements</Text>
+          <Text style={styles.sub}>
+            Official notices from OSA and your landlords
+          </Text>
+        </View>
         {rows.length > 0 && (
           <Badge
             label={`${rows.length}`}
-            tone={rows.some((r) => isNew(r.date)) ? "warning" : "default"}
+            tone={hasNew ? "warning" : "default"}
           />
         )}
       </View>
-      <Text style={styles.sub}>
-        Official notices from OSA and your landlords.
-      </Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <CollapsibleAnnouncementList items={items} />
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 12,
+  },
   head: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 10,
   },
-  title: { fontSize: 16, fontWeight: "600", color: colors.navy },
-  sub: { fontSize: 12, color: colors.muted, marginTop: 4, marginBottom: 8 },
+  headText: { flex: 1 },
+  title: { fontSize: 16, fontWeight: "800", color: colors.navy },
+  sub: { fontSize: 12, color: colors.muted, marginTop: 2 },
   error: { fontSize: 12, color: colors.red, marginBottom: 8 },
 });

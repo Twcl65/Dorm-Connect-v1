@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { cn } from "@/components/ui/utils";
 import { formatNotificationSentAt } from "@/lib/format-notification-time";
@@ -15,7 +16,38 @@ type NotificationItem = {
   synthetic?: boolean;
 };
 
+function hrefForNotification(pathname: string, category: string): string {
+  const c = (category ?? "").toLowerCase();
+  if (pathname.startsWith("/landlord")) {
+    if (c.includes("payment")) return "/landlord/reservations?tab=payments";
+    if (c.includes("extend") || c.includes("lease") || c.includes("reservation")) {
+      return "/landlord/reservations";
+    }
+    if (c.includes("incident") || c.includes("report")) {
+      return "/landlord/incidents";
+    }
+    if (c.includes("accredit") || c.includes("document") || c.includes("inspect")) {
+      return "/landlord/documents";
+    }
+    if (c.includes("announce")) return "/landlord/announcements";
+    return "/landlord";
+  }
+  if (pathname.startsWith("/osa")) {
+    if (c.includes("accredit")) return "/osa/accreditation";
+    if (c.includes("tenant") || c.includes("report")) return "/osa/tenants";
+    if (c.includes("inspect")) return "/osa/inspections";
+    return "/osa";
+  }
+  if (c.includes("payment")) return "/student/payments";
+  if (c.includes("reservation")) return "/student/reservations";
+  if (c.includes("incident")) return "/student/incidents";
+  if (c.includes("announce")) return "/student/announcements";
+  return "/student";
+}
+
 export function NotificationsBell() {
+  const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,7 +67,7 @@ export function NotificationsBell() {
 
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 60_000);
+    const t = setInterval(() => void load(), 900_000); // 15 minutes
     return () => clearInterval(t);
   }, [load]);
 
@@ -118,7 +150,11 @@ export function NotificationsBell() {
                       "block w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50",
                       !n.read && "bg-sky-50/60"
                     )}
-                    onClick={() => void markRead(n.id)}
+                    onClick={() => {
+                      void markRead(n.id);
+                      setOpen(false);
+                      router.push(hrefForNotification(pathname || "", n.category));
+                    }}
                   >
                     <p className="text-[0.7rem] font-semibold text-slate-900">
                       {n.title}

@@ -13,7 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PenSquare, Eye, Loader2, X } from "lucide-react";
+import { Eye, Loader2, X } from "lucide-react";
+import { formatLongDate } from "@/lib/student-db";
 
 function normWs(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -31,6 +32,10 @@ import { uploadDormConnectFile } from "@/lib/upload-file-client";
 
 type ReservationStatus = "Pending" | "Approved" | "Cancelled";
 type PaymentMethod = "gcash" | "bank" | "card";
+type LeaseExtensionInfo = {
+  status: "Pending" | "Approved" | "Rejected";
+  requestedEnd: string;
+} | null;
 
 const ROWS_PER_PAGE = 5;
 
@@ -41,6 +46,7 @@ type Reservation = {
   status: ReservationStatus;
   date: string;
   moveInDate: string;
+  leaseEndDate?: string;
   leaseMonths: number;
   monthlyRent: number;
   location: string;
@@ -58,6 +64,9 @@ type Reservation = {
   images: string[];
   leasePeriod?: string;
   paymentSent?: boolean;
+  stayLabel?: string;
+  rentLabel?: string;
+  leaseExtension?: LeaseExtensionInfo;
 };
 
 function StatusBadge({ status }: { status: ReservationStatus }) {
@@ -99,6 +108,16 @@ export default function StudentReservationsPage() {
   /** Proof image/PDF for GCash or bank transfer. */
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [showExtendDialog, setShowExtendDialog] = useState(false);
+  const [showTerminateDialog, setShowTerminateDialog] = useState(false);
+  const [extendDate, setExtendDate] = useState("");
+  const [terminateDate, setTerminateDate] = useState("");
+  const [liveGcash, setLiveGcash] = useState<{
+    gcashAccountName: string | null;
+    gcashPhone: string | null;
+    gcashQrCodeUrl: string | null;
+    landlordName: string | null;
+  } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -187,6 +206,40 @@ export default function StudentReservationsPage() {
       document.body.style.overflow = prevOverflow;
     };
   }, [lightboxUrl]);
+
+  useEffect(() => {
+    if (!showPaymentDialog || !selectedReservation) {
+      setLiveGcash(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/student/gcash?reservationId=${encodeURIComponent(selectedReservation.id)}`,
+          { credentials: "include" }
+        );
+        const json = (await res.json()) as {
+          gcashAccountName?: string | null;
+          gcashPhone?: string | null;
+          gcashQrCodeUrl?: string | null;
+          landlordName?: string | null;
+        };
+        if (!res.ok || cancelled) return;
+        setLiveGcash({
+          gcashAccountName: json.gcashAccountName ?? null,
+          gcashPhone: json.gcashPhone ?? null,
+          gcashQrCodeUrl: json.gcashQrCodeUrl ?? null,
+          landlordName: json.landlordName ?? null,
+        });
+      } catch {
+        if (!cancelled) setLiveGcash(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showPaymentDialog, selectedReservation]);
 
   return (
     <div className="space-y-6">
@@ -296,28 +349,25 @@ export default function StudentReservationsPage() {
                     {res.date}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={res.status} />
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusBadge status={res.status} />
+                      {res.stayLabel ? (
+                        <span className="text-[0.65rem] text-muted-foreground">
+                          {res.stayLabel}
+                        </span>
+                      ) : null}
+                      {res.leaseExtension?.status === "Pending" ? (
+                        <span className="text-[0.65rem] font-medium text-amber-700">
+                          Extension pending
+                        </span>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="pr-4">
                     <div className="flex flex-nowrap items-center justify-center gap-1.5">
-                      {res.status === "Pending" && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-7 shrink-0 px-2 text-[0.7rem] flex items-center gap-1"
-                          onClick={() => {
-                            setSelectedReservation(res);
-                            setShowEditDialog(true);
-                          }}
-                        >
-                          <PenSquare className="h-3 w-3" />
-                          Cancel
-                        </Button>
-                      )}
                       <Button
-                        variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                        className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-sky-600 text-white hover:bg-sky-700"
                         onClick={() => {
                           setSelectedReservation(res);
                           setPaymentMethod("gcash");
@@ -522,29 +572,36 @@ export default function StudentReservationsPage() {
       )}
 
       {/* View details / payment dialog */}
-      {showDetailsDialog && selectedReservation && (
+      {showDetailsDialog &&
+        selectedReservation &&
+        !showExtendDialog &&
+        !showTerminateDialog && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
           <Card className="mb-4 flex w-full max-w-4xl flex-col border border-gray-300 bg-white max-h-[calc(100vh-4rem)]">
-            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
+            <CardHeader className="shrink-0 border-b bg-white pb-2">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
                     {selectedReservation.dorm} – Room {selectedReservation.room}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    {selectedReservation.location} • Reservation details and
-                    payment
+                    {selectedReservation.location}
+                    {selectedReservation.stayLabel
+                      ? ` • ${selectedReservation.stayLabel}`
+                      : ""}
+                    {selectedReservation.rentLabel
+                      ? ` • Rent: ${selectedReservation.rentLabel}`
+                      : ""}
                   </p>
                 </div>
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[0.7rem]"
+                  className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   onClick={() => setShowDetailsDialog(false)}
+                  aria-label="Close"
                 >
-                  Close
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </CardHeader>
             <CardContent className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto pt-3 text-sm text-slate-700">
@@ -596,7 +653,7 @@ export default function StudentReservationsPage() {
                     </span>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Managed by{" "}
+                    Landlord:{" "}
                     <span className="font-medium text-slate-900">
                       {selectedReservation.landlord}
                     </span>
@@ -746,40 +803,91 @@ export default function StudentReservationsPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap justify-end gap-2 border-t pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setShowDetailsDialog(false)}
-                >
-                  Close
-                </Button>
-                {selectedReservation.paymentSent ? (
+              <div className="flex flex-wrap gap-2 border-t bg-white pt-3">
+                {selectedReservation.leaseExtension?.status === "Pending" ? (
+                  <p className="w-full text-[0.7rem] text-amber-800">
+                    Lease extension requested until{" "}
+                    {formatLongDate(
+                      selectedReservation.leaseExtension.requestedEnd
+                    )}
+                    . Waiting for landlord approval.
+                  </p>
+                ) : null}
+                {selectedReservation.status === "Pending" ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => {
+                      setShowDetailsDialog(false);
+                      setShowEditDialog(true);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                ) : null}
+                {selectedReservation.status === "Approved" &&
+                selectedReservation.stayLabel === "Current Staying" ? (
+                  <>
+                    {selectedReservation.leaseExtension?.status !== "Pending" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => {
+                          const current =
+                            selectedReservation.leaseEndDate ?? "";
+                          const d = new Date(`${current}T12:00:00`);
+                          d.setMonth(d.getMonth() + 1);
+                          setExtendDate(d.toISOString().slice(0, 10));
+                          setShowExtendDialog(true);
+                        }}
+                      >
+                        Extend lease
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => {
+                        setTerminateDate(
+                          new Date().toISOString().slice(0, 10)
+                        );
+                        setShowTerminateDialog(true);
+                      }}
+                    >
+                      Terminate
+                    </Button>
+                  </>
+                ) : null}
+                {!selectedReservation.paymentSent ? (
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
-                    className="h-8 px-3 text-xs"
-                    disabled
+                    className="ml-auto h-8 px-3 text-xs bg-sky-600 hover:bg-sky-700"
+                    onClick={() => {
+                      setShowDetailsDialog(false);
+                      setPaymentMethod("gcash");
+                      setShowGcashPaymentSection(true);
+                      setPaymentProofFile(null);
+                      setShowPaymentDialog(true);
+                    }}
                   >
-                    Payment sent
+                    Pay now
                   </Button>
                 ) : (
                   <Button
                     type="button"
                     size="sm"
-                    className="h-8 px-3 text-xs"
-                    onClick={() => {
-                      setShowDetailsDialog(false);
-                      setPaymentMethod("gcash");
-                      setShowGcashPaymentSection(false);
-                      setPaymentProofFile(null);
-                      setShowPaymentDialog(true);
-                    }}
+                    variant="secondary"
+                    className="ml-auto h-8 px-3 text-xs"
+                    disabled
                   >
-                    Pay Now
+                    Payment sent
                   </Button>
                 )}
               </div>
@@ -813,6 +921,157 @@ export default function StudentReservationsPage() {
             className="max-h-[min(90vh,900px)] max-w-full object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      ) : null}
+
+      {showExtendDialog && selectedReservation ? (
+        <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-10">
+          <Card className="w-full max-w-md border bg-white">
+            <CardHeader className="border-b pb-2">
+              <CardTitle className="text-base">Request lease extension</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Your landlord must approve before the new end date takes effect.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs">
+              <p>
+                Current end:{" "}
+                <span className="font-medium">
+                  {formatLongDate(selectedReservation.leaseEndDate)}
+                </span>
+              </p>
+              <label className="block space-y-1">
+                <span>Requested new end date</span>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={extendDate}
+                  onChange={(e) => setExtendDate(e.target.value)}
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setShowExtendDialog(false)}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={saving || !extendDate}
+                  onClick={async () => {
+                    setSaving(true);
+                    try {
+                      const res = await fetch(
+                        `/api/student/reservations/${selectedReservation.id}`,
+                        {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            extend: true,
+                            leaseEnd: extendDate,
+                          }),
+                        }
+                      );
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
+                      setShowExtendDialog(false);
+                      setShowDetailsDialog(false);
+                      await loadData();
+                    } catch (e) {
+                      setLoadError(
+                        e instanceof Error
+                          ? e.message
+                          : "Failed to request extension"
+                      );
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  {saving ? "Sending…" : "Submit request"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      {showTerminateDialog && selectedReservation ? (
+        <div className="fixed inset-0 z-[55] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-10">
+          <Card className="w-full max-w-md border bg-white">
+            <CardHeader className="border-b pb-2">
+              <CardTitle className="text-base">End stay early</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Choose a new lease end date on or after today, before the
+                current end date.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-3 text-xs">
+              <label className="block space-y-1">
+                <span>New lease end date</span>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={terminateDate}
+                  onChange={(e) => setTerminateDate(e.target.value)}
+                />
+              </label>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setShowTerminateDialog(false)}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={saving || !terminateDate}
+                  onClick={async () => {
+                    setSaving(true);
+                    try {
+                      const res = await fetch(
+                        `/api/student/reservations/${selectedReservation.id}`,
+                        {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ leaseEnd: terminateDate }),
+                        }
+                      );
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed");
+                      setShowTerminateDialog(false);
+                      setShowDetailsDialog(false);
+                      await loadData();
+                    } catch (e) {
+                      setLoadError(
+                        e instanceof Error
+                          ? e.message
+                          : "Failed to update lease"
+                      );
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  {saving ? "Saving…" : "Confirm"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       ) : null}
 
@@ -890,79 +1149,85 @@ export default function StudentReservationsPage() {
                   <p className="text-[0.75rem] font-semibold text-slate-900">
                     Pay with GCash
                   </p>
-                  {!showGcashPaymentSection ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 px-3 text-[0.7rem] bg-orange-500 hover:bg-orange-600 text-white"
-                      onClick={() => setShowGcashPaymentSection(true)}
-                    >
-                      Show GCash Details
-                    </Button>
-                  ) : (
-                    <div className="space-y-2 text-[0.7rem] text-slate-800">
-                      <p>
-                        Landlord:{" "}
-                        <span className="font-semibold">
-                          {selectedReservation.gcashAccountName?.trim() ||
-                            selectedReservation.landlord}
-                        </span>
-                      </p>
-                      {selectedReservation.gcashPhone?.trim() ? (
-                        <p>
-                          GCash number:{" "}
-                          <span className="font-semibold">
-                            {selectedReservation.gcashPhone}
-                          </span>
-                        </p>
-                      ) : null}
-                      <div className="flex items-center gap-3">
-                        {selectedReservation.gcashQrCodeUrl ? (
-                          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-md bg-white shadow-sm">
-                            <img
-                              src={selectedReservation.gcashQrCodeUrl}
-                              alt="GCash QR code"
-                              className="h-full w-full object-contain"
-                            />
-                          </div>
-                        ) : (
-                          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 bg-white px-2 text-center text-[0.65rem] text-muted-foreground">
-                            Landlord has not uploaded a QR code yet
-                          </div>
-                        )}
-                        <p className="flex-1 text-[0.7rem] text-slate-700">
-                          {selectedReservation.gcashQrCodeUrl
-                            ? "Scan this QR code using your GCash app to pay the total amount."
-                            : "Use the GCash number above or ask your landlord for payment details."}{" "}
-                          After payment, upload a screenshot of your receipt for
-                          the landlord to review.
-                        </p>
-                      </div>
-                      <div className="space-y-1 pt-1">
-                        <label
-                          htmlFor="gcash-proof-dialog"
-                          className="text-[0.7rem] font-medium text-slate-800"
-                        >
-                          Upload payment screenshot
-                        </label>
-                        <FileInput
-                          id="gcash-proof-dialog"
-                          type="file"
-                          accept="image/*,application/pdf"
-                          className="h-8 cursor-pointer text-[0.7rem]"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] ?? null;
-                            setPaymentProofFile(file);
-                          }}
-                        />
-                        {paymentProofFile && (
-                          <p className="text-[0.7rem] text-muted-foreground">
-                            Selected file: {paymentProofFile.name}
+                  <div className="space-y-2 text-[0.7rem] text-slate-800">
+                    {(() => {
+                      const name =
+                        liveGcash?.gcashAccountName?.trim() ||
+                        selectedReservation.gcashAccountName?.trim() ||
+                        liveGcash?.landlordName ||
+                        selectedReservation.landlord;
+                      const phone =
+                        liveGcash?.gcashPhone?.trim() ||
+                        selectedReservation.gcashPhone?.trim() ||
+                        "";
+                      const qr =
+                        liveGcash?.gcashQrCodeUrl?.trim() ||
+                        selectedReservation.gcashQrCodeUrl?.trim() ||
+                        "";
+                      return (
+                        <>
+                          <p>
+                            Account name:{" "}
+                            <span className="font-semibold">{name}</span>
                           </p>
-                        )}
-                      </div>
+                          <p>
+                            GCash number:{" "}
+                            <span className="font-semibold">
+                              {phone || "Not uploaded"}
+                            </span>
+                          </p>
+                          <div className="flex items-center gap-3">
+                            {qr ? (
+                              <button
+                                type="button"
+                                className="h-28 w-28 shrink-0 overflow-hidden rounded-md bg-white shadow-sm"
+                                onClick={() => setLightboxUrl(qr)}
+                              >
+                                <img
+                                  src={qr}
+                                  alt="GCash QR code"
+                                  className="h-full w-full object-contain"
+                                />
+                              </button>
+                            ) : (
+                              <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 bg-white px-2 text-center text-[0.65rem] text-muted-foreground">
+                                Landlord has not uploaded a QR code yet
+                              </div>
+                            )}
+                            <p className="flex-1 text-[0.7rem] text-slate-700">
+                              {qr
+                                ? "Tap the QR to enlarge, then scan it in GCash."
+                                : "Use the GCash number above or ask your landlord for payment details."}{" "}
+                              After payment, upload a screenshot of your receipt.
+                            </p>
+                          </div>
+                        </>
+                      );
+                    })()}
+                    <div className="space-y-1 pt-1">
+                      <label
+                        htmlFor="gcash-proof-dialog"
+                        className="text-[0.7rem] font-medium text-slate-800"
+                      >
+                        Upload payment screenshot
+                      </label>
+                      <FileInput
+                        id="gcash-proof-dialog"
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="h-8 cursor-pointer text-[0.7rem]"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setPaymentProofFile(file);
+                        }}
+                      />
+                      {paymentProofFile && (
+                        <p className="text-[0.7rem] text-muted-foreground">
+                          Selected file: {paymentProofFile.name}
+                        </p>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
 

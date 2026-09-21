@@ -121,7 +121,7 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  variant?: "primary" | "brand" | "outline" | "danger";
+  variant?: "primary" | "brand" | "outline" | "danger" | "sky";
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
@@ -134,6 +134,7 @@ export function Button({
         styles.button,
         fullWidth && styles.buttonFullWidth,
         variant === "brand" && styles.buttonBrand,
+        variant === "sky" && styles.buttonSky,
         variant === "outline" && styles.buttonOutline,
         variant === "danger" && styles.buttonDanger,
         (disabled || loading) && styles.buttonDisabled,
@@ -242,6 +243,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.navy,
     borderRadius: 10,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: "center",
   },
   buttonFullWidth: {
@@ -250,6 +252,9 @@ const styles = StyleSheet.create({
   },
   buttonBrand: {
     backgroundColor: colors.brand,
+  },
+  buttonSky: {
+    backgroundColor: colors.sky,
   },
   buttonOutline: {
     backgroundColor: colors.white,

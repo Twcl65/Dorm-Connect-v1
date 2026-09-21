@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Loader2 } from "lucide-react";
+import { Eye, Loader2, X } from "lucide-react";
 import { uploadDormConnectFiles } from "@/lib/upload-file-client";
 import { ProofMedia } from "@/components/proof-media";
 
@@ -352,7 +352,7 @@ export default function StudentIncidentsPage() {
       {showDetailsDialog && selectedReport && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 pb-8 sm:py-10">
           <Card className="flex max-h-[calc(100vh-5rem)] w-full max-w-2xl flex-col border border-gray-300 bg-white">
-            <CardHeader className="shrink-0 border-b bg-muted/40 pb-3">
+            <CardHeader className="shrink-0 border-b bg-white pb-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <CardTitle className="text-base font-semibold text-slate-900">
@@ -363,15 +363,14 @@ export default function StudentIncidentsPage() {
                     {new Date(selectedReport.createdAt).toLocaleString()}
                   </p>
                 </div>
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 shrink-0 px-2 text-[0.7rem]"
+                  className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   onClick={() => setShowDetailsDialog(false)}
+                  aria-label="Close"
                 >
-                  Close
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </CardHeader>
             <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pt-4 text-xs text-slate-800">
@@ -432,16 +431,6 @@ export default function StudentIncidentsPage() {
                   </div>
                 </div>
               ) : null}
-              <div className="flex justify-end pt-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => setShowDetailsDialog(false)}
-                >
-                  Close
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>

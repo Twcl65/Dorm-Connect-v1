@@ -81,15 +81,17 @@ body {
     z-index: 1;
   }
 
-  /* Modal/dialog cards — white body; solid gray header band */
+  /* Modal/dialog cards — always white, even if OS dark mode was previously applied */
   .fixed.inset-0 .rounded-xl.border.border-gray-300.bg-white,
   .fixed.inset-0 .rounded-xl.border.border-gray-300.bg-card {
     overflow: hidden;
-    background-color: hsl(var(--card)) !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
   }
 
   .fixed.inset-0 .rounded-xl.border.border-gray-300 > .border-b:first-child {
-    background-color: hsl(var(--muted)) !important;
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
     border-top-left-radius: var(--radius);
     border-top-right-radius: var(--radius);
   }

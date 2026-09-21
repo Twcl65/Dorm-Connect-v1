@@ -25,6 +25,7 @@ import {
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { InfoGrid } from "@/components/info-grid";
 import { formatLeaseEndLabel } from "@/lib/listing-utils";
 
 export default function HomeScreen() {
@@ -101,29 +102,39 @@ export default function HomeScreen() {
 
         {active ? (
           <Card>
-            <Text style={styles.cardTitle}>{active.dormName}</Text>
-            <Text style={styles.meta}>Room {active.roomNo}</Text>
-            <Text style={styles.meta}>
-              {active.leaseMonths != null
-                ? `${active.leaseMonths} ${active.leaseMonths === 1 ? "month" : "months"}`
-                : active.leasePeriod}
-              {active.leaseEndDate
-                ? ` · ends ${formatLeaseEndLabel(active.leaseEndDate)}`
-                : ""}
-            </Text>
-            <Badge
-              label={`Stay: ${active.reservationStatus}`}
-              tone={active.reservationStatus === "Active" ? "success" : "warning"}
-            />
-            <Badge
-              label={`Rent: ${active.paymentStatus}`}
-              tone={
-                active.paymentStatus === "Paid"
-                  ? "success"
-                  : active.paymentStatus === "Overdue"
-                    ? "danger"
-                    : "warning"
-              }
+            <Text style={styles.cardTitle}>Current reservation</Text>
+            <InfoGrid
+              rows={[
+                [
+                  { label: "Dorm name", value: active.dormName },
+                  { label: "Room #", value: `Room ${active.roomNo}` },
+                ],
+                [
+                  {
+                    label: "Lease duration",
+                    value:
+                      active.leaseMonths != null
+                        ? `${active.leaseMonths} ${active.leaseMonths === 1 ? "month" : "months"}`
+                        : active.leasePeriod,
+                  },
+                  {
+                    label: "Move-out date",
+                    value: active.leaseEndDate
+                      ? formatLeaseEndLabel(active.leaseEndDate)
+                      : "—",
+                  },
+                ],
+                [
+                  {
+                    label: "Stay",
+                    value: active.stayLabel ?? active.reservationStatus,
+                  },
+                  {
+                    label: "Rent",
+                    value: active.rentLabel ?? active.paymentStatus,
+                  },
+                ],
+              ]}
             />
           </Card>
         ) : (
@@ -173,21 +184,6 @@ export default function HomeScreen() {
 
       </ScrollView>
     </Screen>
-  );
-}
-
-function QuickLink({
-  label,
-  onPress,
-}: {
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable style={styles.quickLink} onPress={onPress}>
-      <Text style={styles.quickLinkText}>{label}</Text>
-      <Text style={styles.chevron}>›</Text>
-    </Pressable>
   );
 }
 

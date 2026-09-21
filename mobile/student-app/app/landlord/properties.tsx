@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -68,6 +69,35 @@ export default function LandlordPropertiesScreen() {
     }
   };
 
+  const deleteProperty = (id: string, name: string) => {
+    Alert.alert(
+      "Delete Property",
+      `Are you sure you want to delete ${name}? This will also delete all rooms inside it.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            if (!token) return;
+            setLoading(true);
+            try {
+              await apiRequest(`/api/landlord/properties/${id}`, {
+                method: "DELETE",
+                token,
+              });
+              await load();
+            } catch (e) {
+              Alert.alert("Failed", e instanceof Error ? e.message : "Request failed.");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) return <CenteredLoader />;
 
   return (
@@ -113,6 +143,13 @@ export default function LandlordPropertiesScreen() {
               {item.operationalStatus ?? "—"} · Rooms:{" "}
               {item.totalRooms ?? "—"}
             </Text>
+            <View style={styles.cardActions}>
+              <Button
+                label="Delete"
+                variant="danger"
+                onPress={() => deleteProperty(item.id, item.name)}
+              />
+            </View>
           </Card>
         )}
       />
@@ -127,4 +164,5 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.muted, marginTop: 4 },
   empty: { fontSize: 13, color: colors.muted },
+  cardActions: { marginTop: 12 },
 });

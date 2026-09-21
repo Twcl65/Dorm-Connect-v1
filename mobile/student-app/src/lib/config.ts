@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 
 const API_PORT = 3000;
+export const PRODUCTION_API_URL = "https://dormconnect-sys.vercel.app";
 
 /** Metro / Expo dev server host (e.g. 192.168.1.5 from hostUri). */
 function getMetroHost(): string | null {
@@ -31,13 +32,32 @@ function isLoopbackUrl(base: string): boolean {
 export function getApiBaseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim()?.replace(/\/$/, "");
   const metroHost = getMetroHost();
+  const useProduction =
+    process.env.EXPO_PUBLIC_USE_PRODUCTION_API === "true";
+
+  // Expo Go on this PC should talk to local Next.js so landlord GCash
+  // saved on localhost is visible. Set EXPO_PUBLIC_USE_PRODUCTION_API=true
+  // to force https://dormconnect-sys.vercel.app.
+  if (
+    typeof __DEV__ !== "undefined" &&
+    __DEV__ &&
+    metroHost &&
+    !useProduction
+  ) {
+    if (
+      !fromEnv ||
+      isLoopbackUrl(fromEnv) ||
+      fromEnv.includes("vercel.app")
+    ) {
+      return `http://${metroHost}:${API_PORT}`;
+    }
+  }
 
   if (fromEnv && isLoopbackUrl(fromEnv) && metroHost) {
     return `http://${metroHost}:${API_PORT}`;
   }
   if (fromEnv) return fromEnv;
-  if (metroHost) return `http://${metroHost}:${API_PORT}`;
-  return `http://localhost:${API_PORT}`;
+  return PRODUCTION_API_URL;
 }
 
 /** True when Expo is on a real device but the API URL is still localhost. */
@@ -62,7 +82,9 @@ export function describeApiBaseUrl(): string {
 export function resolveMediaUrl(path: string | null | undefined): string | null {
   const p = path?.trim();
   if (!p) return null;
-  if (p.startsWith("http://") || p.startsWith("https://")) return p;
+  if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) {
+    return p;
+  }
   if (p.startsWith("/")) return `${getApiBaseUrl()}${p}`;
-  return null;
+  return `${getApiBaseUrl()}/${p.replace(/^\.?\//, "")}`;
 }

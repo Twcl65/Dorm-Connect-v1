@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -102,6 +103,35 @@ export default function LandlordRoomsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const deleteRoom = (id: string, roomNo: string) => {
+    Alert.alert(
+      "Delete Room",
+      `Are you sure you want to delete Room ${roomNo}? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            if (!token) return;
+            setLoading(true);
+            try {
+              await apiRequest(`/api/landlord/rooms/${id}`, {
+                method: "DELETE",
+                token,
+              });
+              await load(propertyId || undefined);
+            } catch (e) {
+              Alert.alert("Failed", e instanceof Error ? e.message : "Request failed.");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading && !refreshing) return <CenteredLoader />;
@@ -210,6 +240,13 @@ export default function LandlordRoomsScreen() {
             {item.occupants ? (
               <Text style={styles.occupants}>Occupied by: {item.occupants}</Text>
             ) : null}
+            <View style={styles.cardActions}>
+              <Button
+                label="Delete"
+                variant="danger"
+                onPress={() => deleteRoom(item.id, item.roomNo)}
+              />
+            </View>
           </Card>
         )}
       />
@@ -254,4 +291,5 @@ const styles = StyleSheet.create({
     color: colors.brand,
     marginTop: 4,
   },
+  cardActions: { marginTop: 12 },
 });

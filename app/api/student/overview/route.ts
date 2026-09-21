@@ -8,17 +8,22 @@ import {
 import { getPool } from "@/lib/db";
 import {
   buildStudentPaymentReminderHint,
+  countLeaseMonths,
   deriveTenantPaymentStatusFromSchedule,
   fetchMonthlySchedule,
+  resolveNextUnpaidDueFromSchedule,
   resolveUpcomingUnpaidMonthsFromSchedule,
 } from "@/lib/payment-schedule";
+import {
+  studentRentLabel,
+  studentStayLabel,
+} from "@/lib/student-status-labels";
 import { requireStudent } from "@/lib/require-student";
 import { MATCHED_STUDENT_LANDLORD_PAYMENTS_CTE } from "@/lib/student-landlord-payment-match";
 import {
   formatLeasePeriod,
   reservationLifecycle,
 } from "@/lib/student-db";
-import { countLeaseMonths } from "@/lib/payment-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +79,7 @@ export async function GET() {
         const leaseMonths = countLeaseMonths(ls, le);
         const reservationStatus = reservationLifecycle(x.status, le, now);
         let paymentStatus = mapRentPayment(x.rent_payment_status);
+        let rentLabel = studentRentLabel(null, paymentStatus);
         if (x.status === "Confirmed") {
           const schedule = await fetchMonthlySchedule(pool, {
             reservationId: x.id,
@@ -85,6 +91,10 @@ export async function GET() {
                 mapRentPayment(x.rent_payment_status)
               )
             );
+            rentLabel = studentRentLabel(
+              resolveNextUnpaidDueFromSchedule(schedule).urgency,
+              paymentStatus
+            );
           }
         }
         return {
@@ -95,7 +105,9 @@ export async function GET() {
           leaseMonths,
           leaseEndDate: x.lease_end.slice(0, 10),
           reservationStatus,
+          stayLabel: studentStayLabel(reservationStatus),
           paymentStatus,
+          rentLabel,
           monthlyRent: Number(x.monthly_rent),
         };
       })

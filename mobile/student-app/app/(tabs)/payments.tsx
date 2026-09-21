@@ -6,9 +6,8 @@ import {
   StyleSheet,
   Text,
   View,
-  Image,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import {
   apiRequest,
   formatSignInError,
@@ -17,24 +16,22 @@ import {
 } from "@/lib/api";
 import { PaymentDetailModal } from "@/components/payment-detail-modal";
 import { KeyboardAwareModal } from "@/components/keyboard-aware-modal";
-import { Ionicons } from "@expo/vector-icons";
-import { SelectField } from "@/components/select-field";
+import { GcashPaymentForm } from "@/components/gcash-payment-form";
 import {
   Badge,
+  Button,
   Card,
   CenteredLoader,
   Screen,
   Subtitle,
   Title,
   colors,
-  Input,
-  Button,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
-import { pickImagesFromLibrary } from "@/lib/landlord-rooms";
-import { uploadMobileFile } from "@/lib/upload";
+import { Ionicons } from "@expo/vector-icons";
+import { resolveMediaUrl } from "@/lib/config";
 
-type PaymentFilter = "all" | "manual" | "not_yet_paid";
+type PaymentFilter = "all" | "paid" | "not_yet_paid";
 
 function isManualPayment(item: PaymentRow): boolean {
   return (
@@ -49,7 +46,6 @@ function sourceTypeLabel(item: PaymentRow): string {
 }
 
 export default function PaymentsScreen() {
-  const router = useRouter();
   const { token } = useAuth();
   const [items, setItems] = useState<PaymentRow[]>([]);
   const [unpaidMonths, setUnpaidMonths] = useState<UnpaidRentMonth[]>([]);
@@ -58,12 +54,7 @@ export default function PaymentsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<PaymentFilter>("all");
   const [selected, setSelected] = useState<PaymentRow | null>(null);
-
-  const [payModalVisible, setPayModalVisible] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<UnpaidRentMonth | null>(null);
-  const [payAmount, setPayAmount] = useState("");
-  const [payProofImage, setPayProofImage] = useState<{ uri: string; fileName: string; mimeType: string } | null>(null);
-  const [paySubmitting, setPaySubmitting] = useState(false);
+  const [payMonth, setPayMonth] = useState<UnpaidRentMonth | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -76,55 +67,6 @@ export default function PaymentsScreen() {
     setItems(res.payments ?? []);
     setUnpaidMonths(res.unpaidMonths ?? []);
   }, [token]);
-
-  const handlePaySubmit = async () => {
-    if (!selectedMonth) {
-      setPayError("Please select a month to pay.");
-      return;
-    }
-    if (!payAmount || Number(payAmount) <= 0) {
-      setPayError("Please enter a valid amount.");
-      return;
-    }
-    if (!payProofImage) {
-      setPayError("Please select a GCash receipt screenshot.");
-      return;
-    }
-
-    setPaySubmitting(true);
-    setPayError(null);
-    try {
-      const imageUrl = await uploadMobileFile(
-        token!,
-        payProofImage.uri,
-        payProofImage.fileName,
-        payProofImage.mimeType
-      );
-
-      await apiRequest("/api/student/payments", {
-        token,
-        method: "POST",
-        body: {
-          reservationId: selectedMonth.reservationId,
-          amount: Number(payAmount),
-          method: "GCash",
-          status: "Pending",
-          proofImageUrl: imageUrl,
-          scheduleMonthNumber: selectedMonth.monthNumber,
-        },
-      });
-
-      setPayModalVisible(false);
-      setSelectedMonth(null);
-      setPayAmount("");
-      setPayProofImage(null);
-      await load();
-    } catch (err) {
-      setPayError(err instanceof Error ? err.message : "Submission failed.");
-    } finally {
-      setPaySubmitting(false);
-    }
-  };
 
   useFocusEffect(
     useCallback(() => {
@@ -144,8 +86,8 @@ export default function PaymentsScreen() {
   );
 
   const filteredPayments = useMemo(() => {
-    if (filter === "manual") {
-      return items.filter(isManualPayment);
+    if (filter === "paid") {
+      return items.filter((p) => p.status === "Paid");
     }
     if (filter === "all") return items;
     return [];
@@ -154,12 +96,13 @@ export default function PaymentsScreen() {
   const counts = useMemo(
     () => ({
       all: items.length,
-      manual: items.filter(isManualPayment).length,
+      paid: items.filter((p) => p.status === "Paid").length,
       notYetPaid: unpaidMonths.length,
     }),
     [items, unpaidMonths]
   );
 
+  const showUnpaidMonths = filter === "not_yet_paid";
   const monthOptions = useMemo(
     () =>
       unpaidMonths.map((m) => ({
@@ -170,8 +113,6 @@ export default function PaymentsScreen() {
     [unpaidMonths]
   );
 
-  const showUnpaidMonths = filter === "not_yet_paid";
-
   if (loading && items.length === 0 && unpaidMonths.length === 0) {
     return <CenteredLoader />;
   }
@@ -180,7 +121,7 @@ export default function PaymentsScreen() {
     <Screen>
       <Title>Payments</Title>
       <Subtitle>
-        Student app and manual payments, plus rent months not yet paid
+        All recorded payments, paid receipts, and months not yet paid
       </Subtitle>
 
 
@@ -188,7 +129,7 @@ export default function PaymentsScreen() {
         {(
           [
             ["all", "All", counts.all],
-            ["manual", "Manual", counts.manual],
+            ["paid", "Paid", counts.paid],
             ["not_yet_paid", "Not yet paid", counts.notYetPaid],
           ] as const
         ).map(([key, label, count]) => (
@@ -212,24 +153,6 @@ export default function PaymentsScreen() {
           </Pressable>
         ))}
       </View>
-
-      {unpaidMonths.length > 0 && (
-        <View style={{ marginBottom: 12 }}>
-          <Button
-            label="Submit GCash Payment"
-            variant="brand"
-            onPress={() => {
-              setPayModalVisible(true);
-              setPayError(null);
-              if (unpaidMonths.length > 0) {
-                const first = unpaidMonths[0];
-                setSelectedMonth(first);
-                setPayAmount(String(first.amount));
-              }
-            }}
-          />
-        </View>
-      )}
 
       {error && <Text style={styles.error}>{error}</Text>}
 
@@ -274,15 +197,13 @@ export default function PaymentsScreen() {
               </Text>
               <Text style={styles.meta}>{m.dueLabel}</Text>
               <Text style={styles.meta}>Due date: {m.dueDate}</Text>
-              <View style={{ marginTop: 10 }}>
+              <View style={styles.cardActions}>
                 <Button
-                  label="Pay Now"
+                  label="Pay now"
                   variant="brand"
                   onPress={() => {
-                    setPayModalVisible(true);
                     setPayError(null);
-                    setSelectedMonth(m);
-                    setPayAmount(String(m.amount));
+                    setPayMonth(m);
                   }}
                 />
               </View>
@@ -313,8 +234,8 @@ export default function PaymentsScreen() {
               <Text style={styles.empty}>
                 {items.length === 0
                   ? "No payments recorded yet."
-                  : filter === "manual"
-                    ? "No manual payments recorded."
+                  : filter === "paid"
+                    ? "No paid payments yet."
                     : "No payments match this filter."}
               </Text>
             </Card>
@@ -325,10 +246,14 @@ export default function PaymentsScreen() {
                 <Text style={styles.name}>
                   {item.dormName} · Room {item.roomNo}
                 </Text>
-                <Badge
-                  label={sourceTypeLabel(item)}
-                  tone={isManualPayment(item) ? "default" : "success"}
-                />
+                {item.status === "Paid" ? (
+                  <Badge label="Paid" tone="success" />
+                ) : (
+                  <Badge
+                    label={sourceTypeLabel(item)}
+                    tone={isManualPayment(item) ? "default" : "success"}
+                  />
+                )}
               </View>
               <Text style={styles.meta}>
                 ₱{item.amount.toLocaleString()} · {item.method}
@@ -343,127 +268,79 @@ export default function PaymentsScreen() {
               {item.referenceNo ? (
                 <Text style={styles.meta}>Ref: {item.referenceNo}</Text>
               ) : null}
-              <View style={styles.badges}>
-                <Badge
-                  label={item.status}
-                  tone={
-                    item.status === "Paid"
-                      ? "success"
-                      : item.status === "Overdue" || item.status === "Failed"
+              {item.status !== "Paid" ? (
+                <View style={styles.badges}>
+                  <Badge
+                    label={item.status}
+                    tone={
+                      item.status === "Overdue" || item.status === "Failed"
                         ? "danger"
                         : "warning"
-                  }
-                />
-              </View>
+                    }
+                  />
+                </View>
+              ) : null}
               <View style={styles.cardActions}>
-                <Pressable
-                  style={styles.receiptBtn}
-                  onPress={() =>
-                    router.push(
-                      `/payment-receipt/${encodeURIComponent(item.id)}`
-                    )
-                  }
-                >
-                  <Text style={styles.receiptBtnText}>Receipt</Text>
-                </Pressable>
-                <Pressable onPress={() => setSelected(item)}>
-                  <Text style={styles.detailsLink}>View details</Text>
-                </Pressable>
+                <Button
+                  label="View details"
+                  variant="sky"
+                  onPress={() => setSelected(item)}
+                />
               </View>
             </Card>
           )}
         />
       )}
 
-      {/* Pay Modal */}
-      <KeyboardAwareModal
-        visible={payModalVisible}
-        onRequestClose={() => setPayModalVisible(false)}
-        sheetStyle={styles.modalSheet}
-      >
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Submit GCash Payment</Text>
-          <Pressable
-            onPress={() => setPayModalVisible(false)}
-            hitSlop={8}
-            style={styles.closeBtn}
-          >
-            <Text style={styles.closeBtnText}>Close</Text>
-          </Pressable>
-        </View>
-
-        {payError && <Text style={styles.modalError}>{payError}</Text>}
-
-        <SelectField
-          label="Select rent month to pay"
-          placeholder="Choose a month"
-          value={selectedMonth ? String(selectedMonth.monthNumber) : ""}
-          options={monthOptions}
-          onChange={(val) => {
-            const month = unpaidMonths.find((m) => String(m.monthNumber) === val);
-            if (month) {
-              setSelectedMonth(month);
-              setPayAmount(String(month.amount));
-            }
-          }}
-          emptyMessage="No unpaid rent months"
-        />
-
-        <Text style={[styles.modalLabel, { marginTop: 14 }]}>Amount (₱)</Text>
-        <Input
-          keyboardType="numeric"
-          value={payAmount}
-          onChangeText={setPayAmount}
-          placeholder="0.00"
-        />
-
-        <Text style={styles.modalLabel}>Attach GCash Receipt screenshot</Text>
-        {payProofImage ? (
-          <View style={styles.imagePreviewWrap}>
-            <Image source={{ uri: payProofImage.uri }} style={styles.imagePreview} />
-            <Text style={styles.imageName}>{payProofImage.fileName}</Text>
-            <Button
-              label="Change Photo"
-              variant="outline"
-              fullWidth
-              onPress={async () => {
-                const picked = await pickImagesFromLibrary(1);
-                if (picked && picked[0]) {
-                  setPayProofImage(picked[0]);
-                }
-              }}
-            />
-          </View>
-        ) : (
-          <Button
-            label="Select GCash Receipt Photo"
-            variant="outline"
-            fullWidth
-            onPress={async () => {
-              const picked = await pickImagesFromLibrary(1);
-              if (picked && picked[0]) {
-                setPayProofImage(picked[0]);
-              }
-            }}
-          />
-        )}
-
-        <View style={{ marginTop: 24 }}>
-          <Button
-            label={paySubmitting ? "Submitting..." : "Submit Payment"}
-            variant="brand"
-            fullWidth
-            disabled={paySubmitting || !selectedMonth || !payAmount || !payProofImage}
-            onPress={handlePaySubmit}
-          />
-        </View>
-      </KeyboardAwareModal>
-
       <PaymentDetailModal
         visible={selected != null}
         payment={selected}
         onClose={() => setSelected(null)}
       />
+
+      <KeyboardAwareModal
+        visible={payMonth != null}
+        onRequestClose={() => setPayMonth(null)}
+      >
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Pay now</Text>
+          <Pressable onPress={() => setPayMonth(null)} hitSlop={8}>
+            <Ionicons name="close" size={22} color={colors.navy} />
+          </Pressable>
+        </View>
+        {payError ? <Text style={styles.error}>{payError}</Text> : null}
+        {token && payMonth?.reservationId ? (
+          <GcashPaymentForm
+            key={`${payMonth.reservationId}-${payMonth.monthNumber}`}
+            token={token}
+            target={{
+              reservationId: payMonth.reservationId,
+              amount: payMonth.amount,
+              landlordName: payMonth.landlordName || "Landlord",
+              gcashAccountName: payMonth.gcashAccountName,
+              gcashPhone: payMonth.gcashPhone,
+              gcashQrCodeUrl: resolveMediaUrl(payMonth.gcashQrCodeUrl),
+              monthNumber: payMonth.monthNumber,
+              description: `GCash rent — ${payMonth.monthLabel}`,
+            }}
+            monthOptions={monthOptions}
+            selectedMonthValue={String(payMonth.monthNumber)}
+            onMonthChange={(val) => {
+              const month = unpaidMonths.find(
+                (m) => String(m.monthNumber) === val
+              );
+              if (month) setPayMonth(month);
+            }}
+            onSuccess={() => {
+              setPayMonth(null);
+              void load();
+            }}
+            onError={setPayError}
+          />
+        ) : (
+          <Text style={styles.empty}>This month cannot be paid yet.</Text>
+        )}
+      </KeyboardAwareModal>
 
 
     </Screen>
@@ -502,103 +379,13 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: 13, color: "#64748b", marginTop: 4 },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-  cardActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-    gap: 8,
-  },
-  receiptBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.sky,
-    backgroundColor: "#f0f9ff",
-  },
-  receiptBtnText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.sky,
-  },
-  detailsLink: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.navy,
-    flex: 1,
-    textAlign: "right",
-  },
+  cardActions: { marginTop: 12 },
   empty: { fontSize: 13, color: "#64748b" },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: "90%",
-    paddingBottom: 24,
-  },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: colors.navy,
-  },
-  closeBtn: {
-    padding: 6,
-  },
-  closeBtnText: {
-    fontSize: 14,
-    color: colors.muted,
-    fontWeight: "600",
-  },
-  modalScroll: {
-    padding: 16,
-  },
-  modalError: {
-    color: "#dc2626",
-    fontSize: 13,
-    marginBottom: 12,
-    fontWeight: "500",
-  },
-  modalLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.muted,
-    textTransform: "uppercase",
-    marginBottom: 6,
-  },
-  imagePreviewWrap: {
-    alignSelf: "stretch",
-    width: "100%",
-    marginVertical: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: "#f8fafc",
-  },
-  imagePreview: {
-    width: "100%",
-    height: 200,
-    borderRadius: 8,
-    resizeMode: "contain",
     marginBottom: 8,
   },
-  imageName: {
-    fontSize: 12,
-    color: colors.muted,
-    marginBottom: 12,
-  },
+  modalTitle: { fontSize: 17, fontWeight: "700", color: colors.navy },
 });

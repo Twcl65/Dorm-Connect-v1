@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/api";
 import {
   Badge,
+  Button,
   Card,
   CenteredLoader,
   Screen,
@@ -23,11 +25,17 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
+function formatDate(iso?: string) {
+  if (!iso) return "—";
+  return new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString();
+}
+
 export default function LandlordReservationsScreen() {
   const { token } = useAuth();
   const [items, setItems] = useState<LandlordReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -55,6 +63,47 @@ export default function LandlordReservationsScreen() {
       })();
     }, [load])
   );
+
+  const decideExtension = (
+    item: LandlordReservation,
+    decision: "Approved" | "Rejected"
+  ) => {
+    Alert.alert(
+      decision === "Approved" ? "Approve extension?" : "Decline extension?",
+      `${item.name} asked to stay through ${formatDate(item.leaseExtension?.requestedEnd)}.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: decision === "Approved" ? "Approve" : "Decline",
+          style: decision === "Rejected" ? "destructive" : "default",
+          onPress: () => {
+            void (async () => {
+              if (!token) return;
+              setSavingId(item.id);
+              try {
+                await apiRequest(
+                  `/api/landlord/student-reservations/${item.id}`,
+                  {
+                    method: "PATCH",
+                    token,
+                    body: { leaseExtension: decision },
+                  }
+                );
+                await load();
+              } catch (e) {
+                Alert.alert(
+                  "Could not update",
+                  e instanceof Error ? e.message : "Request failed."
+                );
+              } finally {
+                setSavingId(null);
+              }
+            })();
+          },
+        },
+      ]
+    );
+  };
 
   if (loading && items.length === 0) return <CenteredLoader />;
 
@@ -109,6 +158,32 @@ export default function LandlordReservationsScreen() {
             {item.rentPaymentStatus ? (
               <Text style={styles.meta}>Rent: {item.rentPaymentStatus}</Text>
             ) : null}
+            {item.leaseExtension?.status === "Pending" ? (
+              <>
+                <View style={{ marginTop: 8 }}>
+                  <Badge label="Extension request" tone="warning" />
+                </View>
+                <Text style={styles.meta}>
+                  Requested last day: {formatDate(item.leaseExtension.requestedEnd)}
+                </Text>
+                <View style={styles.actions}>
+                  <Button
+                    label="Approve extension"
+                    variant="sky"
+                    onPress={() => decideExtension(item, "Approved")}
+                    disabled={savingId === item.id}
+                    loading={savingId === item.id}
+                  />
+                  <View style={{ height: 8 }} />
+                  <Button
+                    label="Decline extension"
+                    variant="danger"
+                    onPress={() => decideExtension(item, "Rejected")}
+                    disabled={savingId === item.id}
+                  />
+                </View>
+              </>
+            ) : null}
           </Card>
         )}
       />
@@ -127,4 +202,5 @@ const styles = StyleSheet.create({
   },
   name: { flex: 1, fontSize: 15, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.muted, marginTop: 4 },
+  actions: { marginTop: 12 },
 });

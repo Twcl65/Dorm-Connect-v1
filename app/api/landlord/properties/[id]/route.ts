@@ -216,34 +216,38 @@ export async function DELETE(_req: Request, context: Ctx) {
 
   try {
     const pool = await getPool();
-    const { rows: block } = await pool.query<{ b: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM public.student_dorm_reservations s
-         JOIN public.landlord_rooms r ON r.id = s.room_id
-         WHERE r.property_id = $1::uuid AND s.status IN ('Pending', 'Confirmed')
-       ) OR EXISTS (
-         SELECT 1 FROM public.landlord_tenant_leases l
-         WHERE l.property_id = $1::uuid
-       ) AS b`,
-      [id]
-    );
-    if (block[0]?.b) {
-      return NextResponse.json(
-        {
-          error:
-            "Cannot delete this property while it has active reservations or tenant leases.",
-        },
-        { status: 400 }
-      );
-    }
 
-    const { rowCount } = await pool.query(
-      `DELETE FROM public.landlord_properties
-       WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
-      [id, session.sub]
-    );
-    if (!rowCount) {
-      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM public.landlord_accreditation_requests
+         WHERE property_id = $1::uuid
+            OR (
+              owner_user_id = $2::uuid
+              AND property_id IS NULL
+              AND lower(trim(dorm_name)) = lower(trim((
+                SELECT name FROM public.landlord_properties
+                WHERE id = $1::uuid AND owner_user_id = $2::uuid
+              )))
+            )`,
+        [id, session.sub]
+      );
+      const { rowCount } = await client.query(
+        `DELETE FROM public.landlord_properties
+         WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+        [id, session.sub]
+      );
+      if (!rowCount) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "Not found." }, { status: 404 });
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
     }
     await landlordLog(pool, session.sub, `Deleted property ${id}`);
     invalidateLandlordUser(session.sub);

@@ -101,29 +101,39 @@ export async function GET() {
         );
         const nextDue = resolveNextUnpaidDueFromSchedule(monthlySchedule);
 
-        // Fetch balances from linked student reservation (if any)
+        // Fetch balances and lease extension from linked student reservation (if any)
         let advancePayments = 0;
         let deposits = 0;
         let remainingBalance = 0;
+        let leaseExtension = null;
+        
         const { rows: sr2 } = await pool.query<{ student_reservation_id: string | null }>(
           `SELECT student_reservation_id FROM public.landlord_tenant_leases WHERE id = $1::uuid`,
           [r.id]
         );
         const linkedResId = sr2[0]?.student_reservation_id;
         if (linkedResId) {
-          const { rows: bal } = await pool.query<{
+          const { rows: resData } = await pool.query<{
             advance_amount: string;
             deposit_amount: string;
             balance_remaining: string;
+            lease_extension_status: string | null;
+            lease_extension_requested_end: string | null;
           }>(
-            `SELECT advance_amount::text, deposit_amount::text, balance_remaining::text
+            `SELECT advance_amount::text, deposit_amount::text, balance_remaining::text,
+                    lease_extension_status, lease_extension_requested_end::text
              FROM public.student_dorm_reservations WHERE id = $1::uuid`,
             [linkedResId]
           );
-          if (bal[0]) {
-            advancePayments = Number(bal[0].advance_amount) || 0;
-            deposits = Number(bal[0].deposit_amount) || 0;
-            remainingBalance = Number(bal[0].balance_remaining) || 0;
+          if (resData[0]) {
+            advancePayments = Number(resData[0].advance_amount) || 0;
+            deposits = Number(resData[0].deposit_amount) || 0;
+            remainingBalance = Number(resData[0].balance_remaining) || 0;
+            const { mapLeaseExtension } = await import("@/lib/lease-extension");
+            leaseExtension = mapLeaseExtension(
+              resData[0].lease_extension_status,
+              resData[0].lease_extension_requested_end
+            );
           }
         } else {
           // For manual leases without a reservation, calculate remaining from schedule
@@ -136,6 +146,7 @@ export async function GET() {
           id: r.id,
           roomNo: r.room_no,
           name: r.tenant_name,
+          propertyName: r.property_name,
           leaseStart: r.lease_start.slice(0, 10),
           leaseEnd: r.lease_end.slice(0, 10),
           leasePeriod: formatPeriod(r.lease_start, r.lease_end),
@@ -157,6 +168,8 @@ export async function GET() {
           advancePayments,
           deposits,
           remainingBalance,
+          leaseExtension,
+          reservationId: linkedResId,
         };
       })
     );

@@ -26,6 +26,7 @@ type Props = {
   onRefresh: () => Promise<void>;
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
+  onOpen?: (item: NotificationItem) => void;
 };
 
 export function NotificationsModal({
@@ -37,6 +38,7 @@ export function NotificationsModal({
   onRefresh,
   onMarkRead,
   onMarkAllRead,
+  onOpen,
 }: Props) {
   const [isPulling, setIsPulling] = useState(false);
 
@@ -79,6 +81,7 @@ export function NotificationsModal({
                 <Pressable
                   onPress={() => {
                     if (!item.read) onMarkRead(item.id);
+                    onOpen?.(item);
                   }}
                 >
                   <Card
@@ -93,6 +96,7 @@ export function NotificationsModal({
                       {item.category} · {formatWhen(item.createdAt)}
                     </Text>
                     <Text style={styles.itemBody}>{item.body}</Text>
+                    <Text style={styles.openHint}>Tap to open →</Text>
                     {!item.read && <Badge label="Unread" tone="warning" />}
                   </Card>
                 </Pressable>
@@ -140,4 +144,10 @@ const styles = StyleSheet.create({
   itemTitle: { fontSize: 15, fontWeight: "600", color: colors.navy },
   itemMeta: { fontSize: 12, color: colors.muted, marginTop: 4 },
   itemBody: { fontSize: 14, color: "#334155", marginTop: 6, lineHeight: 20 },
+  openHint: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.sky,
+    marginTop: 8,
+  },
 });

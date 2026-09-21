@@ -20,10 +20,22 @@ export default function LandlordMoreTab() {
         icon="bed-outline"
       />
       <MenuLink
+        href="/landlord/tenants"
+        label="Tenants"
+        subtitle="Manage active leases and move-outs"
+        icon="people-outline"
+      />
+      <MenuLink
         href="/landlord/reports"
         label="Manage dorm reports"
         subtitle="Download tenant, payment, and room reports"
         icon="document-text-outline"
+      />
+      <MenuLink
+        href="/landlord/tenant-reports"
+        label="Tenant Reports (OSA)"
+        subtitle="Report tenants to the OSA and view status"
+        icon="alert-circle-outline"
       />
       <MenuLink
         href="/landlord/activity-logs"

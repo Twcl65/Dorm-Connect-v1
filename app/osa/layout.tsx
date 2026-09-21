@@ -19,6 +19,7 @@ export default function OsaLayout({ children }: { children: ReactNode }) {
           icon: RoleIcons.dashboard,
         },
         { label: "Announcements", href: "/osa/announcements", icon: RoleIcons.announcements },
+        { label: "Generate Reports", href: "/osa/reports", icon: RoleIcons.dashboard },
         { label: "Account & settings", href: "/osa/settings", icon: RoleIcons.settings }
       ]}
     >

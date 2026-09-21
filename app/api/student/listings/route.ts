@@ -41,6 +41,7 @@ export async function GET() {
       room_no: string;
       monthly_rate: string;
       capacity: number;
+      occupied_count: number;
       listing_location: string | null;
       listing_description: string | null;
       remarks: string | null;
@@ -53,6 +54,7 @@ export async function GET() {
       latitude: string | null;
       longitude: string | null;
       landlord_name: string;
+      landlord_user_id: string;
       property_id: string;
       listing_image_urls: unknown;
       listing_background_url: string | null;
@@ -61,6 +63,24 @@ export async function GET() {
       room_details: string | null;
     }>(
       `SELECT r.id AS room_id, r.room_no, r.monthly_rate::text, r.capacity,
+              COALESCE((
+                SELECT COUNT(*)::int FROM (
+                  SELECT l.id FROM public.landlord_tenant_leases l
+                  WHERE l.room_id = r.id
+                  UNION ALL
+                  SELECT s.id FROM public.student_dorm_reservations s
+                  WHERE s.room_id = r.id
+                    AND s.status IN ('Pending', 'Confirmed')
+                    AND NOT EXISTS (
+                      SELECT 1 FROM public.landlord_tenant_leases l2
+                      WHERE l2.student_reservation_id = s.id
+                    )
+                  UNION ALL
+                  SELECT lr.id FROM public.landlord_reservations lr
+                  WHERE lr.room_id = r.id
+                    AND lr.status IN ('Pending', 'Confirmed')
+                ) occ
+              ), 0) AS occupied_count,
               r.listing_location, r.listing_description, r.remarks,
               r.listing_image_urls, r.listing_background_url,
               r.room_image_urls, r.room_size_label, r.room_details,
@@ -69,10 +89,11 @@ export async function GET() {
               p.description AS property_description,
               p.cover_image_url,
               p.latitude::text AS latitude, p.longitude::text AS longitude,
-              u.full_name AS landlord_name, p.id AS property_id
+              u.full_name AS landlord_name, u.id AS landlord_user_id, p.id AS property_id
        FROM public.landlord_rooms r
        JOIN public.landlord_properties p ON p.id = r.property_id
-       JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
+       JOIN public.boarding_house_app_users u
+         ON u.id = COALESCE(p.owner_user_id, r.owner_user_id)
        WHERE r.is_listed = true
          AND r.status = 'Available'
          AND p.operational_status <> 'Not Operating'
@@ -137,6 +158,10 @@ export async function GET() {
             ? Number(lngRaw)
             : null;
 
+        const occupied = Math.max(0, Number(row.occupied_count) || 0);
+        const capacityNum = Math.max(1, Number(row.capacity) || 1);
+        const availableSlots = Math.max(0, capacityNum - occupied);
+
         return {
           id: row.room_id,
           name: `${row.property_name} – Room ${row.room_no}`,
@@ -146,8 +171,11 @@ export async function GET() {
           description: listingBody,
           distance: "—",
           landlord: row.landlord_name,
-          roomType: `${row.capacity}-bed capacity`,
-          capacity: String(row.capacity),
+          landlordUserId: row.landlord_user_id,
+          roomType: `${capacityNum}-bed capacity`,
+          capacity: String(capacityNum),
+          occupied,
+          availableSlots,
           roomSizeLabel: sizeLine ?? null,
           roomDetails: extra ?? null,
           amenities,

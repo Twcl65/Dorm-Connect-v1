@@ -1,25 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { apiRequest, type NotificationItem } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { loadNotifications } from "@/lib/native-notifications";
 
-// Configure notifications to show in the foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+void loadNotifications().then((Notifications) => {
+  Notifications?.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
 });
 
 /** Register for Expo push notifications and return the token string. */
 async function registerForPushNotifications(): Promise<string | null> {
   try {
-    // Request permission
+    const Notifications = await loadNotifications();
+    if (!Notifications) return null;
+
     const { status: existingStatus } =
       await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -31,7 +34,6 @@ async function registerForPushNotifications(): Promise<string | null> {
       return null;
     }
 
-    // Android needs a notification channel
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
         name: "Default",
@@ -41,12 +43,11 @@ async function registerForPushNotifications(): Promise<string | null> {
       });
     }
 
-    // Get the Expo push token
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
     const tokenData = await Notifications.getExpoPushTokenAsync(
       projectId ? { projectId } : undefined
     );
-    return tokenData.data; // e.g. "ExponentPushToken[xxx]"
+    return tokenData.data;
   } catch (err) {
     if (__DEV__) console.warn("[push] Failed to get push token:", err);
     return null;
@@ -92,21 +93,25 @@ export function useNotifications() {
       const newItems = res.notifications ?? [];
       setItems(newItems);
 
-      // Trigger local push notification for new unread items after initial load
       if (isInitialized) {
-        for (const item of newItems) {
-          if (!item.read && !seenIds.has(item.id)) {
-            try {
-              void Notifications.scheduleNotificationAsync({
-                content: {
-                  title: item.title,
-                  body: item.body,
-                  ...(Platform.OS === "android" ? { channelId: "default" } : {}),
-                },
-                trigger: null,
-              });
-            } catch {
-              // fail silently
+        const Notifications = await loadNotifications();
+        if (Notifications) {
+          for (const item of newItems) {
+            if (!item.read && !seenIds.has(item.id)) {
+              try {
+                void Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: item.title,
+                    body: item.body,
+                    ...(Platform.OS === "android"
+                      ? { channelId: "default" }
+                      : {}),
+                  },
+                  trigger: null,
+                });
+              } catch {
+                // fail silently
+              }
             }
           }
         }
@@ -128,7 +133,7 @@ export function useNotifications() {
 
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 3_600_000); // poll every 1 hour
+    const t = setInterval(() => void load(), 900_000); // 15 minutes
     return () => clearInterval(t);
   }, [load]);
 

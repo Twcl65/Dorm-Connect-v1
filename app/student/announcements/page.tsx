@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, Megaphone } from "lucide-react";
 
 const NEW_THRESHOLD_DAYS = 7;
 
@@ -94,17 +94,18 @@ export default function StudentAnnouncementsPage() {
         {rows.map((a) => {
           const isNew = isNewAnnouncement(a.date);
           return (
-            <Card key={a.id} className="border border-gray-200 bg-white">
+            <Card key={a.id} className="border border-slate-200 bg-white shadow-none">
               <CardHeader className="pb-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <CardTitle className="text-sm font-semibold text-slate-900">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <Megaphone className="h-4 w-4 shrink-0 text-slate-700" />
                     {a.title}
                   </CardTitle>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {a.source === "landlord" && a.propertyName ? (
                       <Badge
                         variant="outline"
-                        className="rounded-full border-amber-200 bg-amber-50 px-2 py-0.5 text-[0.6rem] font-medium text-amber-900"
+                        className="rounded-full px-2 py-0.5 text-[0.6rem] font-medium"
                       >
                         Landlord · {a.propertyName}
                       </Badge>
@@ -116,15 +117,11 @@ export default function StudentAnnouncementsPage() {
                         OSA
                       </Badge>
                     )}
-                    <Badge
-                      className={
-                        isNew
-                          ? "rounded-full bg-emerald-100 px-3 py-1 text-[0.65rem] font-semibold text-emerald-800"
-                          : "rounded-full bg-slate-100 px-3 py-1 text-[0.65rem] font-medium text-slate-600"
-                      }
-                    >
-                      {isNew ? "New" : "Archive"}
-                    </Badge>
+                    {isNew ? (
+                      <Badge className="rounded-full bg-emerald-100 px-3 py-1 text-[0.65rem] font-semibold text-emerald-800">
+                        New
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
               </CardHeader>

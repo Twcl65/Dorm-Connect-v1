@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PenSquare, Eye, UserPlus, Loader2, CalendarClock } from "lucide-react";
+import { PenSquare, Eye, UserPlus, Loader2, CalendarClock, ShieldAlert, AlertTriangle, Check, X } from "lucide-react";
 import { cn } from "@/components/ui/utils";
 import type { DueUrgency } from "@/lib/payment-schedule";
 
@@ -47,6 +47,11 @@ type Tenant = {
   daysUntilDue?: number | null;
   dueUrgency?: DueUrgency;
   dueLabel?: string | null;
+  reservationId?: string | null;
+  leaseExtension?: {
+    status: "Pending" | "Approved" | "Rejected";
+    requestedEnd: string;
+  } | null;
 };
 
 const ROWS_PER_PAGE = 5;
@@ -160,6 +165,9 @@ export function LandlordTenantsPanel({
     useState<Tenant | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reportTitle, setReportTitle] = useState("");
+  const [reportDescription, setReportDescription] = useState("");
   const [editName, setEditName] = useState("");
   const [editLeaseStart, setEditLeaseStart] = useState("");
   const [editLeaseEnd, setEditLeaseEnd] = useState("");
@@ -246,6 +254,35 @@ export function LandlordTenantsPanel({
       cancelled = true;
     };
   }, [showAddDialog]);
+
+  const decideLeaseExtension = async (
+    t: Tenant,
+    decision: "Approved" | "Rejected"
+  ) => {
+    if (!t.reservationId) return;
+    setSaving(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(
+        `/api/landlord/student-reservations/${t.reservationId}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ leaseExtension: decision }),
+        }
+      );
+      const j = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(j.error ?? "Failed to update extension");
+      await loadData();
+    } catch (e) {
+      setLoadError(
+        e instanceof Error ? e.message : "Failed to update extension"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const summaryCards = useMemo(
     () => [
@@ -408,6 +445,78 @@ export function LandlordTenantsPanel({
           </Card>
         ))}
       </section>
+
+      <Card className="border-sky-200 bg-sky-50/50 shadow-sm">
+        <CardHeader className="pb-3 border-b border-sky-100 bg-sky-50">
+          <CardTitle className="text-base font-semibold text-sky-900 flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-sky-600" />
+            Pending Lease Extensions
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {!tenantsData.some((t) => t.leaseExtension?.status === "Pending") ? (
+            <div className="text-sm text-sky-800 py-2">
+              No pending lease extension requests from students.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {tenantsData
+                .filter((t) => t.leaseExtension?.status === "Pending")
+                .map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-lg border border-sky-200 shadow-sm"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-900">{t.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          (Room {t.roomNo})
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Requested to extend stay until{" "}
+                        <span className="font-medium text-sky-700">
+                          {t.leaseExtension?.requestedEnd
+                            ? new Date(`${t.leaseExtension.requestedEnd}T12:00:00`).toLocaleDateString(
+                                undefined,
+                                {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )
+                            : ""}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        disabled={saving}
+                        onClick={() => void decideLeaseExtension(t, "Rejected")}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Decline
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={saving}
+                        onClick={() => void decideLeaseExtension(t, "Approved")}
+                      >
+                        <Check className="h-4 w-4 mr-1" />
+                        Approve
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {upcomingDue.length > 0 && (
         <Card className="border border-amber-300 bg-amber-50/30 shadow-sm">
@@ -579,7 +688,7 @@ export function LandlordTenantsPanel({
                         }}
                       >
                         <Eye className="h-3 w-3" />
-                        View Details
+                        Details
                       </Button>
                     </div>
                   </TableCell>
@@ -1197,6 +1306,104 @@ export function LandlordTenantsPanel({
                   }}
                 >
                   {saving ? "Saving…" : "Add"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      {/* Report tenant dialog */}
+      {showReportDialog && selectedTenant && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="w-full max-w-md border border-amber-300 bg-white">
+            <CardHeader className="pb-2 border-b bg-amber-50/50">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-amber-600" />
+                    Report to OSA Admin
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Report <span className="font-semibold text-slate-900">{selectedTenant.name}</span> to the Office of Student Affairs.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[0.7rem]"
+                  onClick={() => setShowReportDialog(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4 text-xs text-slate-800">
+              <div className="space-y-1.5">
+                <label className="text-[0.75rem] font-medium text-slate-800">
+                  Reason for report
+                </label>
+                <Input
+                  value={reportTitle}
+                  onChange={(e) => setReportTitle(e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="E.g. Unpaid rent, violation of rules, etc."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[0.75rem] font-medium text-slate-800">
+                  Additional Details
+                </label>
+                <textarea
+                  value={reportDescription}
+                  onChange={(e) => setReportDescription(e.target.value)}
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-h-[100px] resize-y text-xs"
+                  placeholder="Provide more context about the situation..."
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setShowReportDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 px-3 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                  disabled={saving || !reportTitle.trim() || !reportDescription.trim()}
+                  onClick={async () => {
+                    setSaving(true);
+                    setLoadError(null);
+                    try {
+                      const res = await fetch("/api/landlord/reports/osa", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          leaseId: selectedTenant.id,
+                          tenantName: selectedTenant.name,
+                          roomNo: selectedTenant.roomNo,
+                          propertyName: propertyName,
+                          title: reportTitle.trim(),
+                          description: reportDescription.trim(),
+                        }),
+                      });
+                      const j = (await res.json()) as { error?: string };
+                      if (!res.ok) throw new Error(j.error ?? "Failed to submit report");
+                      setShowReportDialog(false);
+                    } catch (e) {
+                      setLoadError(e instanceof Error ? e.message : "Failed to submit report");
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  {saving ? "Submitting…" : "Submit Report"}
                 </Button>
               </div>
             </CardContent>

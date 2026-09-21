@@ -173,19 +173,37 @@ export default function IncidentsTab() {
             <Text style={styles.meta}>
               {new Date(item.createdAt).toLocaleString()}
             </Text>
-            <Badge label={item.status} tone="warning" />
+            <Badge
+              label={item.status}
+              tone={
+                item.status === "Resolved"
+                  ? "success"
+                  : item.landlordReply
+                    ? "success"
+                    : "warning"
+              }
+            />
             <Text style={styles.body}>{item.description}</Text>
             {item.landlordReply ? (
               <View style={styles.replyBox}>
                 <Text style={styles.replyLabel}>
                   Landlord reply
+                  {item.landlordName ? ` · ${item.landlordName}` : ""}
                   {item.landlordRepliedAt
                     ? ` · ${new Date(item.landlordRepliedAt).toLocaleDateString()}`
                     : ""}
                 </Text>
                 <Text style={styles.replyBody}>{item.landlordReply}</Text>
               </View>
-            ) : null}
+            ) : (
+              <View style={styles.waitingBox}>
+                <Text style={styles.waitingLabel}>Waiting for landlord reply</Text>
+                <Text style={styles.waitingBody}>
+                  Your landlord will respond here. Pull to refresh after they
+                  reply.
+                </Text>
+              </View>
+            )}
           </Card>
         )}
       />
@@ -263,6 +281,21 @@ const styles = StyleSheet.create({
   },
   replyLabel: { fontSize: 11, fontWeight: "600", color: colors.sky, marginBottom: 4 },
   replyBody: { fontSize: 13, color: "#334155", lineHeight: 19 },
+  waitingBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+  },
+  waitingLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#92400e",
+    marginBottom: 4,
+  },
+  waitingBody: { fontSize: 13, color: "#78350f", lineHeight: 19 },
   modalSheet: {
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,

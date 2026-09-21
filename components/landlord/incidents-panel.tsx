@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 
 type Report = {
   id: string;
@@ -16,6 +17,8 @@ type Report = {
   roomNo: string | null;
   propertyName: string | null;
   reporterName: string;
+  landlordReply?: string | null;
+  landlordRepliedAt?: string | null;
 };
 
 export type LandlordIncidentsPanelProps = {
@@ -29,6 +32,7 @@ export function LandlordIncidentsPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setError(null);
@@ -51,6 +55,28 @@ export function LandlordIncidentsPanel({
     void load();
   }, [load]);
 
+  const sendReply = async (id: string) => {
+    const reply = (replyDraft[id] ?? "").trim();
+    if (!reply) return;
+    setUpdating(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/landlord/incidents/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reply }),
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Reply failed");
+      setReplyDraft((prev) => ({ ...prev, [id]: "" }));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reply failed");
+    } finally {
+      setUpdating(null);
+    }
+  };
   const setStatus = async (id: string, status: string) => {
     setUpdating(id);
     setError(null);
@@ -128,7 +154,7 @@ export function LandlordIncidentsPanel({
             reports.map((r) => (
               <div
                 key={r.id}
-                className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-2"
+                className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 space-y-3"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -167,8 +193,39 @@ export function LandlordIncidentsPanel({
                     ))}
                   </div>
                 )}
+                
+                {r.landlordReply ? (
+                  <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+                    <p className="font-semibold text-sky-800">Your Reply <span className="text-[0.65rem] font-normal text-sky-700">({new Date(r.landlordRepliedAt!).toLocaleString()})</span></p>
+                    <p className="mt-1 whitespace-pre-wrap">{r.landlordReply}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 mt-2">
+                    <Textarea
+                      placeholder="Type a reply to the student..."
+                      className="min-h-[60px] text-xs"
+                      value={replyDraft[r.id] ?? ""}
+                      onChange={(e) =>
+                        setReplyDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
+                      }
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 text-[0.7rem]"
+                        disabled={updating === r.id || !(replyDraft[r.id] ?? "").trim()}
+                        onClick={() => void sendReply(r.id)}
+                      >
+                        {updating === r.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                        Send Reply
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {r.status !== "Resolved" ? (
-                  <div className="flex flex-wrap gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
                     <Button
                       type="button"
                       size="sm"

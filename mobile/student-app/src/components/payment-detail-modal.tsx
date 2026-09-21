@@ -1,19 +1,11 @@
-import { useMemo, useState } from "react";
-import {
-  Image,
-  Linking,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import type { PaymentRow } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/config";
 import { Badge, Button, Card, colors } from "@/components/ui";
+import { InfoGrid } from "@/components/info-grid";
+import { bottomNavPad } from "@/lib/nav-inset";
 
 type Props = {
   visible: boolean;
@@ -27,119 +19,60 @@ function statusTone(status: string): "success" | "warning" | "danger" | "default
   return "warning";
 }
 
-function isImageAttachment(url: string): boolean {
-  const lower = url.split("?")[0]?.toLowerCase() ?? "";
+function paymentTypeLabel(payment: PaymentRow) {
   return (
-    !lower.endsWith(".pdf") &&
-    !lower.endsWith(".doc") &&
-    !lower.endsWith(".docx")
-  );
-}
-
-function ProofAttachment({
-  label,
-  url,
-  caption,
-}: {
-  label: string;
-  url: string;
-  caption?: string;
-}) {
-  const resolved = resolveMediaUrl(url);
-  const [lightbox, setLightbox] = useState(false);
-
-  if (!resolved) return null;
-
-  const showImage = isImageAttachment(resolved);
-
-  return (
-    <View style={styles.proofBlock}>
-      <Text style={styles.label}>{label}</Text>
-      {caption ? <Text style={styles.proofCaption}>{caption}</Text> : null}
-      {showImage ? (
-        <>
-          <Pressable
-            onPress={() => setLightbox(true)}
-            style={styles.proofImageWrap}
-            accessibilityRole="imagebutton"
-            accessibilityLabel={`${label}, tap to enlarge`}
-          >
-            <Image
-              source={{ uri: resolved }}
-              style={styles.proofImage}
-              resizeMode="contain"
-            />
-          </Pressable>
-          <Text style={styles.tapHint}>Tap to enlarge</Text>
-          <Modal visible={lightbox} transparent animationType="fade">
-            <Pressable style={styles.lightbox} onPress={() => setLightbox(false)}>
-              <Pressable
-                style={styles.lightboxClose}
-                onPress={() => setLightbox(false)}
-                hitSlop={8}
-              >
-                <Ionicons name="close" size={28} color="#fff" />
-              </Pressable>
-              <Image
-                source={{ uri: resolved }}
-                style={styles.lightboxImage}
-                resizeMode="contain"
-                accessibilityLabel={label}
-              />
-            </Pressable>
-          </Modal>
-        </>
-      ) : (
-        <Pressable
-          onPress={() => void Linking.openURL(resolved)}
-          style={styles.docLink}
-        >
-          <Ionicons name="document-outline" size={18} color={colors.sky} />
-          <Text style={styles.docLinkText}>Open document</Text>
-        </Pressable>
-      )}
-    </View>
+    payment.channelLabel ??
+    (payment.source === "landlord_entry" ? "Manual" : "Student app")
   );
 }
 
 export function PaymentDetailModal({ visible, payment, onClose }: Props) {
   const router = useRouter();
-  const attachments = useMemo(() => {
-    if (!payment) return [];
-    const list: { key: string; label: string; url: string; caption?: string }[] =
-      [];
-    if (payment.proofImageUrl) {
-      list.push({
-        key: "proof",
-        label: "Payment proof",
-        url: payment.proofImageUrl,
-        caption: "Attachment from your payment submission.",
-      });
-    }
-    if (payment.landlordProofUrl) {
-      list.push({
-        key: "landlord",
-        label: "Landlord proof",
-        url: payment.landlordProofUrl,
-        caption: "Uploaded when your landlord recorded this payment.",
-      });
-    }
-    if (payment.receiptUrl) {
-      list.push({
-        key: "receipt",
-        label: "Receipt",
-        url: payment.receiptUrl,
-        caption: "Uploaded receipt reference.",
-      });
-    }
-    return list;
-  }, [payment]);
+  const insets = useSafeAreaInsets();
 
   if (!payment) return null;
+
+  const receiptFile =
+    resolveMediaUrl(payment.receiptUrl) ??
+    resolveMediaUrl(payment.proofImageUrl) ??
+    resolveMediaUrl(payment.landlordProofUrl);
+  const openOfficialReceipt = () => {
+    onClose();
+    router.push(`/payment-receipt/${encodeURIComponent(payment.id)}`);
+  };
+
+  const downloadReceipt = async () => {
+    if (receiptFile) {
+      try {
+        await Linking.openURL(receiptFile);
+      } catch {
+        Alert.alert("Receipt", "Could not open the receipt file.");
+      }
+      return;
+    }
+    try {
+      await Share.share({
+        title: "DormConnect payment receipt",
+        message: [
+          `DormConnect receipt`,
+          `${payment.dormName} · Room ${payment.roomNo}`,
+          `Amount: ₱${payment.amount.toLocaleString()}`,
+          `Status: ${payment.status}`,
+          payment.paidAt ? `Paid: ${payment.paidAt}` : `Recorded: ${payment.date}`,
+          payment.referenceNo ? `Ref: ${payment.referenceNo}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      });
+    } catch {
+      openOfficialReceipt();
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.header}>
             <View style={styles.headerText}>
@@ -150,9 +83,6 @@ export function PaymentDetailModal({ visible, payment, onClose }: Props) {
                 <Text style={styles.sub}>{payment.location}</Text>
               ) : null}
             </View>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={24} color={colors.navy} />
-            </Pressable>
           </View>
 
           <ScrollView
@@ -160,94 +90,82 @@ export function PaymentDetailModal({ visible, payment, onClose }: Props) {
             contentContainerStyle={styles.scrollContent}
           >
             <Card>
-              <Text style={styles.label}>Payment type</Text>
-              <Text style={styles.value}>
-                {payment.channelLabel ??
-                  (payment.source === "landlord_entry"
-                    ? "Manual"
-                    : "Student app")}
-              </Text>
-              <Text style={styles.label}>Status</Text>
-              <Badge label={payment.status} tone={statusTone(payment.status)} />
-              <Text style={styles.label}>Amount</Text>
-              <Text style={styles.value}>
-                ₱{payment.amount.toLocaleString()}
-              </Text>
-              <Text style={styles.label}>Method</Text>
-              <Text style={styles.value}>{payment.method}</Text>
-              <Text style={styles.label}>Recorded on</Text>
-              <Text style={styles.value}>{payment.date}</Text>
-              {payment.paidAt ? (
-                <>
-                  <Text style={styles.label}>Paid on</Text>
-                  <Text style={styles.value}>{payment.paidAt}</Text>
-                </>
-              ) : null}
-              {payment.referenceNo ? (
-                <>
-                  <Text style={styles.label}>Reference no.</Text>
-                  <Text style={styles.value}>{payment.referenceNo}</Text>
-                </>
-              ) : null}
-              {payment.leasePeriod ? (
-                <>
-                  <Text style={styles.label}>Paid for</Text>
-                  <Text style={styles.value}>{payment.leasePeriod}</Text>
-                </>
-              ) : null}
-              {payment.landlord ? (
-                <>
-                  <Text style={styles.label}>Landlord</Text>
-                  <Text style={styles.value}>{payment.landlord}</Text>
-                </>
-              ) : null}
+              <View style={styles.statusRow}>
+                <Badge
+                  label={payment.status}
+                  tone={statusTone(payment.status)}
+                />
+                {payment.status !== "Paid" ? (
+                  <Badge label={paymentTypeLabel(payment)} />
+                ) : null}
+              </View>
+              <InfoGrid
+                rows={[
+                  [
+                    {
+                      label: "Amount",
+                      value: `₱${payment.amount.toLocaleString()}`,
+                    },
+                    { label: "Method", value: payment.method || "—" },
+                  ],
+                  [
+                    { label: "Recorded on", value: payment.date || "—" },
+                    { label: "Paid on", value: payment.paidAt || "—" },
+                  ],
+                  [
+                    {
+                      label: "Paid for",
+                      value: payment.leasePeriod || "—",
+                    },
+                    {
+                      label: "Reference no.",
+                      value: payment.referenceNo || "—",
+                    },
+                  ],
+                  [
+                    { label: "Landlord", value: payment.landlord || "—" },
+                    { label: "Dorm", value: payment.dormName },
+                  ],
+                ]}
+              />
               {payment.description ? (
-                <>
-                  <Text style={styles.label}>Note</Text>
-                  <Text style={styles.value}>{payment.description}</Text>
-                </>
+                <Text style={styles.note}>{payment.description}</Text>
               ) : null}
-              {payment.source === "landlord_entry" ? (
-                <Text style={styles.hint}>
-                  Manual entry recorded by your landlord (onsite cash, GCash, or
-                  bank transfer).
-                </Text>
-              ) : (
-                <Text style={styles.hint}>
-                  Payment submitted through the student app (GCash, bank
-                  transfer, or cash).
-                </Text>
-              )}
             </Card>
 
             <Card>
-              <Text style={styles.sectionTitle}>Proof & receipt</Text>
-              {attachments.length > 0 ? (
-                attachments.map((a) => (
-                  <ProofAttachment
-                    key={a.key}
-                    label={a.label}
-                    url={a.url}
-                    caption={a.caption}
-                  />
-                ))
-              ) : (
-                <Text style={styles.noProof}>No proof image attached.</Text>
-              )}
-              <View style={styles.receiptBtn}>
-                <Button
-                  label="View official receipt"
-                  variant="outline"
-                  onPress={() => {
-                    onClose();
-                    router.push(
-                      `/payment-receipt/${encodeURIComponent(payment.id)}`
-                    );
-                  }}
+              <Text style={styles.receiptLabel}>Receipt</Text>
+              {receiptFile ? (
+                <Image
+                  source={{ uri: receiptFile }}
+                  style={styles.receiptImage}
+                  resizeMode="contain"
                 />
-              </View>
+              ) : (
+                <Text style={styles.note}>
+                  No receipt image is attached. Use View Receipt for the official
+                  record.
+                </Text>
+              )}
             </Card>
           </ScrollView>
+
+          <View style={[styles.footer, { paddingBottom: bottomNavPad(insets.bottom, 20) }]}>
+            <Button
+              label="View Receipt"
+              variant="brand"
+              fullWidth
+              onPress={openOfficialReceipt}
+            />
+            <Button
+              label="Download Receipt"
+              variant="outline"
+              fullWidth
+              onPress={() => {
+                void downloadReceipt();
+              }}
+            />
+          </View>
         </View>
       </View>
     </Modal>
@@ -267,64 +185,34 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0",
   },
-  headerText: { flex: 1, paddingRight: 12 },
+  headerText: { flex: 1 },
   title: { fontSize: 17, fontWeight: "700", color: colors.navy },
   sub: { fontSize: 13, color: "#64748b", marginTop: 4 },
   scroll: { flexGrow: 0 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 28 },
-  label: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#64748b",
-    marginTop: 10,
-    textTransform: "uppercase",
-  },
-  value: { fontSize: 14, color: colors.text, marginTop: 2 },
-  hint: { fontSize: 12, color: "#64748b", marginTop: 12, lineHeight: 18 },
-  sectionTitle: {
-    fontSize: 14,
+  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
+  statusRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  note: { fontSize: 13, color: "#64748b", marginTop: 12, lineHeight: 18 },
+  receiptLabel: {
+    fontSize: 13,
     fontWeight: "700",
     color: colors.navy,
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  proofBlock: { marginTop: 12 },
-  proofCaption: { fontSize: 12, color: "#64748b", marginTop: 4, lineHeight: 17 },
-  proofImageWrap: {
-    marginTop: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
-    overflow: "hidden",
-  },
-  proofImage: {
+  receiptImage: {
     width: "100%",
-    height: 220,
-    backgroundColor: "#f1f5f9",
+    height: 240,
+    backgroundColor: "#f8fafc",
+    borderRadius: 8,
   },
-  tapHint: { fontSize: 11, color: "#94a3b8", marginTop: 6 },
-  noProof: { fontSize: 13, color: "#64748b", marginTop: 8 },
-  receiptBtn: { marginTop: 14 },
-  docLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
   },
-  docLinkText: { fontSize: 14, color: colors.sky, fontWeight: "600" },
-  lightbox: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.92)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  lightboxClose: { position: "absolute", top: 48, right: 20, zIndex: 2 },
-  lightboxImage: { width: "100%", height: "80%" },
 });

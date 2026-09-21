@@ -34,6 +34,16 @@ function RootNavigator() {
       <Stack.Screen name="(landlord-tabs)" />
       <Stack.Screen name="landlord" options={{ headerShown: false }} />
       <Stack.Screen
+        name="landlord-profile/[id]"
+        options={{
+          headerShown: true,
+          header: () => <AppHeader showBack />,
+          headerStyle: { backgroundColor: colors.brand },
+          headerShadowVisible: false,
+          headerTitle: "",
+        }}
+      />
+      <Stack.Screen
         name="listing/[id]"
         options={{
           headerShown: true,

@@ -7,15 +7,17 @@ import type { ReportsManagementTab } from "@/components/landlord/rooms-managemen
 import { LandlordIncidentsPanel } from "@/components/landlord/incidents-panel";
 import { LandlordDormReportsPanel } from "@/components/landlord/landlord-dorm-reports-panel";
 import { LandlordActivityLogsPanel } from "@/components/landlord/activity-logs-panel";
+import { TenantReportsPanel } from "@/components/landlord/tenant-reports-panel";
 
 const TABS: { id: ReportsManagementTab; label: string }[] = [
   { id: "incidents", label: "Incident Report" },
+  { id: "tenant-reports", label: "Tenant Reports" },
   { id: "dorm-reports", label: "Dorm Reports" },
   { id: "activity-logs", label: "Activity Logs" },
 ];
 
 function parseTab(value: string | null): ReportsManagementTab {
-  if (value === "dorm-reports" || value === "activity-logs") return value;
+  if (value === "dorm-reports" || value === "activity-logs" || value === "tenant-reports") return value;
   return "incidents";
 }
 
@@ -45,6 +47,7 @@ function ReportsManagementContent() {
       </div>
 
       {activeTab === "incidents" && <LandlordIncidentsPanel embedded />}
+      {activeTab === "tenant-reports" && <TenantReportsPanel embedded />}
       {activeTab === "dorm-reports" && <LandlordDormReportsPanel embedded />}
       {activeTab === "activity-logs" && <LandlordActivityLogsPanel embedded />}
     </div>

@@ -146,18 +146,7 @@ export default function LandlordHomeScreen() {
               </Card>
             ) : null}
 
-            {data.activities.length > 0 ? (
-              <Card>
-                <Text style={styles.cardTitle}>Recent activity</Text>
-                {data.activities.slice(0, 5).map((a, i) => (
-                  <Text key={`${a.time}-${i}`} style={styles.meta}>
-                    {a.description}
-                    {"\n"}
-                    <Text style={styles.time}>{a.time}</Text>
-                  </Text>
-                ))}
-              </Card>
-            ) : null}
+
           </>
         ) : null}
       </ScrollView>

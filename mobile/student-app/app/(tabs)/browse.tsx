@@ -102,21 +102,35 @@ export default function BrowseScreen() {
       key: string;
       propertyId: string;
       propertyName: string;
+      landlordName: string;
       roomId: string;
       roomNo: string;
       price: number;
       address: string;
+      capacity: number;
+      occupied: number;
+      availableSlots: number;
     }[] = [];
     for (const p of filtered) {
       for (const r of p.rooms) {
+        const capacity = Math.max(1, Number(r.capacity) || 1);
+        const occupied = Math.max(0, Number(r.occupied) || 0);
+        const availableSlots =
+          r.availableSlots != null
+            ? Math.max(0, r.availableSlots)
+            : Math.max(0, capacity - occupied);
         rows.push({
           key: r.id,
           propertyId: p.id,
           propertyName: p.name,
+          landlordName: p.landlordName,
           roomId: r.id,
           roomNo: r.roomNo,
           price: r.price,
           address: p.address,
+          capacity,
+          occupied,
+          availableSlots,
         });
       }
     }
@@ -206,26 +220,32 @@ export default function BrowseScreen() {
           <Text style={styles.empty}>No rooms match your search.</Text>
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={styles.row}
-            onPress={() =>
-              router.push({
-                pathname: "/listing/[id]",
-                params: { id: item.roomId },
-              })
-            }
-          >
-            <View style={styles.rowBody}>
+          <View style={styles.row}>
+            <Pressable
+              style={styles.rowBody}
+              onPress={() =>
+                router.push({
+                  pathname: "/listing/[id]",
+                  params: { id: item.roomId },
+                })
+              }
+            >
               <Text style={styles.rowTitle}>
                 {item.propertyName} · Room {item.roomNo}
               </Text>
               <Text style={styles.rowMeta}>{item.address}</Text>
+              <Text style={styles.rowMeta}>
+                Capacity {item.capacity} · {item.occupied} occupied ·{" "}
+                {item.availableSlots} available
+              </Text>
               <Text style={styles.rowPrice}>
                 ₱{item.price.toLocaleString()} / month
               </Text>
+            </Pressable>
+            <View style={styles.rowSide}>
+              <Badge label="View" tone="success" />
             </View>
-            <Badge label="View" tone="success" />
-          </Pressable>
+          </View>
         )}
       />
     </Screen>
@@ -265,8 +285,10 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
     padding: 14,
     marginBottom: 10,
+    gap: 8,
   },
   rowBody: { flex: 1 },
+  rowSide: { alignItems: "flex-end", gap: 8, maxWidth: "42%" },
   rowTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
   rowMeta: { fontSize: 12, color: "#64748b", marginTop: 2 },
   rowPrice: { fontSize: 13, fontWeight: "600", color: colors.sky, marginTop: 4 },

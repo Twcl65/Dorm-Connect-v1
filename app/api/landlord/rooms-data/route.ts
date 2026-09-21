@@ -152,13 +152,16 @@ export async function GET(req: Request) {
       status: string;
       rent_payment_status: string;
     }>(
-      `SELECT DISTINCT ON (s.room_id)
-              s.id, s.room_id, r.room_no, s.guest_name,
+      `SELECT s.id, s.room_id, r.room_no, s.guest_name,
               s.lease_start, s.lease_end, s.status, s.rent_payment_status
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        WHERE r.owner_user_id = $1::uuid AND r.property_id = $2::uuid
          AND s.status IN ('Pending', 'Confirmed')
+         AND NOT EXISTS (
+           SELECT 1 FROM public.landlord_tenant_leases l
+           WHERE l.student_reservation_id = s.id
+         )
        ORDER BY s.room_id,
                 CASE s.status WHEN 'Confirmed' THEN 0 ELSE 1 END,
                 s.created_at DESC`,
@@ -175,8 +178,7 @@ export async function GET(req: Request) {
       status: string;
       amount_paid: string;
     }>(
-      `SELECT DISTINCT ON (lr.room_id)
-              lr.id, lr.room_id, rm.room_no, lr.guest_name,
+      `SELECT lr.id, lr.room_id, rm.room_no, lr.guest_name,
               lr.lease_start, lr.lease_end, lr.status, lr.amount_paid::text
        FROM public.landlord_reservations lr
        LEFT JOIN public.landlord_rooms rm ON rm.id = lr.room_id
@@ -234,15 +236,6 @@ export async function GET(req: Request) {
       [ownerId, propertyId]
     );
 
-    const leaseByRoom = new Map(leases.map((l) => [l.room_id, l]));
-    const studentByRoom = new Map(
-      studentReservations.map((s) => [s.room_id, s])
-    );
-    const manualByRoom = new Map(
-      manualReservations
-        .filter((m) => m.room_id)
-        .map((m) => [m.room_id as string, m])
-    );
     const studentReservationCountByRoom = new Map(
       studentCounts.map((row) => [row.room_id, Number(row.c)])
     );
@@ -288,9 +281,6 @@ export async function GET(req: Request) {
     const roomStatusByRoom = new Map<string, RoomListingStatus>();
 
     const mappedRooms = rooms.map((r) => {
-      const lease = leaseByRoom.get(r.id);
-      const studentRes = studentByRoom.get(r.id);
-      const manualRes = manualByRoom.get(r.id);
       const effectiveStatus = resolveRoomListingStatus({
         dbRoomStatus: r.status,
         capacity: r.capacity,
@@ -339,93 +329,69 @@ export async function GET(req: Request) {
       })
     );
 
-    const leaseRows = rooms
-      .map((r) => {
-        const lease = leaseByRoom.get(r.id);
-        const studentRes = studentByRoom.get(r.id);
-        const manualRes = manualByRoom.get(r.id);
-        const effectiveStatus =
-          roomStatusByRoom.get(r.id) ??
-          resolveRoomListingStatus({
-            dbRoomStatus: r.status,
-            capacity: r.capacity,
-            leaseCount: leaseCountByRoom.get(r.id) ?? 0,
-            studentReservationCount:
-              studentReservationCountByRoom.get(r.id) ?? 0,
-            manualReservationCount: manualReservationCountByRoom.get(r.id) ?? 0,
-          });
-
-        if (lease) {
-          return {
-            id: lease.id,
-            roomId: lease.room_id,
-            roomNo: lease.room_no,
-            name: lease.tenant_name,
-            leaseStart: new Date(lease.lease_start).toISOString().slice(0, 10),
-            leaseEnd: new Date(lease.lease_end).toISOString().slice(0, 10),
-            leasePeriod: formatLeasePeriod(
-              new Date(lease.lease_start),
-              new Date(lease.lease_end)
-            ),
-            paymentStatus: lease.payment_status as
-              | "Paid"
-              | "Pending"
-              | "Overdue",
-            status: effectiveStatus,
-            reservationStatus:
-              studentRes?.status === "Confirmed" ||
-              studentRes?.status === "Pending"
-                ? studentRes.status
-                : undefined,
-          };
-        }
-
-        if (studentRes) {
-          return {
-            id: studentRes.id,
-            roomId: studentRes.room_id,
-            roomNo: studentRes.room_no,
-            name: studentRes.guest_name,
-            leaseStart: new Date(studentRes.lease_start)
-              .toISOString()
-              .slice(0, 10),
-            leaseEnd: new Date(studentRes.lease_end).toISOString().slice(0, 10),
-            leasePeriod: formatLeasePeriod(
-              new Date(studentRes.lease_start),
-              new Date(studentRes.lease_end)
-            ),
-            paymentStatus: mapRentPaymentStatus(studentRes.rent_payment_status),
-            status: effectiveStatus,
-            reservationStatus: studentRes.status as "Pending" | "Confirmed",
-          };
-        }
-
-        if (manualRes?.room_id) {
-          const paid =
-            manualRes.status === "Confirmed" &&
-            Number(manualRes.amount_paid) > 0;
-          return {
-            id: manualRes.id,
-            roomId: manualRes.room_id,
-            roomNo: manualRes.room_no ?? r.room_no,
-            name: manualRes.guest_name,
-            leaseStart: new Date(manualRes.lease_start)
-              .toISOString()
-              .slice(0, 10),
-            leaseEnd: new Date(manualRes.lease_end).toISOString().slice(0, 10),
-            leasePeriod: formatLeasePeriod(
-              new Date(manualRes.lease_start),
-              new Date(manualRes.lease_end)
-            ),
-            paymentStatus: paid ? ("Paid" as const) : ("Pending" as const),
-            status: effectiveStatus,
-            reservationStatus: manualRes.status as "Pending" | "Confirmed",
-          };
-        }
-
-        return null;
-      })
-      .filter((row): row is NonNullable<typeof row> => row != null);
+    const leaseRows: any[] = [];
+    
+    for (const r of rooms) {
+      const effectiveStatus = roomStatusByRoom.get(r.id) ?? "Available";
+      
+      const roomLeases = leases.filter(l => l.room_id === r.id);
+      for (const lease of roomLeases) {
+        leaseRows.push({
+          id: lease.id,
+          roomId: lease.room_id,
+          roomNo: lease.room_no,
+          name: lease.tenant_name,
+          leaseStart: new Date(lease.lease_start).toISOString().slice(0, 10),
+          leaseEnd: new Date(lease.lease_end).toISOString().slice(0, 10),
+          leasePeriod: formatLeasePeriod(
+            new Date(lease.lease_start),
+            new Date(lease.lease_end)
+          ),
+          paymentStatus: lease.payment_status as "Paid" | "Pending" | "Overdue",
+          status: effectiveStatus,
+          reservationStatus: undefined,
+        });
+      }
+      
+      const roomStudentRes = studentReservations.filter(s => s.room_id === r.id);
+      for (const studentRes of roomStudentRes) {
+        leaseRows.push({
+          id: studentRes.id,
+          roomId: studentRes.room_id,
+          roomNo: studentRes.room_no,
+          name: studentRes.guest_name,
+          leaseStart: new Date(studentRes.lease_start).toISOString().slice(0, 10),
+          leaseEnd: new Date(studentRes.lease_end).toISOString().slice(0, 10),
+          leasePeriod: formatLeasePeriod(
+            new Date(studentRes.lease_start),
+            new Date(studentRes.lease_end)
+          ),
+          paymentStatus: mapRentPaymentStatus(studentRes.rent_payment_status),
+          status: effectiveStatus,
+          reservationStatus: studentRes.status as "Pending" | "Confirmed",
+        });
+      }
+      
+      const roomManualRes = manualReservations.filter(m => m.room_id === r.id);
+      for (const manualRes of roomManualRes) {
+        const paid = manualRes.status === "Confirmed" && Number(manualRes.amount_paid) > 0;
+        leaseRows.push({
+          id: manualRes.id,
+          roomId: manualRes.room_id,
+          roomNo: manualRes.room_no ?? r.room_no,
+          name: manualRes.guest_name,
+          leaseStart: new Date(manualRes.lease_start).toISOString().slice(0, 10),
+          leaseEnd: new Date(manualRes.lease_end).toISOString().slice(0, 10),
+          leasePeriod: formatLeasePeriod(
+            new Date(manualRes.lease_start),
+            new Date(manualRes.lease_end)
+          ),
+          paymentStatus: paid ? ("Paid" as const) : ("Pending" as const),
+          status: effectiveStatus,
+          reservationStatus: manualRes.status as "Pending" | "Confirmed",
+        });
+      }
+    }
 
     const total = rooms.length;
     const occupied = roomStatuses.filter((s) => s === "Occupied").length;

@@ -11,6 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { bottomNavPad } from "@/lib/nav-inset";
 
 type KeyboardAwareModalProps = {
   visible: boolean;
@@ -34,6 +35,7 @@ export function KeyboardAwareModal({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       bounces={false}
+      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) }}
     >
       {children}
     </ScrollView>
@@ -53,7 +55,7 @@ export function KeyboardAwareModal({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <Pressable
-          style={[styles.overlay, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          style={[styles.overlay, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}
           onPress={onRequestClose}
         >
           <Pressable
@@ -78,11 +80,13 @@ export function KeyboardAwareSheet({
   sheetStyle?: StyleProp<ViewStyle>;
   scrollable?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const content = scrollable ? (
     <ScrollView
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       bounces={false}
+      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) }}
     >
       {children}
     </ScrollView>
@@ -95,7 +99,7 @@ export function KeyboardAwareSheet({
       style={styles.flex}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}>
         <View style={[styles.sheet, sheetStyle]}>{content}</View>
       </View>
     </KeyboardAvoidingView>

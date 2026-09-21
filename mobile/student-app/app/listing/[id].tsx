@@ -29,6 +29,8 @@ import {
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { InfoGrid } from "@/components/info-grid";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   RESERVATION_TERMS,
   formatLeaseSummary,
@@ -36,6 +38,7 @@ import {
   showRoomDetailsAside,
 } from "@/lib/listing-utils";
 import { KeyboardAwareSheet } from "@/components/keyboard-aware-modal";
+import { bottomNavPad } from "@/lib/nav-inset";
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -51,6 +54,7 @@ export default function ListingDetailScreen() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token, user } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [reviews, setReviews] = useState<RoomReview[]>([]);
@@ -235,50 +239,53 @@ export default function ListingDetailScreen() {
         )}
 
         <Card>
-          <Text style={styles.section}>Managed by</Text>
-          <Text style={styles.bodyStrong}>{listing.landlord}</Text>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/landlord-profile/[id]",
+                params: { id: listing.propertyId },
+              })
+            }
+            style={styles.managedBy}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.section}>Managed by</Text>
+              <Text style={styles.linkName}>{listing.landlord}</Text>
+              <Text style={styles.muted}>Tap to view accreditation, payments, and all reviews</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </Card>
 
-          <Text style={styles.section}>Building</Text>
-          <Text style={styles.body}>{listing.propertyName}</Text>
+        <Card>
+          <Text style={styles.sectionTitle}>Room</Text>
+          <InfoGrid
+            rows={[
+              [
+                { label: "Monthly rent", value: `₱${listing.price.toLocaleString()}` },
+                { label: "Room type", value: listing.roomType },
+              ],
+              [
+                { label: "Capacity", value: listing.capacity },
+                {
+                  label: "Size",
+                  value: listing.roomSizeLabel?.trim() || "—",
+                },
+              ],
+              [{ label: "Accreditation", value: listing.documentType }],
+            ]}
+          />
+          <Text style={styles.section}>Amenities</Text>
+          <View style={styles.amenityRow}>
+            {listing.amenities.map((a) => (
+              <Badge key={a} label={a} />
+            ))}
+          </View>
+        </Card>
 
-          {(listing.propertyAddress || listing.propertyCity) && (
-            <>
-              <Text style={styles.section}>Address</Text>
-              <Text style={styles.body}>
-                {[listing.propertyAddress, listing.propertyCity]
-                  .filter(Boolean)
-                  .join(", ")}
-              </Text>
-            </>
-          )}
-
-          {listing.propertyContactPhone ? (
-            <>
-              <Text style={styles.section}>Contact</Text>
-              <Text style={styles.body}>{listing.propertyContactPhone}</Text>
-            </>
-          ) : null}
-
-          {listing.propertyDescription ? (
-            <>
-              <Text style={styles.section}>Property notes</Text>
-              <Text style={styles.body}>{listing.propertyDescription}</Text>
-            </>
-          ) : null}
-
-          <Text style={styles.section}>Room type</Text>
-          <Text style={styles.body}>{listing.roomType}</Text>
-
-          <Text style={styles.section}>Capacity</Text>
-          <Text style={styles.body}>{listing.capacity}</Text>
-
-          {listing.roomSizeLabel ? (
-            <>
-              <Text style={styles.section}>Size</Text>
-              <Text style={styles.body}>{listing.roomSizeLabel}</Text>
-            </>
-          ) : null}
-
+        <Card>
+          <Text style={styles.sectionTitle}>About this room</Text>
+          <Text style={styles.body}>{listing.description}</Text>
           {showRoomDetailsAside(listing.description, listing.roomDetails) &&
           listing.roomDetails ? (
             <>
@@ -286,19 +293,24 @@ export default function ListingDetailScreen() {
               <Text style={styles.body}>{listing.roomDetails}</Text>
             </>
           ) : null}
+        </Card>
 
-          <Text style={styles.section}>Document status</Text>
-          <Badge label={listing.documentType} />
-
-          <Text style={styles.section}>Description</Text>
-          <Text style={styles.body}>{listing.description}</Text>
-
-          <Text style={styles.section}>Amenities</Text>
-          <View style={styles.amenityRow}>
-            {listing.amenities.map((a) => (
-              <Badge key={a} label={a} />
-            ))}
-          </View>
+        <Card>
+          <Text style={styles.sectionTitle}>Property</Text>
+          <Text style={styles.bodyStrong}>{listing.propertyName}</Text>
+          {(listing.propertyAddress || listing.propertyCity) && (
+            <Text style={styles.body}>
+              {[listing.propertyAddress, listing.propertyCity]
+                .filter(Boolean)
+                .join(", ")}
+            </Text>
+          )}
+          {listing.propertyContactPhone ? (
+            <Text style={styles.body}>{listing.propertyContactPhone}</Text>
+          ) : null}
+          {listing.propertyDescription ? (
+            <Text style={styles.body}>{listing.propertyDescription}</Text>
+          ) : null}
         </Card>
 
         <Card>
@@ -320,7 +332,7 @@ export default function ListingDetailScreen() {
         </Card>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}>
         {hasReservation ? (
           <Text style={styles.footerHint}>
             You already have a reservation for this room.
@@ -328,6 +340,7 @@ export default function ListingDetailScreen() {
         ) : (
           <Button
             label="Book now"
+            fullWidth
             onPress={startBooking}
             disabled={!canBook}
           />
@@ -336,7 +349,7 @@ export default function ListingDetailScreen() {
 
       {/* Terms — same as website */}
       <Modal visible={showTerms} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>Terms & conditions</Text>
             <Text style={styles.muted}>Please read before booking {listing.name}.</Text>
@@ -371,7 +384,7 @@ export default function ListingDetailScreen() {
 
       {/* Step 2: Rental terms summary */}
       <Modal visible={bookingStep === 2} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>Rental terms summary</Text>
             <Text style={styles.muted}>Review before continuing.</Text>
@@ -417,7 +430,7 @@ export default function ListingDetailScreen() {
 
       {/* Step 3: Move-in & lease */}
       <Modal visible={bookingStep === 3} animationType="slide" transparent>
-        <KeyboardAwareSheet sheetStyle={styles.modalCardInner}>
+        <KeyboardAwareSheet scrollable={false} sheetStyle={styles.modalCardInner}>
           <Text style={styles.modalTitle}>Confirm reservation</Text>
           <Text style={styles.muted}>Choose move-in and lease end dates on the calendar.</Text>
           {submitError ? (
@@ -455,7 +468,12 @@ export default function ListingDetailScreen() {
           <Text style={styles.muted}>
             Final terms are subject to landlord confirmation.
           </Text>
-          <View style={styles.modalActions}>
+          <View
+            style={[
+              styles.modalActions,
+              { marginBottom: bottomNavPad(insets.bottom, 8) },
+            ]}
+          >
             <View style={styles.modalBtn}>
               <Button
                 label="Back"
@@ -482,7 +500,7 @@ export default function ListingDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: { paddingBottom: 0 },
-  scroll: { paddingBottom: 100 },
+  scroll: { paddingBottom: 120 },
   error: { color: colors.red, fontSize: 13, marginBottom: 8 },
   warnCard: { backgroundColor: "#fffbeb", borderColor: "#fcd34d" },
   warnText: { fontSize: 13, color: "#92400e", lineHeight: 18 },
@@ -510,6 +528,9 @@ const styles = StyleSheet.create({
   body: { fontSize: 14, color: "#334155", lineHeight: 20, marginTop: 4 },
   bodyStrong: { fontSize: 14, fontWeight: "600", color: colors.navy },
   muted: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  managedBy: { flexDirection: "row", alignItems: "center", gap: 8 },
+  linkName: { fontSize: 16, fontWeight: "700", color: colors.sky, marginTop: 4 },
+  chevron: { fontSize: 28, color: colors.sky, fontWeight: "300" },
   amenityRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
   review: {
     borderTopWidth: 1,
@@ -528,7 +549,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     backgroundColor: colors.white,
     borderTopWidth: 1,
     borderTopColor: colors.border,

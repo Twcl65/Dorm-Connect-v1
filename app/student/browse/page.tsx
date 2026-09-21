@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, X } from "lucide-react";
+import { LandlordProfileDialog } from "@/components/student/landlord-profile-dialog";
 import { spreadOverlappingMarkers } from "@/lib/spread-map-markers";
 import type { StudentMapMarker } from "@/components/maps/student-properties-map";
 
@@ -39,6 +40,18 @@ function showRoomDetailsAside(
   return !normWs(description).includes(normWs(roomDetails));
 }
 
+function occupancyLine(dorm: {
+  capacity: string;
+  occupied?: number;
+  availableSlots?: number;
+}): string {
+  const capacity = Math.max(1, Number(dorm.capacity) || 1);
+  const occupied = Math.max(0, dorm.occupied ?? 0);
+  const available =
+    dorm.availableSlots ?? Math.max(0, capacity - occupied);
+  return `Capacity ${capacity} · ${occupied} occupied · ${available} available`;
+}
+
 function getDormGalleryImages(dorm: Dorm): string[] {
   const urls = dorm.images.filter(Boolean);
   if (urls.length > 0) return urls;
@@ -65,6 +78,8 @@ type Dorm = {
   landlord: string;
   roomType: string;
   capacity: string;
+  occupied?: number;
+  availableSlots?: number;
   roomSizeLabel?: string | null;
   roomDetails?: string | null;
   images: string[];
@@ -117,6 +132,9 @@ export default function StudentBrowseDormsPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [landlordProfilePropertyId, setLandlordProfilePropertyId] = useState<
+    string | null
+  >(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [ictVerificationStatus, setIctVerificationStatus] = useState<
     string | null
@@ -585,6 +603,9 @@ export default function StudentBrowseDormsPage() {
                             / month
                           </span>
                         </p>
+                        <p className="text-[0.65rem] text-slate-600">
+                          {occupancyLine(dorm)}
+                        </p>
                         {dorm.reviewSummary.count > 0 &&
                         dorm.reviewSummary.avg != null ? (
                           <p className="text-[0.65rem] text-amber-700">
@@ -780,7 +801,7 @@ export default function StudentBrowseDormsPage() {
         </div>
       )}
 
-      {showDormDialog && selectedDorm && (
+      {showDormDialog && selectedDorm && !landlordProfilePropertyId && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
           <Card
             className="my-auto flex max-h-[min(92vh,900px)] w-full max-w-4xl flex-col overflow-hidden border border-gray-300 bg-white shadow-lg"
@@ -905,10 +926,18 @@ export default function StudentBrowseDormsPage() {
                         </span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Managed by{" "}
-                        <span className="font-medium text-slate-900">
+                        Landlord:{" "}
+                        <button
+                          type="button"
+                          className="font-medium text-sky-700 underline-offset-2 hover:underline"
+                          onClick={() =>
+                            setLandlordProfilePropertyId(
+                              selectedDorm.propertyId
+                            )
+                          }
+                        >
                           {selectedDorm.landlord}
-                        </span>
+                        </button>
                       </p>
                       <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 space-y-1.5">
                         
@@ -941,14 +970,9 @@ export default function StudentBrowseDormsPage() {
                         ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Room type:{" "}
+                        Occupancy:{" "}
                         <span className="font-medium text-slate-900">
-                          {selectedDorm.roomType}
-                        </span>
-                        <br />
-                        Capacity:{" "}
-                        <span className="font-medium text-slate-900">
-                          {selectedDorm.capacity}
+                          {occupancyLine(selectedDorm)}
                         </span>
                         {selectedDorm.roomSizeLabel ? (
                           <>
@@ -1225,6 +1249,13 @@ export default function StudentBrowseDormsPage() {
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      ) : null}
+
+      {landlordProfilePropertyId ? (
+        <LandlordProfileDialog
+          propertyId={landlordProfilePropertyId}
+          onClose={() => setLandlordProfilePropertyId(null)}
+        />
       ) : null}
     </div>
   );

@@ -543,7 +543,7 @@ export default function LandlordDocumentsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
-                <TableHead>Dorm Name</TableHead>
+                <TableHead>Dorm/Boarding House Name</TableHead>
                 <TableHead>Address</TableHead>
                 <TableHead>Documents</TableHead>
                 <TableHead>Submitted Date</TableHead>
@@ -750,7 +750,7 @@ export default function LandlordDocumentsPage() {
                   </p>
                   <div className="grid gap-2 md:grid-cols-[140px,1fr] items-center">
                     <span className="text-[0.7rem] text-slate-700">
-                      Dorm Name:
+                      Dorm/Boarding House Name:
                     </span>
                     <select
                       value={selectedPropertyId}

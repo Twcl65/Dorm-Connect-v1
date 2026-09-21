@@ -55,7 +55,7 @@ export default function LandlordDocumentsScreen() {
         renderItem={({ item }) => (
           <Card>
             <View style={styles.row}>
-              <Text style={styles.name}>{item.dormName}</Text>
+              <Text style={styles.name}>Dorm/Boarding House Name: {item.dormName}</Text>
               <Badge label={item.status} tone="default" />
             </View>
             <Text style={styles.meta}>{item.address}</Text>

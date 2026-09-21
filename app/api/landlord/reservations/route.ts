@@ -17,6 +17,10 @@ import {
 } from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
 import { fetchStudentUnpaidStaysElsewhere } from "@/lib/student-outstanding-balance";
+import {
+  ensureLeaseExtensionColumns,
+  mapLeaseExtension,
+} from "@/lib/lease-extension";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +50,7 @@ export async function GET() {
   try {
     const pool = await getPool();
     await ensureLandlordProperty(pool, ownerId);
+    await ensureLeaseExtensionColumns(pool);
 
     const { rows: manual } = await pool.query<{
       id: string;
@@ -89,11 +94,14 @@ export async function GET() {
       rent_payment_status: string;
       property_name: string;
       notes: string | null;
+      lease_extension_status: string | null;
+      lease_extension_requested_end: string | null;
     }>(
       `SELECT s.id, s.created_at, r.room_no, stu.full_name AS guest_name, stu.email AS student_email,
               s.student_user_id, p.id AS property_id,
               s.lease_start::text, s.lease_end::text, s.status, s.rent_payment_status,
-              p.name AS property_name, s.notes
+              p.name AS property_name, s.notes,
+              s.lease_extension_status, s.lease_extension_requested_end::text
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -158,6 +166,11 @@ export async function GET() {
             balanceRemaining: u.balanceRemaining,
             rentPaymentStatus: u.rentPaymentStatus,
           })),
+          leaseEndDate: s.lease_end.slice(0, 10),
+          leaseExtension: mapLeaseExtension(
+            s.lease_extension_status,
+            s.lease_extension_requested_end
+          ),
           createdAt: s.created_at.toISOString(),
         };
       })

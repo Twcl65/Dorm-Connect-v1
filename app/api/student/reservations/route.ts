@@ -17,11 +17,24 @@ import {
   formatLeasePeriod,
   landlordStatusToStudentApproved,
 } from "@/lib/student-db";
-import { countLeaseMonths } from "@/lib/payment-schedule";
+import {
+  countLeaseMonths,
+  fetchMonthlySchedule,
+  resolveNextUnpaidDueFromSchedule,
+} from "@/lib/payment-schedule";
+import { reservationLifecycle } from "@/lib/student-db";
+import {
+  studentRentLabel,
+  studentStayLabel,
+} from "@/lib/student-status-labels";
 import { assertStudentCanReserve } from "@/lib/student-can-reserve";
 import { insertNotification } from "@/lib/notify-user";
 import { refreshRoomFromStudentReservations } from "@/lib/landlord-db";
 import { isAllowedStoredFileUrl } from "@/lib/upload-url";
+import {
+  ensureLeaseExtensionColumns,
+  mapLeaseExtension,
+} from "@/lib/lease-extension";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +53,7 @@ export async function GET() {
 
   try {
     const pool = await getPool();
+    await ensureLeaseExtensionColumns(pool);
     const { rows } = await pool.query<{
       id: string;
       property_name: string;
@@ -65,6 +79,9 @@ export async function GET() {
       listing_background_url: string | null;
       room_image_urls: unknown;
       payment_sent: boolean;
+      rent_payment_status: string;
+      lease_extension_status: string | null;
+      lease_extension_requested_end: string | null;
     }>(
       `SELECT s.id, p.name AS property_name, r.room_no,
               s.lease_start::text, s.lease_end::text, s.status,
@@ -76,6 +93,9 @@ export async function GET() {
               r.capacity, r.room_size_label, r.room_details,
               r.listing_description, r.remarks,
               r.listing_image_urls, r.listing_background_url, r.room_image_urls,
+              s.rent_payment_status,
+              s.lease_extension_status,
+              s.lease_extension_requested_end::text,
               EXISTS (
                 SELECT 1 FROM public.student_payment_records pr
                 WHERE pr.reservation_id = s.id
@@ -83,16 +103,31 @@ export async function GET() {
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
-       JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
+       JOIN public.boarding_house_app_users u
+         ON u.id = COALESCE(p.owner_user_id, r.owner_user_id)
        WHERE s.student_user_id = $1::uuid
        ORDER BY s.created_at DESC`,
       [studentId]
     );
 
-    const list = rows.map((x) => {
+    const now = new Date();
+    const list = await Promise.all(rows.map(async (x) => {
       const ls = new Date(`${x.lease_start.slice(0, 10)}T12:00:00`);
       const le = new Date(`${x.lease_end.slice(0, 10)}T12:00:00`);
       const months = countLeaseMonths(ls, le);
+      const lifecycle = reservationLifecycle(x.status, le, now);
+      let rentLabel = studentRentLabel(null, x.rent_payment_status);
+      if (x.status === "Confirmed") {
+        const schedule = await fetchMonthlySchedule(pool, {
+          reservationId: x.id,
+        });
+        if (schedule.length > 0) {
+          rentLabel = studentRentLabel(
+            resolveNextUnpaidDueFromSchedule(schedule).urgency,
+            x.rent_payment_status
+          );
+        }
+      }
       const location =
         x.listing_location?.trim() ||
         [x.property_address, x.property_city].filter(Boolean).join(", ") ||
@@ -139,8 +174,14 @@ export async function GET() {
         images,
         leasePeriod: formatLeasePeriod(ls, le),
         paymentSent: x.payment_sent,
+        stayLabel: studentStayLabel(lifecycle),
+        rentLabel,
+        leaseExtension: mapLeaseExtension(
+          x.lease_extension_status,
+          x.lease_extension_requested_end
+        ),
       };
-    });
+    }));
 
     const payload = { reservations: list };
     setCached(cacheK, payload, API_CACHE_TTL_MS);

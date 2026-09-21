@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireStudent } from "@/lib/require-student";
 import { filterAllowedStoredFileUrls } from "@/lib/upload-url";
+import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 
@@ -130,6 +131,20 @@ export async function POST(req: Request) {
         JSON.stringify(imageUrls),
       ]
     );
+
+    try {
+      if (ownerUserId) {
+        await insertNotification(
+          pool,
+          ownerUserId,
+          "New incident report",
+          `${session.name} submitted “${title}”. Open Incident Report to reply.`,
+          "incident"
+        );
+      }
+    } catch {
+      /* non-fatal */
+    }
 
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
   } catch (e) {
