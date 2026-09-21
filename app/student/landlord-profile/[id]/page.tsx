@@ -6,6 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 export default function StudentLandlordProfilePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  if (!params?.id) return null;
+
   return (
     <LandlordProfileDialog
       propertyId={params.id}
