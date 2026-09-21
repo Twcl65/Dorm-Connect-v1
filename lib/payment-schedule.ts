@@ -1057,9 +1057,10 @@ export async function ensurePaymentDueDatesForReservation(
     `SELECT COUNT(*)::text AS c FROM public.payment_due_dates WHERE reservation_id = $1::uuid`,
     [reservationId]
   );
-  if (Number(existing[0]?.c ?? 0) > 0) return;
+  const existingCount = Number(existing[0]?.c ?? 0);
+  if (existingCount >= months) return;
 
-  for (let m = 1; m <= months; m++) {
+  for (let m = existingCount + 1; m <= months; m++) {
     const due = addMonthsUtc(start, m - 1);
     await pool.query(
       `INSERT INTO public.payment_due_dates
@@ -1103,9 +1104,10 @@ export async function ensurePaymentDueDatesForLease(
     `SELECT COUNT(*)::text AS c FROM public.payment_due_dates WHERE tenant_lease_id = $1::uuid`,
     [leaseId]
   );
-  if (Number(existing[0]?.c ?? 0) > 0) return;
+  const existingCount = Number(existing[0]?.c ?? 0);
+  if (existingCount >= months) return;
 
-  for (let m = 1; m <= months; m++) {
+  for (let m = existingCount + 1; m <= months; m++) {
     const due = addMonthsUtc(start, m - 1);
     await pool.query(
       `INSERT INTO public.payment_due_dates

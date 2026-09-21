@@ -56,6 +56,10 @@ export async function applyApprovedLeaseExtension(
     [opts.nextEnd, opts.reservationId]
   );
   try {
+    const { ensurePaymentDueDatesForReservation } = await import(
+      "@/lib/payment-schedule"
+    );
+    await ensurePaymentDueDatesForReservation(pool, opts.reservationId);
     await recomputeReservationBalances(pool, opts.reservationId);
   } catch {
     /* non-fatal */

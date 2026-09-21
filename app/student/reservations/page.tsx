@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, Loader2, X } from "lucide-react";
+import { Eye, Loader2, Menu, X } from "lucide-react";
 import { formatLongDate } from "@/lib/student-db";
 
 function normWs(s: string): string {
@@ -118,6 +119,10 @@ export default function StudentReservationsPage() {
     gcashQrCodeUrl: string | null;
     landlordName: string | null;
   } | null>(null);
+
+  // Dropdown menu state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -314,7 +319,8 @@ export default function StudentReservationsPage() {
                 <TableHead>ID</TableHead>
                 <TableHead>Dorm Name</TableHead>
                 <TableHead>Room No.</TableHead>
-                <TableHead>Date Submitted</TableHead>
+                <TableHead>Lease Duration</TableHead>
+                <TableHead>Move-out Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="pr-4 font-semibold text-slate-600">
                   Actions
@@ -325,7 +331,7 @@ export default function StudentReservationsPage() {
               {paginatedReservations.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="py-8 text-center text-xs text-muted-foreground"
                   >
                     {loading
@@ -346,7 +352,10 @@ export default function StudentReservationsPage() {
                     {res.room}
                   </TableCell>
                   <TableCell className="text-xs text-slate-700">
-                    {res.date}
+                    {res.leaseMonths} {res.leaseMonths === 1 ? "month" : "months"}
+                  </TableCell>
+                  <TableCell className="text-xs text-slate-700">
+                    {res.leaseEndDate ? formatLongDate(res.leaseEndDate) : "—"}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col items-start gap-1">
@@ -363,22 +372,93 @@ export default function StudentReservationsPage() {
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="pr-4">
-                    <div className="flex flex-nowrap items-center justify-center gap-1.5">
+                  <TableCell className="pr-4 align-top">
+                    <div className="flex justify-end">
                       <Button
                         size="sm"
-                        className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-sky-600 text-white hover:bg-sky-700"
-                        onClick={() => {
-                          setSelectedReservation(res);
-                          setPaymentMethod("gcash");
-                          setShowGcashPaymentSection(false);
-                          setPaymentProofFile(null);
-                          setShowDetailsDialog(true);
+                        variant="outline"
+                        className="h-7 text-[0.7rem] bg-white hover:bg-slate-50 hover:text-slate-900"
+                        onClick={(e) => {
+                          if (openMenuId === res.id) {
+                            setOpenMenuId(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setMenuPos({
+                              top: rect.bottom + 4,
+                              right: window.innerWidth - rect.right,
+                            });
+                            setOpenMenuId(res.id);
+                          }
                         }}
                       >
-                        <Eye className="h-3 w-3" />
-                        View Details
+                        <Menu className="h-3 w-3 mr-1" />
+                        Menu
                       </Button>
+
+                      {openMenuId === res.id && typeof document !== "undefined"
+                        ? createPortal(
+                            <>
+                              <div
+                                className="fixed inset-0 z-[9998]"
+                                onClick={() => setOpenMenuId(null)}
+                              />
+                              <div
+                                className="fixed z-[9999] flex w-36 flex-col gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-md"
+                                style={{ top: menuPos.top, right: menuPos.right }}
+                              >
+                                <Button
+                                  size="sm"
+                                  className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-slate-700 shadow-none hover:bg-slate-100 hover:text-slate-900"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    setSelectedReservation(res);
+                                    setPaymentMethod("gcash");
+                                    setShowGcashPaymentSection(false);
+                                    setPaymentProofFile(null);
+                                    setShowDetailsDialog(true);
+                                  }}
+                                >
+                                  <Eye className="h-3 w-3 mr-1" />
+                                  View Details
+                                </Button>
+                                {res.status === "Approved" && res.stayLabel === "Current Staying" ? (
+                                  <>
+                                    {res.leaseExtension?.status !== "Pending" ? (
+                                      <Button
+                                        size="sm"
+                                        className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-indigo-600 shadow-none hover:bg-indigo-50 hover:text-indigo-700"
+                                        onClick={() => {
+                                          setOpenMenuId(null);
+                                          setSelectedReservation(res);
+                                          const current = res.leaseEndDate ?? "";
+                                          const d = new Date(`${current}T12:00:00`);
+                                          d.setMonth(d.getMonth() + 1);
+                                          setExtendDate(d.toISOString().slice(0, 10));
+                                          setShowExtendDialog(true);
+                                        }}
+                                      >
+                                        Extend Lease
+                                      </Button>
+                                    ) : null}
+                                    <Button
+                                      size="sm"
+                                      className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-rose-600 shadow-none hover:bg-rose-50 hover:text-rose-700"
+                                      onClick={() => {
+                                        setOpenMenuId(null);
+                                        setSelectedReservation(res);
+                                        setTerminateDate(new Date().toISOString().slice(0, 10));
+                                        setShowTerminateDialog(true);
+                                      }}
+                                    >
+                                      Terminate contract
+                                    </Button>
+                                  </>
+                                ) : null}
+                              </div>
+                            </>,
+                            document.body
+                          )
+                        : null}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -827,43 +907,7 @@ export default function StudentReservationsPage() {
                     Cancel
                   </Button>
                 ) : null}
-                {selectedReservation.status === "Approved" &&
-                selectedReservation.stayLabel === "Current Staying" ? (
-                  <>
-                    {selectedReservation.leaseExtension?.status !== "Pending" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-3 text-xs"
-                        onClick={() => {
-                          const current =
-                            selectedReservation.leaseEndDate ?? "";
-                          const d = new Date(`${current}T12:00:00`);
-                          d.setMonth(d.getMonth() + 1);
-                          setExtendDate(d.toISOString().slice(0, 10));
-                          setShowExtendDialog(true);
-                        }}
-                      >
-                        Extend lease
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      className="h-8 px-3 text-xs"
-                      onClick={() => {
-                        setTerminateDate(
-                          new Date().toISOString().slice(0, 10)
-                        );
-                        setShowTerminateDialog(true);
-                      }}
-                    >
-                      Terminate
-                    </Button>
-                  </>
-                ) : null}
+
                 {!selectedReservation.paymentSent ? (
                   <Button
                     type="button"

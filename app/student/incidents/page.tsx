@@ -34,6 +34,8 @@ type Report = {
   roomNo: string | null;
   propertyName: string | null;
   landlordName: string | null;
+  landlordReply: string | null;
+  landlordRepliedAt: string | null;
 };
 
 export default function StudentIncidentsPage() {
@@ -411,6 +413,21 @@ export default function StudentIncidentsPage() {
                   {selectedReport.description}
                 </p>
               </div>
+              {selectedReport.landlordReply ? (
+                <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[0.75rem] font-semibold text-amber-900">
+                    Landlord Reply
+                  </p>
+                  <p className="whitespace-pre-wrap text-[0.7rem] text-amber-800">
+                    {selectedReport.landlordReply}
+                  </p>
+                  {selectedReport.landlordRepliedAt && (
+                    <p className="pt-1 text-[0.65rem] text-amber-700/80">
+                      Replied on {new Date(selectedReport.landlordRepliedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              ) : null}
               {selectedReport.imageUrls.length > 0 ? (
                 <div className="space-y-2">
                   <p className="text-[0.75rem] font-semibold text-slate-900">
