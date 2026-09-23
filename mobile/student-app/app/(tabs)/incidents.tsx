@@ -43,6 +43,9 @@ export default function IncidentsTab() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+  const [replyReportId, setReplyReportId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -114,6 +117,30 @@ export default function IncidentsTab() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const submitReply = async () => {
+    if (!token || !replyReportId) return;
+    if (!replyText.trim()) {
+      Alert.alert("Missing", "Enter your reply.");
+      return;
+    }
+    setSendingReply(true);
+    try {
+      await apiRequest(`/api/student/incidents/${replyReportId}/reply`, {
+        method: "POST",
+        token,
+        body: { tenantReply: replyText.trim() },
+      });
+      setReplyReportId(null);
+      setReplyText("");
+      await load();
+      Alert.alert("Sent", "Your reply was sent.");
+    } catch (e) {
+      Alert.alert("Error", e instanceof ApiError ? e.message : "Request failed.");
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -194,6 +221,29 @@ export default function IncidentsTab() {
                     : ""}
                 </Text>
                 <Text style={styles.replyBody}>{item.landlordReply}</Text>
+
+                {item.tenantReply ? (
+                  <View style={styles.tenantReplyBox}>
+                    <Text style={styles.tenantReplyLabel}>
+                      Your reply
+                      {item.tenantRepliedAt
+                        ? ` · ${new Date(item.tenantRepliedAt).toLocaleDateString()}`
+                        : ""}
+                    </Text>
+                    <Text style={styles.replyBody}>{item.tenantReply}</Text>
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 10 }}>
+                    <Button 
+                      label="Reply to Landlord" 
+                      variant="outline" 
+                      onPress={() => {
+                        setReplyReportId(item.id);
+                        setReplyText("");
+                      }}
+                    />
+                  </View>
+                )}
               </View>
             ) : (
               <View style={styles.waitingBox}>
@@ -258,6 +308,34 @@ export default function IncidentsTab() {
           </>
         )}
       </KeyboardAwareModal>
+
+      <KeyboardAwareModal
+        visible={!!replyReportId}
+        onRequestClose={() => setReplyReportId(null)}
+        sheetStyle={styles.modalSheet}
+      >
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>Reply to Landlord</Text>
+          <Pressable onPress={() => setReplyReportId(null)} hitSlop={8}>
+            <Text style={styles.closeText}>Close</Text>
+          </Pressable>
+        </View>
+        <Input
+          placeholder="Type your reply here..."
+          value={replyText}
+          onChangeText={setReplyText}
+          multiline
+          style={styles.textArea}
+        />
+        <View style={styles.modalActions}>
+          <Button
+            label="Send Reply"
+            fullWidth
+            onPress={() => void submitReply()}
+            loading={sendingReply}
+          />
+        </View>
+      </KeyboardAwareModal>
     </Screen>
   );
 }
@@ -281,6 +359,13 @@ const styles = StyleSheet.create({
   },
   replyLabel: { fontSize: 11, fontWeight: "600", color: colors.sky, marginBottom: 4 },
   replyBody: { fontSize: 13, color: "#334155", lineHeight: 19 },
+  tenantReplyBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#bae6fd",
+  },
+  tenantReplyLabel: { fontSize: 11, fontWeight: "600", color: "#0284c7", marginBottom: 4 },
   waitingBox: {
     marginTop: 10,
     padding: 10,

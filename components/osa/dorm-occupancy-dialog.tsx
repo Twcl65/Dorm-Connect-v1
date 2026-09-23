@@ -12,8 +12,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/components/ui/utils";
+import { useState } from "react";
 
 export type Boarder = {
   id: string;
@@ -35,6 +36,7 @@ export type RoomOccupancy = {
   capacity: number;
   monthlyRate: number;
   status: "Occupied" | "Available" | "Reserved" | "Maintenance";
+  imageUrls: string[];
   boarders: Boarder[];
 };
 
@@ -117,10 +119,12 @@ export function DormOccupancyDialog({
   const roomFrom =
     filteredRooms.length === 0 ? 0 : (roomPage - 1) * roomsPerPage + 1;
   const roomTo = Math.min(roomPage * roomsPerPage, filteredRooms.length);
+  const [selectedRoomForImages, setSelectedRoomForImages] = useState<RoomOccupancy | null>(null);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
-      <Card className="w-full max-w-5xl border border-gray-300 bg-white">
+    <>
+      <div className={cn("fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10", selectedRoomForImages && "hidden")}>
+        <Card className="w-full max-w-5xl border border-gray-300 bg-white">
         <CardHeader className="pb-3 border-b bg-muted/40">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -241,6 +245,7 @@ export function DormOccupancyDialog({
                         <TableHead>Boarder / tenant</TableHead>
                         <TableHead>ID & contact</TableHead>
                         <TableHead>Lease</TableHead>
+                        <TableHead className="w-32">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -311,6 +316,18 @@ export function DormOccupancyDialog({
                                   <p key={b.id}>{b.leasePeriod}</p>
                                 ))}
                           </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
+                              onClick={() => setSelectedRoomForImages(room)}
+                            >
+                              <ImageIcon className="h-3 w-3" />
+                              View Pictures
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -352,7 +369,46 @@ export function DormOccupancyDialog({
           </section>
         </CardContent>
       </Card>
-    </div>
+      </div>
+
+      {selectedRoomForImages && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
+          <Card className="w-full max-w-3xl border-gray-300 bg-white">
+            <CardHeader className="flex flex-row items-start justify-between pb-3">
+              <div>
+                <CardTitle>Room Pictures - Room {selectedRoomForImages.roomNo}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {selectedRoomForImages.imageUrls.length === 0
+                    ? "No pictures available for this room."
+                    : `Showing ${selectedRoomForImages.imageUrls.length} pictures.`}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[0.7rem]"
+                onClick={() => setSelectedRoomForImages(null)}
+              >
+                Close
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="flex overflow-x-auto gap-4 py-2 scrollbar-thin">
+                {selectedRoomForImages.imageUrls.map((url) => (
+                  <img
+                    key={url}
+                    src={url}
+                    alt={`Room ${selectedRoomForImages.roomNo}`}
+                    className="h-64 w-80 shrink-0 rounded-lg border object-cover"
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
   );
 }
 

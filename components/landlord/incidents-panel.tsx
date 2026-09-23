@@ -19,6 +19,8 @@ type Report = {
   reporterName: string;
   landlordReply?: string | null;
   landlordRepliedAt?: string | null;
+  tenantReply?: string | null;
+  tenantRepliedAt?: string | null;
 };
 
 export type LandlordIncidentsPanelProps = {
@@ -195,9 +197,18 @@ export function LandlordIncidentsPanel({
                 )}
                 
                 {r.landlordReply ? (
-                  <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
-                    <p className="font-semibold text-sky-800">Your Reply <span className="text-[0.65rem] font-normal text-sky-700">({new Date(r.landlordRepliedAt!).toLocaleString()})</span></p>
-                    <p className="mt-1 whitespace-pre-wrap">{r.landlordReply}</p>
+                  <div className="space-y-4">
+                    <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+                      <p className="font-semibold text-sky-800">Your Reply <span className="text-[0.65rem] font-normal text-sky-700">({new Date(r.landlordRepliedAt!).toLocaleString()})</span></p>
+                      <p className="mt-1 whitespace-pre-wrap">{r.landlordReply}</p>
+                    </div>
+
+                    {r.tenantReply && (
+                      <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-950 ml-4">
+                        <p className="font-semibold text-blue-800">Tenant Reply <span className="text-[0.65rem] font-normal text-blue-700">({new Date(r.tenantRepliedAt!).toLocaleString()})</span></p>
+                        <p className="mt-1 whitespace-pre-wrap">{r.tenantReply}</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-2 mt-2">

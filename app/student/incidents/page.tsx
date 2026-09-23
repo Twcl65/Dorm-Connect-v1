@@ -36,6 +36,8 @@ type Report = {
   landlordName: string | null;
   landlordReply: string | null;
   landlordRepliedAt: string | null;
+  tenantReply: string | null;
+  tenantRepliedAt: string | null;
 };
 
 export default function StudentIncidentsPage() {
@@ -48,6 +50,9 @@ export default function StudentIncidentsPage() {
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
+  const [tenantReplyText, setTenantReplyText] = useState("");
+  const [submittingReply, setSubmittingReply] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const [roomId, setRoomId] = useState("");
   const [title, setTitle] = useState("");
@@ -125,6 +130,35 @@ export default function StudentIncidentsPage() {
       setReportError(e instanceof Error ? e.message : "Failed to submit");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const submitReply = async () => {
+    if (!selectedReport || !tenantReplyText.trim()) return;
+    setReplyError(null);
+    setSubmittingReply(true);
+    try {
+      const res = await fetch(`/api/student/incidents/${selectedReport.id}/reply`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantReply: tenantReplyText }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Failed to submit reply");
+      
+      // Update local state to reflect the new reply immediately
+      setSelectedReport({
+        ...selectedReport,
+        tenantReply: tenantReplyText.trim(),
+        tenantRepliedAt: new Date().toISOString(),
+      });
+      setTenantReplyText("");
+      await load();
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "Failed to submit");
+    } finally {
+      setSubmittingReply(false);
     }
   };
 
@@ -339,7 +373,7 @@ export default function StudentIncidentsPage() {
                           }}
                         >
                           <Eye className="h-3 w-3" />
-                          View
+                          View & Reply
                         </Button>
                       </div>
                     </TableCell>
@@ -414,17 +448,66 @@ export default function StudentIncidentsPage() {
                 </p>
               </div>
               {selectedReport.landlordReply ? (
-                <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-[0.75rem] font-semibold text-amber-900">
-                    Landlord Reply
-                  </p>
-                  <p className="whitespace-pre-wrap text-[0.7rem] text-amber-800">
-                    {selectedReport.landlordReply}
-                  </p>
-                  {selectedReport.landlordRepliedAt && (
-                    <p className="pt-1 text-[0.65rem] text-amber-700/80">
-                      Replied on {new Date(selectedReport.landlordRepliedAt).toLocaleString()}
+                <div className="space-y-4">
+                  <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-[0.75rem] font-semibold text-amber-900">
+                      Landlord Reply
                     </p>
+                    <p className="whitespace-pre-wrap text-[0.7rem] text-amber-800">
+                      {selectedReport.landlordReply}
+                    </p>
+                    {selectedReport.landlordRepliedAt && (
+                      <p className="pt-1 text-[0.65rem] text-amber-700/80">
+                        Replied on {new Date(selectedReport.landlordRepliedAt).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  
+                  {selectedReport.tenantReply ? (
+                    <div className="space-y-1 rounded-md border border-blue-200 bg-blue-50 p-3 ml-4">
+                      <p className="text-[0.75rem] font-semibold text-blue-900">
+                        Your Reply
+                      </p>
+                      <p className="whitespace-pre-wrap text-[0.7rem] text-blue-800">
+                        {selectedReport.tenantReply}
+                      </p>
+                      {selectedReport.tenantRepliedAt && (
+                        <p className="pt-1 text-[0.65rem] text-blue-700/80">
+                          Replied on {new Date(selectedReport.tenantRepliedAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 ml-4">
+                      {replyError && (
+                        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                          {replyError}
+                        </div>
+                      )}
+                      <label className="text-[0.75rem] font-semibold text-slate-900">
+                        Reply to Landlord
+                      </label>
+                      <Textarea
+                        className="min-h-[80px] text-xs"
+                        value={tenantReplyText}
+                        onChange={(e) => setTenantReplyText(e.target.value)}
+                        placeholder="Type your response here..."
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={submittingReply || !tenantReplyText.trim()}
+                          onClick={() => void submitReply()}
+                        >
+                          {submittingReply ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          ) : null}
+                          Send Reply
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ) : null}

@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Edit3, Eye } from "lucide-react";
+import { Edit3, Eye, Printer } from "lucide-react";
 import { ProofMedia } from "@/components/proof-media";
 
 function collectFormAttachmentUrls(formData: unknown): string[] {
@@ -594,6 +594,17 @@ export default function OsaAccreditationPage() {
                   </TableCell>
                   <TableCell className="pr-4">
                     <div className="flex justify-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                        onClick={() => {
+                          window.location.href = `/osa/accreditation/${dorm.id}/certificate`;
+                        }}
+                      >
+                        <Printer className="h-3 w-3" />
+                        View Certificate
+                      </Button>
                       <Button
                         size="sm"
                         variant="destructive"

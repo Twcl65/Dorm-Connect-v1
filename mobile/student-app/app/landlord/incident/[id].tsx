@@ -165,6 +165,16 @@ export default function IncidentDetailScreen() {
             </Card>
           ) : null}
 
+          {report.tenantReply && report.tenantRepliedAt ? (
+            <Card>
+              <Text style={styles.label}>Tenant reply</Text>
+              <Text style={styles.meta}>
+                Sent {new Date(report.tenantRepliedAt).toLocaleString()}
+              </Text>
+              <Text style={styles.body}>{report.tenantReply}</Text>
+            </Card>
+          ) : null}
+
           {report.status !== "Resolved" ? (
             <Card>
               <Text style={styles.label}>

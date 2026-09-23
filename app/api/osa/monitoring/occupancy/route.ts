@@ -47,8 +47,9 @@ export async function GET(req: Request) {
       capacity: number;
       monthly_rate: string;
       status: string;
+      listing_image_urls: string[];
     }>(
-      `SELECT id, room_no, capacity, monthly_rate::text, status
+      `SELECT id, room_no, capacity, monthly_rate::text, status, listing_image_urls
        FROM public.landlord_rooms
        WHERE property_id = $1::uuid
        ORDER BY room_no`,
@@ -265,6 +266,7 @@ export async function GET(req: Request) {
         capacity: r.capacity,
         monthlyRate: Number(r.monthly_rate),
         status,
+        imageUrls: Array.isArray(r.listing_image_urls) ? r.listing_image_urls : [],
         boarders,
       };
     });

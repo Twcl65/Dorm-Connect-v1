@@ -26,9 +26,11 @@ export async function GET(_req: Request, context: Ctx) {
       status: string;
       documents_count: number;
       submitted_at: Date;
+      updated_at: Date;
+      accreditation_expires_at: Date | null;
       form_data: unknown;
     }>(
-      `SELECT id, dorm_name, address, status, documents_count, submitted_at, form_data
+      `SELECT id, dorm_name, address, status, documents_count, submitted_at, updated_at, accreditation_expires_at, form_data
        FROM public.landlord_accreditation_requests
        WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
       [id, ownerId]
@@ -44,6 +46,10 @@ export async function GET(_req: Request, context: Ctx) {
       status: r.status,
       documentsCount: r.documents_count,
       submittedAt: new Date(r.submitted_at).toISOString().slice(0, 10),
+      updatedAt: new Date(r.updated_at).toISOString().slice(0, 10),
+      accreditationExpiresAt: r.accreditation_expires_at
+        ? new Date(r.accreditation_expires_at).toISOString().slice(0, 10)
+        : null,
       formData: r.form_data,
     });
   } catch (e) {

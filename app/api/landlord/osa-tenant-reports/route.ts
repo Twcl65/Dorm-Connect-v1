@@ -24,6 +24,11 @@ async function ensureOsaTenantReportsTable(pool: Pool) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await pool.query(`
+    ALTER TABLE public.landlord_osa_tenant_reports
+      ADD COLUMN IF NOT EXISTS osa_reply TEXT,
+      ADD COLUMN IF NOT EXISTS osa_replied_at TIMESTAMPTZ;
+  `);
 }
 
 export async function GET() {
@@ -43,8 +48,10 @@ export async function GET() {
       details: string;
       status: string;
       created_at: Date;
+      osa_reply: string | null;
+      osa_replied_at: Date | null;
     }>(
-      `SELECT id, tenant_name, room_no, property_name, reason, details, status, created_at
+      `SELECT id, tenant_name, room_no, property_name, reason, details, status, created_at, osa_reply, osa_replied_at
        FROM public.landlord_osa_tenant_reports
        WHERE owner_user_id = $1::uuid
        ORDER BY created_at DESC
@@ -61,6 +68,8 @@ export async function GET() {
         details: r.details,
         status: r.status,
         createdAt: new Date(r.created_at).toISOString(),
+        osaReply: r.osa_reply,
+        osaRepliedAt: r.osa_replied_at ? new Date(r.osa_replied_at).toISOString() : null,
       })),
     });
   } catch (e) {

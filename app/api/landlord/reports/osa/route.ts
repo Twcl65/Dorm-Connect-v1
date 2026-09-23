@@ -91,14 +91,27 @@ export async function GET(req: Request) {
   try {
     const pool = await getPool();
     const { rows } = await pool.query(
-      `SELECT id, tenant_name, room_no, property_name, reason, details, status, created_at
+      `SELECT id, tenant_name, room_no, property_name, reason, details, status, created_at, osa_reply, osa_replied_at
        FROM public.landlord_osa_tenant_reports
        WHERE owner_user_id = $1::uuid
        ORDER BY created_at DESC`,
       [ownerId]
     );
 
-    return NextResponse.json({ reports: rows });
+    const formattedRows = rows.map(r => ({
+      id: r.id,
+      tenantName: r.tenant_name,
+      roomNo: r.room_no,
+      propertyName: r.property_name,
+      reason: r.reason,
+      details: r.details,
+      status: r.status,
+      createdAt: new Date(r.created_at).toISOString(),
+      osaReply: r.osa_reply,
+      osaRepliedAt: r.osa_replied_at ? new Date(r.osa_replied_at).toISOString() : null
+    }));
+
+    return NextResponse.json({ reports: formattedRows });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load reports";
     return NextResponse.json({ error: msg }, { status: 500 });

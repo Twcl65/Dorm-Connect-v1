@@ -128,7 +128,7 @@ export default function PaymentsScreen() {
       <View style={styles.filters}>
         {(
           [
-            ["all", "All", counts.all],
+            ["all", "Transaction Summary", counts.all],
             ["paid", "Paid", counts.paid],
             ["not_yet_paid", "Not yet paid", counts.notYetPaid],
           ] as const

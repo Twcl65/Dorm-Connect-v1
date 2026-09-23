@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FilePlus2, Eye, Loader2 } from "lucide-react";
+import { FilePlus2, Eye, Loader2, Printer } from "lucide-react";
 
 const ROWS_PER_PAGE = 5;
 
@@ -587,7 +587,20 @@ export default function LandlordDocumentsPage() {
                     <StatusBadge status={req.status} />
                   </TableCell>
                   <TableCell className="pr-4">
-                    <div className="flex justify-center">
+                    <div className="flex justify-center gap-2">
+                      {req.status === "Approved" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-emerald-400 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-600"
+                          onClick={() => {
+                            window.location.href = `/landlord/documents/${req.id}/certificate`;
+                          }}
+                        >
+                          <Printer className="h-3 w-3" />
+                          View Certificate
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"

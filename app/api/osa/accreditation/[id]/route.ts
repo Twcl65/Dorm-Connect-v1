@@ -36,6 +36,7 @@ export async function GET(_req: Request, context: Ctx) {
       status: string;
       documents_count: number;
       submitted_at: Date;
+      updated_at: Date;
       form_data: unknown;
       owner_name: string;
       owner_email: string;
@@ -43,7 +44,7 @@ export async function GET(_req: Request, context: Ctx) {
       inspection_scheduled_for: string | null;
       accreditation_expires_at: Date | null;
     }>(
-      `SELECT a.id, a.dorm_name, a.address, a.status, a.documents_count, a.submitted_at, a.form_data,
+      `SELECT a.id, a.dorm_name, a.address, a.status, a.documents_count, a.submitted_at, a.updated_at, a.form_data,
               a.owner_user_id, a.inspection_scheduled_for::text, a.accreditation_expires_at,
               u.full_name AS owner_name, u.email AS owner_email
        FROM public.landlord_accreditation_requests a
@@ -67,6 +68,7 @@ export async function GET(_req: Request, context: Ctx) {
       ownerUserId: r.owner_user_id,
       formData: r.form_data,
       inspectionScheduledFor: r.inspection_scheduled_for,
+      updatedAt: new Date(r.updated_at).toISOString().slice(0, 10),
       accreditationExpiresAt: r.accreditation_expires_at
         ? new Date(r.accreditation_expires_at).toISOString().slice(0, 10)
         : null,

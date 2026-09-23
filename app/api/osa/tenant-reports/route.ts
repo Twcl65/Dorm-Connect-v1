@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireOsaAdmin } from "@/lib/require-osa";
+import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,11 @@ async function ensureOsaTenantReportsTable() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await pool.query(`
+    ALTER TABLE public.landlord_osa_tenant_reports
+      ADD COLUMN IF NOT EXISTS osa_reply TEXT,
+      ADD COLUMN IF NOT EXISTS osa_replied_at TIMESTAMPTZ;
+  `);
   return pool;
 }
 
@@ -42,9 +48,11 @@ export async function GET() {
       status: string;
       created_at: Date;
       landlord_name: string;
+      osa_reply: string | null;
+      osa_replied_at: Date | null;
     }>(
       `SELECT r.id, r.tenant_name, r.room_no, r.property_name, r.reason, r.details,
-              r.status, r.created_at, u.full_name AS landlord_name
+              r.status, r.created_at, r.osa_reply, r.osa_replied_at, u.full_name AS landlord_name
        FROM public.landlord_osa_tenant_reports r
        JOIN public.boarding_house_app_users u ON u.id = r.owner_user_id
        ORDER BY r.created_at DESC
@@ -61,6 +69,8 @@ export async function GET() {
         status: r.status,
         createdAt: new Date(r.created_at).toISOString(),
         landlordName: r.landlord_name,
+        osaReply: r.osa_reply,
+        osaRepliedAt: r.osa_replied_at ? new Date(r.osa_replied_at).toISOString() : null,
       })),
     });
   } catch (e) {
@@ -75,25 +85,54 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   try {
-    const body = (await req.json()) as { id?: string; status?: string };
+    const body = (await req.json()) as { id?: string; status?: string; osaReply?: string };
     const id = body.id ?? "";
     const status = body.status;
+    const osaReply = body.osaReply;
+    
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
       return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     }
-    if (status !== "Open" && status !== "In Review" && status !== "Resolved") {
+    if (status && status !== "Open" && status !== "In Review" && status !== "Resolved") {
       return NextResponse.json({ error: "Invalid status." }, { status: 400 });
     }
     const pool = await ensureOsaTenantReportsTable();
-    const { rowCount } = await pool.query(
-      `UPDATE public.landlord_osa_tenant_reports
-       SET status = $1, updated_at = now()
-       WHERE id = $2::uuid`,
-      [status, id]
-    );
-    if (!rowCount) {
+    
+    let query = `UPDATE public.landlord_osa_tenant_reports SET updated_at = now()`;
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (status) {
+      query += `, status = $${paramIdx++}`;
+      params.push(status);
+    }
+    if (osaReply !== undefined) {
+      query += `, osa_reply = $${paramIdx++}, osa_replied_at = now()`;
+      params.push(osaReply);
+    }
+
+    query += ` WHERE id = $${paramIdx}::uuid RETURNING owner_user_id, tenant_name`;
+    params.push(id);
+
+    const { rows } = await pool.query<{ owner_user_id: string; tenant_name: string }>(query, params);
+    if (!rows[0]) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
+
+    if (osaReply) {
+      try {
+        await insertNotification(
+          pool,
+          rows[0].owner_user_id,
+          "OSA Replied to Report",
+          `OSA has replied to your report regarding tenant ${rows[0].tenant_name}.`,
+          "tenant-report"
+        );
+      } catch {
+        /* non-fatal */
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to update";

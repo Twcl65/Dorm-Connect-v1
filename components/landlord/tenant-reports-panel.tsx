@@ -19,13 +19,15 @@ type ReportStatus = "Open" | "In Review" | "Resolved";
 
 type OSAReport = {
   id: string;
-  tenant_name: string;
-  room_no?: string;
-  property_name?: string;
+  tenantName: string;
+  roomNo?: string;
+  propertyName?: string;
   reason: string;
   details: string;
   status: ReportStatus;
-  created_at: string;
+  createdAt: string;
+  osaReply?: string | null;
+  osaRepliedAt?: string | null;
 };
 
 type Tenant = {
@@ -52,6 +54,8 @@ export function TenantReportsPanel({ embedded = false }: TenantReportsPanelProps
   const [reportDescription, setReportDescription] = useState("");
   const [reporting, setReporting] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [selectedReport, setSelectedReport] = useState<OSAReport | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -183,12 +187,13 @@ export function TenantReportsPanel({ embedded = false }: TenantReportsPanelProps
                   <TableHead>Reason</TableHead>
                   <TableHead>Details</TableHead>
                   <TableHead className="text-right">Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading && reports.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-slate-500">
+                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
                       <Loader2 className="mx-auto h-5 w-5 animate-spin mb-2" />
                       Loading reports...
                     </TableCell>
@@ -197,26 +202,39 @@ export function TenantReportsPanel({ embedded = false }: TenantReportsPanelProps
                   reports.map((report) => (
                     <TableRow key={report.id}>
                       <TableCell className="text-xs whitespace-nowrap text-slate-500">
-                        {new Date(report.created_at).toLocaleDateString()}
+                        {new Date(report.createdAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-slate-900">{report.tenant_name}</div>
-                        {(report.room_no || report.property_name) && (
+                        <div className="font-medium text-slate-900">{report.tenantName}</div>
+                        {(report.roomNo || report.propertyName) && (
                           <div className="text-xs text-slate-500">
-                            {report.property_name} {report.room_no ? `· Room ${report.room_no}` : ''}
+                            {report.propertyName} {report.roomNo ? `· Room ${report.roomNo}` : ''}
                           </div>
                         )}
                       </TableCell>
                       <TableCell className="font-medium text-slate-700">
                         {report.reason}
                       </TableCell>
-                      <TableCell className="max-w-[300px] truncate text-slate-500">
-                        {report.details}
+                      <TableCell className="max-w-[300px] text-slate-500">
+                        <div className="truncate">{report.details}</div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant="outline" className={getStatusColor(report.status)}>
                           {report.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[0.7rem]"
+                          onClick={() => {
+                            setSelectedReport(report);
+                            setShowDetailsDialog(true);
+                          }}
+                        >
+                          View Details
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -226,6 +244,74 @@ export function TenantReportsPanel({ embedded = false }: TenantReportsPanelProps
           )}
         </CardContent>
       </Card>
+
+      {showDetailsDialog && selectedReport && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
+          <Card className="w-full max-w-md border border-gray-300 bg-white shadow-xl mt-12">
+            <CardHeader className="pb-2 border-b bg-muted/40">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-amber-600" />
+                  Report Details
+                </CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[0.7rem]"
+                  onClick={() => setShowDetailsDialog(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4 text-xs text-slate-800">
+              <div className="grid grid-cols-2 gap-4 rounded-md border bg-slate-50 p-3">
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Tenant</div>
+                  <div className="font-medium">{selectedReport.tenantName}</div>
+                  <div className="text-slate-500">Room {selectedReport.roomNo || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Status</div>
+                  <Badge variant="outline" className={getStatusColor(selectedReport.status)}>
+                    {selectedReport.status}
+                  </Badge>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Reason / Subject</div>
+                <div className="font-medium text-sm">{selectedReport.reason}</div>
+              </div>
+
+              <div>
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Details</div>
+                <div className="whitespace-pre-wrap text-slate-700 bg-white border rounded-md p-3">
+                  {selectedReport.details}
+                </div>
+              </div>
+
+              {selectedReport.osaReply && (
+                <div className="mt-4 border-t pt-4">
+                  <h3 className="font-semibold text-sm flex items-center gap-1.5 mb-2 text-sky-800">
+                    <ShieldAlert className="h-4 w-4" />
+                    OSA Response
+                  </h3>
+                  <div className="rounded-md bg-sky-50 p-3 text-sky-900 text-xs border border-sky-200 whitespace-normal">
+                    {selectedReport.osaReply}
+                    {selectedReport.osaRepliedAt && (
+                      <div className="text-[10px] text-sky-700 mt-2 text-right">
+                        Replied at {new Date(selectedReport.osaRepliedAt).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {showReportDialog && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
