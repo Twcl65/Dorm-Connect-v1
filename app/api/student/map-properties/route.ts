@@ -78,6 +78,7 @@ export async function GET() {
                   SELECT COUNT(*)::int FROM (
                     SELECT l.id FROM public.landlord_tenant_leases l
                     WHERE l.room_id = r.id
+                      AND l.payment_status <> 'Completed'
                     UNION ALL
                     SELECT s.id FROM public.student_dorm_reservations s
                     WHERE s.room_id = r.id
@@ -85,6 +86,7 @@ export async function GET() {
                       AND NOT EXISTS (
                         SELECT 1 FROM public.landlord_tenant_leases l2
                         WHERE l2.student_reservation_id = s.id
+                          AND l2.payment_status <> 'Completed'
                       )
                     UNION ALL
                     SELECT lr.id FROM public.landlord_reservations lr
