@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -182,111 +183,146 @@ export default function AdminDashboardPage() {
       )}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total users
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.totalUsers ?? "—"}
-            </p>
-            <Badge variant="secondary" className="text-[0.7rem]">
-              All roles
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Inactive accounts
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.inactiveAccounts ?? "—"}
-            </p>
-            <Badge variant="outline" className="text-[0.7rem] border-slate-400 text-slate-700">
-              Disabled sign-in
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total dorms available
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.dormitories ?? "—"}
-            </p>
-            <Badge variant="secondary" className="text-[0.7rem]">
-              Properties
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total rooms listed
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.rooms ?? "—"}
-            </p>
-            <Badge variant="secondary" className="text-[0.7rem]">
-              Dorm capacity
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Accredited dorms
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.accredited ?? "—"}
-            </p>
-            <Badge variant="secondary" className="text-[0.7rem]">
-              Approved
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Pending dorm approvals
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.pendingAccreditation ?? "—"}
-            </p>
-            <Badge variant="secondary" className="text-[0.7rem]">
-              For review
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-300 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Student reservation requests
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-end justify-between pt-0">
-            <p className="text-2xl font-semibold tracking-tight">
-              {systemStats?.studentReservations ?? "—"}
-            </p>
-            <Badge variant="secondary" className="text-[0.7rem]">
-              Overall
-            </Badge>
-          </CardContent>
-        </Card>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Total users
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.totalUsers ?? "—"}
+              </p>
+              <Badge variant="secondary" className="text-[0.7rem]">
+                All roles
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Inactive accounts
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.inactiveAccounts ?? "—"}
+              </p>
+              <Badge variant="outline" className="text-[0.7rem] border-slate-400 text-slate-700">
+                Disabled sign-in
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Total dorms available
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.dormitories ?? "—"}
+              </p>
+              <Badge variant="secondary" className="text-[0.7rem]">
+                Properties
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Total rooms listed
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.rooms ?? "—"}
+              </p>
+              <Badge variant="secondary" className="text-[0.7rem]">
+                Dorm capacity
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Accredited dorms
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.accredited ?? "—"}
+              </p>
+              <Badge variant="secondary" className="text-[0.7rem]">
+                Approved
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Pending dorm approvals
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.pendingAccreditation ?? "—"}
+              </p>
+              <Badge variant="secondary" className="text-[0.7rem]">
+                For review
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Student reservation requests
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between pt-0">
+              <p className="text-2xl font-semibold tracking-tight">
+                {systemStats?.studentReservations ?? "—"}
+              </p>
+              <Badge variant="secondary" className="text-[0.7rem]">
+                Overall
+              </Badge>
+            </CardContent>
+          </Card>
+        </Link>
       </section>
 
       <Card className="border border-gray-300 bg-white">

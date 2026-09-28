@@ -54,6 +54,13 @@ type ReservationStats = {
   cancelled: number;
 };
 
+type TenantOption = {
+  id: string;
+  name: string;
+  roomNo: string;
+  propertyName: string;
+};
+
 function StatusBadge({ status }: { status: PaymentStatus }) {
   const colorClasses =
     status === "Paid"
@@ -87,6 +94,9 @@ export function LandlordDormReportsPanel({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [search, setSearch] = useState("");
+
+  const [showPaymentReportDialog, setShowPaymentReportDialog] =
+    useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -155,6 +165,16 @@ export function LandlordDormReportsPanel({
   }, [filteredPayments]);
 
   const recentPayments = filteredPayments.slice(0, 10);
+
+  const downloadPaymentReport = async () => {
+    setError(null);
+    try {
+      const url = new URL("/api/landlord/reports/payments", window.location.origin);
+      window.open(url.toString(), "_blank");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to download report");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -235,11 +255,14 @@ export function LandlordDormReportsPanel({
                 Download Reservation Report DOCX
               </Button>
             </a>
-            <a href="/api/landlord/reports/payments" className="inline-block">
-              <Button type="button" size="sm" className="h-8 text-xs">
-                Download Payment Report DOCX
-              </Button>
-            </a>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => void downloadPaymentReport()}
+            >
+              Download Payment Report DOCX
+            </Button>
             <a href="/api/landlord/reports/rooms" className="inline-block">
               <Button type="button" size="sm" className="h-8 text-xs">
                 Download Room Report DOCX

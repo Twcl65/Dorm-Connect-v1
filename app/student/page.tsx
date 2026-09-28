@@ -230,83 +230,93 @@ export default function StudentDashboardPage() {
       )}
 
       <section className="grid gap-4 md:grid-cols-2">
-        <Card className="h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Active / pending stay
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 text-sm text-slate-700">
-            {activeReservation ? (
-              <>
-                <p className="font-semibold text-slate-900">
-                  {activeReservation.dormName} – Room {activeReservation.roomNo}
-                </p>
-                <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>Lease period: {activeReservation.leasePeriod}</span>
-                  {activeReservation.leaseEndDate ? (
-                    <span>
-                      Move out:{" "}
-                      <span className="font-medium text-slate-900">
-                        {formatLongDate(activeReservation.leaseEndDate)}
+        <Link
+          href="/student/reservations"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="h-full border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Active / pending stay
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm text-slate-700">
+              {activeReservation ? (
+                <>
+                  <p className="font-semibold text-slate-900">
+                    {activeReservation.dormName} – Room {activeReservation.roomNo}
+                  </p>
+                  <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>Lease period: {activeReservation.leasePeriod}</span>
+                    {activeReservation.leaseEndDate ? (
+                      <span>
+                        Move out:{" "}
+                        <span className="font-medium text-slate-900">
+                          {formatLongDate(activeReservation.leaseEndDate)}
+                        </span>
                       </span>
-                    </span>
-                  ) : null}
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-2">
+                    Reservation:{" "}
+                    <ReservationStatusBadge
+                      status={activeReservation.reservationStatus}
+                    />
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  You do not have an active or pending reservation.
                 </p>
-                <p className="text-xs text-muted-foreground flex items-center gap-2">
-                  Reservation:{" "}
-                  <ReservationStatusBadge
-                    status={activeReservation.reservationStatus}
-                  />
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                You do not have an active or pending reservation.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="h-full">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Latest payment record
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 text-sm text-slate-700">
-            {latestPayment ? (
-              <>
-                <p>
-                  Amount:{" "}
-                  <span className="font-semibold text-slate-900">
-                    ₱{latestPayment.amount.toLocaleString()}
-                  </span>
-                </p>
-                {latestPayment.source === "landlord_entry" && (
-                  <p className="text-[0.65rem] text-muted-foreground">
-                    Recorded by your landlord (manual / onsite entry).
+        <Link
+          href="/student/payments"
+          className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Card className="h-full border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-medium text-muted-foreground">
+                Latest payment record
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm text-slate-700">
+              {latestPayment ? (
+                <>
+                  <p>
+                    Amount:{" "}
+                    <span className="font-semibold text-slate-900">
+                      ₱{latestPayment.amount.toLocaleString()}
+                    </span>
                   </p>
-                )}
-                {latestPayment.paidAtLabel && (
-                  <p className="text-xs text-muted-foreground">
-                    {latestPayment.paidAtLabel.startsWith("Recorded ")
-                      ? latestPayment.paidAtLabel
-                      : `Paid: ${latestPayment.paidAtLabel}`}
+                  {latestPayment.source === "landlord_entry" && (
+                    <p className="text-[0.65rem] text-muted-foreground">
+                      Recorded by your landlord (manual / onsite entry).
+                    </p>
+                  )}
+                  {latestPayment.paidAtLabel && (
+                    <p className="text-xs text-muted-foreground">
+                      {latestPayment.paidAtLabel.startsWith("Recorded ")
+                        ? latestPayment.paidAtLabel
+                        : `Paid: ${latestPayment.paidAtLabel}`}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground flex items-center gap-2">
+                    Status:{" "}
+                    <span className="font-medium">{latestPayment.status}</span>
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground flex items-center gap-2">
-                  Status:{" "}
-                  <span className="font-medium">{latestPayment.status}</span>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No payment records yet.
                 </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No payment records yet.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
       </section>
 
       <Card className="w-full border border-gray-200">

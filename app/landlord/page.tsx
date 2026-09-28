@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Eye, Loader2 } from "lucide-react";
+import Link from "next/link";
 
 type RoomStatus = "Occupied" | "Available" | "Maintenance";
 type PaymentStatus = "Up to Date" | "Overdue" | "Pending";
@@ -126,18 +127,21 @@ export default function LandlordDashboardPage() {
         value: String(data.propertiesCount),
         badge: "Owned",
         badgeVariant: "secondary" as const,
+        href: "/landlord/properties",
       },
       {
         label: "Payments received (this month)",
         value: data.paymentsThisMonth,
         badge: "Paid records",
         badgeVariant: "success" as const,
+        href: "/landlord/payments",
       },
       {
         label: "Reservations",
         value: String(data.reservations.total),
         badge: `${data.reservations.confirmed} confirmed`,
         badgeVariant: "warning" as const,
+        href: "/landlord/reservations",
       },
       {
         label: "Accreditation",
@@ -146,6 +150,7 @@ export default function LandlordDashboardPage() {
         }`,
         badge: "Requests",
         badgeVariant: "muted" as const,
+        href: "/landlord/rooms-management?tab=properties",
       },
     ];
   }, [data]);
@@ -199,24 +204,27 @@ export default function LandlordDashboardPage() {
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             {summaryCards.map((card) => (
-              <Card
+              <Link
                 key={card.label}
-                className="border border-gray-300 bg-white shadow-sm"
+                href={card.href}
+                className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <CardHeader className="pb-1 flex flex-row items-center justify-between">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    {card.label}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex items-end justify-between pt-0">
-                  <p className="text-xl font-semibold tracking-tight whitespace-pre-line leading-tight">
-                    {card.value}
-                  </p>
-                  <Badge variant={card.badgeVariant} className="text-[0.7rem]">
-                    {card.badge}
-                  </Badge>
-                </CardContent>
-              </Card>
+                <Card className="border border-gray-300 bg-white shadow-sm transition hover:border-primary hover:shadow-md cursor-pointer">
+                  <CardHeader className="pb-1 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      {card.label}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex items-end justify-between pt-0">
+                    <p className="text-xl font-semibold tracking-tight whitespace-pre-line leading-tight">
+                      {card.value}
+                    </p>
+                    <Badge variant={card.badgeVariant} className="text-[0.7rem]">
+                      {card.badge}
+                    </Badge>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
 

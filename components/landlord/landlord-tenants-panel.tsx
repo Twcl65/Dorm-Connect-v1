@@ -291,24 +291,28 @@ export function LandlordTenantsPanel({
         value: String(stats.total),
         badge: "Leases",
         badgeVariant: "secondary" as const,
+        href: "/landlord/leases",
       },
       {
         label: "Active Leases",
         value: String(stats.activeLeases),
         badge: "In contract",
         badgeVariant: "success" as const,
+        href: "/landlord/leases",
       },
       {
         label: "Paid",
         value: String(stats.paid),
         badge: "Paid status",
         badgeVariant: "success" as const,
+        href: "/landlord/leases?paymentStatus=Paid",
       },
       {
         label: "Due soon / overdue",
         value: `${stats.dueSoon ?? 0} / ${stats.overdue}`,
         badge: "Rent due",
         badgeVariant: "warning" as const,
+        href: "/landlord/leases?paymentFilter=due_soon",
       },
     ],
     [stats]
