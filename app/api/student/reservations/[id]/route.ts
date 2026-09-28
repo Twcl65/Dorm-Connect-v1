@@ -6,6 +6,7 @@ import { insertNotification } from "@/lib/notify-user";
 import { refreshRoomFromStudentReservations } from "@/lib/landlord-db";
 import { recomputeReservationBalances } from "@/lib/payment-schedule";
 import { ensureLeaseExtensionColumns } from "@/lib/lease-extension";
+import { markAllPendingPaymentsAsPaidForMoveOut } from "@/lib/payment-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -321,6 +322,8 @@ export async function POST(
        WHERE student_reservation_id = $2::uuid`,
       [moveOutDate, id]
     );
+
+    await markAllPendingPaymentsAsPaidForMoveOut(pool, { reservationId: id });
 
     await refreshRoomFromStudentReservations(pool, row.room_id);
     try {

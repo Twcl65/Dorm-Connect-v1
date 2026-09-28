@@ -12,6 +12,7 @@ import {
   applyApprovedLeaseExtension,
   ensureLeaseExtensionColumns,
 } from "@/lib/lease-extension";
+import { markAllPendingPaymentsAsPaidForMoveOut } from "@/lib/payment-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +132,8 @@ export async function PATCH(req: Request, context: Ctx) {
          WHERE student_reservation_id = $2::uuid`,
         [moveOutDate, id]
       );
+
+      await markAllPendingPaymentsAsPaidForMoveOut(pool, { reservationId: id });
 
       await refreshRoomFromStudentReservations(pool, row.room_id);
       await landlordLog(

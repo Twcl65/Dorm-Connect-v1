@@ -1388,6 +1388,44 @@ export async function setScheduleMonthStatus(
   }
 }
 
+/** Mark all pending rent schedule items as paid when a tenant moves out. */
+export async function markAllPendingPaymentsAsPaidForMoveOut(
+  pool: Pool,
+  opts: { reservationId?: string | null; leaseId?: string | null }
+): Promise<void> {
+  const target = await resolveScheduleTarget(pool, opts);
+  if (!target.reservationId && !target.leaseId) return;
+
+  if (target.reservationId) {
+    await ensurePaymentDueDatesForReservation(pool, target.reservationId);
+  } else if (target.leaseId) {
+    await ensurePaymentDueDatesForLease(pool, target.leaseId);
+  }
+
+  const where =
+    opts.reservationId && target.reservationId
+      ? "reservation_id = $1::uuid"
+      : "tenant_lease_id = $1::uuid";
+  const id = opts.reservationId ?? opts.leaseId;
+  if (!id) return;
+
+  await pool.query(
+    `UPDATE public.payment_due_dates
+     SET status = 'Paid',
+         paid_date = due_date,
+         updated_at = now()
+     WHERE ${where}
+       AND status = 'Not Yet Paid'`,
+    [id]
+  );
+
+  if (target.reservationId) {
+    await recomputeReservationBalances(pool, target.reservationId);
+  } else if (target.leaseId) {
+    await syncLeasePaymentStatusFromSchedule(pool, target.leaseId);
+  }
+}
+
 /** Mark the next unpaid month when a rent payment is recorded as Paid. */
 export async function applyPaidRentToSchedule(
   pool: Pool,
