@@ -127,7 +127,7 @@ export default function StudentBrowseDormsPage() {
   const [showTermsDialog, setShowTermsDialog] = useState(false);
   const [reservationStep, setReservationStep] = useState<1 | 2 | 3>(1);
   const [moveInDate, setMoveInDate] = useState("");
-  const [leaseDuration, setLeaseDuration] = useState("12");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
   const [dialogReviews, setDialogReviews] = useState<DormReview[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -730,7 +730,7 @@ export default function StudentBrowseDormsPage() {
                     setShowTermsDialog(false);
                     setReservationStep(1);
                     setMoveInDate("");
-                    setLeaseDuration("12");
+                    setLeaseEndDate("");
                     setShowDormDialog(true);
                   }}
                 >
@@ -1114,28 +1114,50 @@ export default function StudentBrowseDormsPage() {
                         type="date"
                         className="h-8 text-xs"
                         value={moveInDate}
-                        onChange={(e) => setMoveInDate(e.target.value)}
+                        onChange={(e) => {
+                          setMoveInDate(e.target.value);
+                          if (leaseEndDate && leaseEndDate <= e.target.value) {
+                            const next = new Date(`${e.target.value}T12:00:00`);
+                            next.setMonth(next.getMonth() + 1);
+                            next.setDate(next.getDate() - 1);
+                            setLeaseEndDate(next.toISOString().slice(0, 10));
+                          }
+                        }}
                       />
                     </div>
                     <div className="space-y-1">
                       <label
-                        htmlFor="lease-duration"
+                        htmlFor="lease-end-date"
                         className="text-[0.75rem] font-medium text-slate-800"
                       >
-                        Lease Duration
+                        Lease End Date
                       </label>
-                      <select
-                        id="lease-duration"
-                        className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
-                        value={leaseDuration}
-                        onChange={(e) => setLeaseDuration(e.target.value)}
-                      >
-                        <option value="6">6 months</option>
-                        <option value="12">12 months</option>
-                        <option value="18">18 months</option>
-                      </select>
+                      <Input
+                        id="lease-end-date"
+                        type="date"
+                        className="h-8 text-xs"
+                        value={leaseEndDate}
+                        min={moveInDate ? new Date(new Date(`${moveInDate}T12:00:00`).getTime() + 86400000).toISOString().slice(0, 10) : undefined}
+                        onChange={(e) => setLeaseEndDate(e.target.value)}
+                      />
                     </div>
                   </div>
+                  {moveInDate && leaseEndDate && (() => {
+                    const start = new Date(`${moveInDate}T12:00:00`);
+                    const end = new Date(`${leaseEndDate}T12:00:00`);
+                    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+                    const safeMonths = Math.max(1, months);
+                    return (
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                        <span className="font-semibold text-slate-800">
+                          {safeMonths} {safeMonths === 1 ? 'month' : 'months'}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {" "}· Last day: {end.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <p className="text-[0.7rem] text-muted-foreground">
                     Final terms are subject to landlord confirmation.
                   </p>
@@ -1184,13 +1206,10 @@ export default function StudentBrowseDormsPage() {
                   className="h-8 px-3 text-xs"
                   disabled={!moveInDate || submitting || !canBook}
                   onClick={async () => {
-                    if (!selectedDorm || !moveInDate) return;
+                    if (!selectedDorm || !moveInDate || !leaseEndDate) return;
                     setSubmitError(null);
                     setSubmitting(true);
                     try {
-                      const start = new Date(moveInDate);
-                      const end = new Date(start);
-                      end.setMonth(end.getMonth() + Number(leaseDuration));
                       const res = await fetch("/api/student/reservations", {
                         method: "POST",
                         credentials: "include",
@@ -1198,7 +1217,7 @@ export default function StudentBrowseDormsPage() {
                         body: JSON.stringify({
                           roomId: selectedDorm.id,
                           leaseStart: moveInDate,
-                          leaseEnd: end.toISOString().slice(0, 10),
+                          leaseEnd: leaseEndDate,
                         }),
                       });
                       const j = (await res.json()) as { error?: string };

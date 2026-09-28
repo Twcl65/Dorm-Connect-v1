@@ -60,10 +60,14 @@ export async function GET() {
       receipt_url: string | null;
       paid_at: Date | null;
       property_name: string;
+      schedule_month_number: number | null;
+      lease_start: string | null;
     }>(
       `SELECT pay.id, pay.created_at, r.room_no, stu.full_name AS payer_name,
               pay.amount::text, pay.method, pay.status, pay.receipt_url, pay.paid_at,
-              p.name AS property_name
+              p.name AS property_name,
+              pay.schedule_month_number,
+              s.lease_start::text AS lease_start
        FROM public.student_payment_records pay
        JOIN public.student_dorm_reservations s ON s.id = pay.reservation_id
        JOIN public.boarding_house_app_users stu ON stu.id = pay.student_user_id
@@ -74,34 +78,63 @@ export async function GET() {
     );
 
     const data = [
-      ...landlordPay.map((x) => ({
-        paymentId: x.id,
-        source: "manual",
-        dormName: x.property_name ?? "",
-        roomNo: x.room_no ?? "",
-        payerName: x.payer_name,
-        amount: Number(x.amount) || 0,
-        method: normalizeMethod(x.method),
-        status: x.status,
-        referenceNo: x.reference_no ?? "",
-        proofUrl: x.proof_url ?? "",
-        paidOn: x.paid_on?.slice(0, 10) ?? "",
-        createdAt: x.created_at.toISOString(),
-      })),
-      ...studentPay.map((x) => ({
-        paymentId: x.id,
-        source: "student",
-        dormName: x.property_name,
-        roomNo: x.room_no ?? "",
-        payerName: x.payer_name,
-        amount: Number(x.amount) || 0,
-        method: normalizeMethod(x.method),
-        status: mapStudentPayStatus(x.status),
-        referenceNo: "",
-        proofUrl: x.receipt_url ?? "",
-        paidOn: x.paid_at ? new Date(x.paid_at).toISOString().slice(0, 10) : "",
-        createdAt: x.created_at.toISOString(),
-      })),
+      ...landlordPay.map((x) => {
+        const paidOn = x.paid_on?.slice(0, 10) ?? "";
+        const monthLabel = paidOn
+          ? (() => {
+              const d = new Date(paidOn);
+              return `Month 1 (${d.toLocaleDateString("en-US", { month: "long" })})`;
+            })()
+          : "";
+        return {
+          paymentId: x.id,
+          source: "manual",
+          monthLabel,
+          dormName: x.property_name ?? "",
+          roomNo: x.room_no ?? "",
+          payerName: x.payer_name,
+          amount: Number(x.amount) || 0,
+          method: normalizeMethod(x.method),
+          status: x.status,
+          referenceNo: x.reference_no ?? "",
+          proofUrl: x.proof_url ?? "",
+          paidOn,
+          createdAt: x.created_at.toISOString(),
+        };
+      }),
+      ...studentPay.map((x) => {
+        const paidOn = x.paid_at ? new Date(x.paid_at).toISOString().slice(0, 10) : "";
+        const monthLabel =
+          x.schedule_month_number && x.lease_start
+            ? (() => {
+                const start = new Date(x.lease_start);
+                if (isNaN(start.getTime())) return "";
+                start.setHours(12, 0, 0, 0);
+                start.setMonth(start.getMonth() + x.schedule_month_number - 1);
+                return `Month ${x.schedule_month_number} (${start.toLocaleDateString("en-US", { month: "long" })})`;
+              })()
+            : paidOn
+              ? (() => {
+                  const d = new Date(paidOn);
+                  return `Month 1 (${d.toLocaleDateString("en-US", { month: "long" })})`;
+                })()
+              : "";
+        return {
+          paymentId: x.id,
+          source: "student",
+          monthLabel,
+          dormName: x.property_name,
+          roomNo: x.room_no ?? "",
+          payerName: x.payer_name,
+          amount: Number(x.amount) || 0,
+          method: normalizeMethod(x.method),
+          status: mapStudentPayStatus(x.status),
+          referenceNo: "",
+          proofUrl: x.receipt_url ?? "",
+          paidOn,
+          createdAt: x.created_at.toISOString(),
+        };
+      }),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const buf = await buildDocxReport({
@@ -110,7 +143,7 @@ export async function GET() {
       columns: [
         { key: "createdAt", label: "Recorded At" },
         { key: "source", label: "Source" },
-        { key: "dormName", label: "Dorm" },
+        { key: "monthLabel", label: "Month" },
         { key: "roomNo", label: "Room" },
         { key: "payerName", label: "Payer" },
         { key: "amount", label: "Amount" },

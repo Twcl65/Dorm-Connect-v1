@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Eye, Check, Loader2, AlertTriangle, PauseCircle, X } from "lucide-react";
 import { cn } from "@/components/ui/utils";
 
-type ReservationStatus = "Confirmed" | "Pending" | "Cancelled" | "MoveOut";
+type ReservationStatus = "Confirmed" | "Pending" | "Cancelled" | "MoveOut" | "TerminatePending";
 type TabView = "reservations" | "history";
 
 type UnpaidElsewhere = {
@@ -43,6 +43,7 @@ type Reservation = {
   unpaidElsewhere?: UnpaidElsewhere[];
   leaseEndDate?: string;
   moveOutDate?: string;
+  terminateDate?: string;
   leaseExtension?: {
     status: "Pending" | "Approved" | "Rejected";
     requestedEnd: string;
@@ -113,14 +114,16 @@ function ReservationStatusBadge({ status }: { status: ReservationStatus }) {
         ? "bg-amber-100 text-amber-800"
         : status === "MoveOut"
           ? "bg-slate-100 text-slate-700"
-          : "bg-red-100 text-red-800";
+          : status === "TerminatePending"
+            ? "bg-sky-100 text-sky-800"
+            : "bg-red-100 text-red-800";
 
   return (
     <Badge
       className={`${colorClasses} inline-flex min-w-[5.5rem] justify-center rounded-full px-3 py-1 text-xs font-medium`}
       variant="outline"
     >
-      {status}
+      {status === "TerminatePending" ? "Terminate Requested" : status}
     </Badge>
   );
 }
@@ -385,6 +388,37 @@ export function LandlordReservationsPanel({
     }
   };
 
+  const disapproveTerminate = async (res: Reservation) => {
+    if (res.source !== "student") return;
+    setSaving(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(
+        `/api/landlord/student-reservations/${res.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status: "Confirmed",
+            notes: "Terminate request disapproved",
+          }),
+        }
+      );
+      const j = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(j.error ?? "Failed to disapprove terminate request");
+      setShowDetailsDialog(false);
+      await loadData();
+    } catch (e) {
+      setLoadError(
+        e instanceof Error ? e.message : "Failed to disapprove terminate request"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -561,6 +595,7 @@ export function LandlordReservationsPanel({
                     <option value="Confirmed">Confirmed</option>
                     <option value="Pending">Pending</option>
                     <option value="Cancelled">Cancelled</option>
+                    <option value="TerminatePending">Terminate Requested</option>
                   </select>
                 </div>
               </div>
@@ -574,6 +609,7 @@ export function LandlordReservationsPanel({
                     <TableHead>Room No.</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Lease Period</TableHead>
+                    <TableHead>Terminate Lease</TableHead>
                     <TableHead className="text-center">Status</TableHead>
                     <TableHead className="pr-4 font-semibold text-slate-600">
                       Actions
@@ -616,6 +652,13 @@ export function LandlordReservationsPanel({
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
                         {res.leasePeriod}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {res.reservationStatus === "TerminatePending" && res.terminateDate
+                          ? `Requesting (${new Date(`${res.terminateDate}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })})`
+                          : res.reservationStatus === "TerminatePending"
+                            ? "Requesting"
+                            : "—"}
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex flex-col items-center gap-1">
@@ -673,6 +716,29 @@ export function LandlordReservationsPanel({
                               <Check className="h-3 w-3" />
                               Confirm reservation
                             </Button>
+                          )}
+                          {res.reservationStatus === "TerminatePending" && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-emerald-500 text-white hover:bg-emerald-600"
+                                disabled={saving}
+                                onClick={() => approveMoveOut(res)}
+                              >
+                                <Check className="h-3 w-3" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-red-300 text-red-700 hover:bg-red-50"
+                                disabled={saving}
+                                onClick={() => disapproveTerminate(res)}
+                              >
+                                <X className="h-3 w-3" />
+                                Disapprove
+                              </Button>
+                            </>
                           )}
                           {res.leaseExtension?.status === "Pending" && (
                             <>

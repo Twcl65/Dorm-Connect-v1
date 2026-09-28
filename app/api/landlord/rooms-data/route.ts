@@ -86,13 +86,19 @@ export async function GET(req: Request) {
     const { rows: prop } = await pool.query<{
       name: string;
       acc_dorm_name: string | null;
+      accreditation_status: string | null;
     }>(
       `SELECT p.name,
               (SELECT a.dorm_name FROM public.landlord_accreditation_requests a
                WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
                  AND trim(a.dorm_name) <> ''
                ORDER BY a.submitted_at DESC
-               LIMIT 1) AS acc_dorm_name
+               LIMIT 1) AS acc_dorm_name,
+              (SELECT a.status FROM public.landlord_accreditation_requests a
+               WHERE (a.property_id = p.id OR a.owner_user_id = p.owner_user_id)
+                 AND trim(a.dorm_name) <> ''
+               ORDER BY a.submitted_at DESC
+               LIMIT 1) AS accreditation_status
        FROM public.landlord_properties p
        WHERE p.id = $1::uuid`,
       [propertyId]
@@ -137,8 +143,10 @@ export async function GET(req: Request) {
               l.lease_start, l.lease_end, l.payment_status
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
+       LEFT JOIN public.student_dorm_reservations s ON s.id = l.student_reservation_id
        WHERE l.owner_user_id = $1::uuid AND l.property_id = $2::uuid
          AND l.payment_status <> 'Completed'
+         AND COALESCE(s.status, '') <> 'MoveOut'
        ORDER BY r.room_no`,
       [ownerId, propertyId]
     );
@@ -422,6 +430,7 @@ export async function GET(req: Request) {
       })),
       selectedPropertyId: propertyId,
       propertyName,
+      accreditationStatus: prop[0]?.accreditation_status ?? null,
       stats: { total, occupied, available, reserved, maintenance },
       rooms: mappedRooms,
       leaseRows,

@@ -211,7 +211,11 @@ export async function PATCH(req: Request, context: Ctx) {
       body.status === "Pending" ||
       body.status === "Cancelled"
     ) {
-      status = body.status;
+      if (row.status === "TerminatePending" && body.status === "Cancelled") {
+        status = row.status;
+      } else {
+        status = body.status;
+      }
     }
 
     if (status === "Confirmed" && body.holdApplication !== true) {

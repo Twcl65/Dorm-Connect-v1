@@ -37,8 +37,9 @@ export function reservationLifecycle(
 
 export function landlordStatusToStudentApproved(
   status: string
-): "Pending" | "Approved" | "Cancelled" {
+): "Pending" | "Approved" | "Cancelled" | "TerminatePending" {
   if (status === "Confirmed") return "Approved";
   if (status === "Cancelled") return "Cancelled";
+  if (status === "TerminatePending") return "TerminatePending";
   return "Pending";
 }

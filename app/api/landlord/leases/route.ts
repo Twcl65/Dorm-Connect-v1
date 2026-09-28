@@ -47,8 +47,10 @@ export async function GET() {
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
        JOIN public.landlord_properties p ON p.id = l.property_id
+       LEFT JOIN public.student_dorm_reservations s ON s.id = l.student_reservation_id
        WHERE l.owner_user_id = $1::uuid
          AND l.payment_status <> 'Completed'
+         AND COALESCE(s.status, '') <> 'MoveOut'
        ORDER BY r.room_no`,
       [ownerId]
     );

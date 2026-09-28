@@ -184,6 +184,7 @@ export function LandlordRoomsPanel({
   const [propertyName, setPropertyName] = useState("");
   const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [accreditationStatus, setAccreditationStatus] = useState<string | null>(null);
   const [addRoomPropertyId, setAddRoomPropertyId] = useState("");
   const [stats, setStats] = useState({
     total: 0,
@@ -256,6 +257,7 @@ export function LandlordRoomsPanel({
         stats?: typeof stats;
         rooms?: Room[];
         leaseRows?: LeaseRow[];
+        accreditationStatus?: string | null;
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
@@ -283,6 +285,7 @@ export function LandlordRoomsPanel({
         setSelectedPropertyId(json.selectedPropertyId);
       }
       if (json.stats) setStats(json.stats);
+      setAccreditationStatus(json.accreditationStatus ?? null);
       setRooms(json.rooms ?? []);
       setLeaseRows(json.leaseRows ?? []);
     } catch (e) {
@@ -1464,14 +1467,38 @@ export function LandlordRoomsPanel({
                   <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[0.7rem] md:inline-block md:min-w-[240px]">
                     <p>
                       Accreditation:{" "}
-                      <span className="font-semibold text-emerald-700">
-                        Complied
+                      <span
+                        className={
+                          "font-semibold " +
+                            (accreditationStatus === "Approved"
+                              ? "text-emerald-700"
+                              : accreditationStatus === "Rejected"
+                                ? "text-red-700"
+                                : "text-amber-700")
+                        }
+                      >
+                        {accreditationStatus || "—"}
                       </span>
                     </p>
                     <p>
                       Safety compliance:{" "}
-                      <span className="font-semibold text-emerald-700">
-                        Complied
+                      <span
+                        className={
+                          "font-semibold " +
+                            (accreditationStatus === "Approved"
+                              ? "text-emerald-700"
+                              : accreditationStatus === "Rejected"
+                                ? "text-red-700"
+                                : "text-amber-700")
+                        }
+                      >
+                        {accreditationStatus === "Approved"
+                          ? "Complied"
+                          : accreditationStatus === "Rejected"
+                            ? "Rejected"
+                            : accreditationStatus === "Pending"
+                              ? "Pending review"
+                              : "—"}
                       </span>
                     </p>
                   </div>

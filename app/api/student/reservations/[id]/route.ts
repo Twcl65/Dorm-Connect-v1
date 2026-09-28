@@ -179,6 +179,12 @@ export async function PATCH(req: Request, context: Ctx) {
     if (body.status !== "Cancelled") {
       return NextResponse.json({ error: "Only cancellation is supported." }, { status: 400 });
     }
+    if (row.status === "TerminatePending") {
+      return NextResponse.json(
+        { error: "This reservation is already pending termination. Please wait for landlord review." },
+        { status: 400 }
+      );
+    }
     if (row.status !== "Pending") {
       return NextResponse.json(
         { error: "Reservation not found or cannot be cancelled." },
@@ -188,7 +194,9 @@ export async function PATCH(req: Request, context: Ctx) {
 
     const { rowCount } = await pool.query(
       `UPDATE public.student_dorm_reservations
-       SET status = 'Cancelled', updated_at = now()
+       SET status = 'Cancelled',
+           rent_payment_status = 'Cancelled',
+           updated_at = now()
        WHERE id = $1::uuid AND student_user_id = $2::uuid
          AND status = 'Pending'`,
       [id, studentId]
@@ -268,21 +276,48 @@ export async function POST(
       return NextResponse.json({ error: "Reservation not found." }, { status: 404 });
     }
 
-    if (row.status === "MoveOut") {
+    if (row.status === "MoveOut" || row.status === "TerminatePending") {
       return NextResponse.json(
-        { error: "This stay has already been moved out." },
+        { error: "This stay is already ending or has already been moved out." },
         { status: 400 }
       );
     }
 
     const moveOutDate =
       (body.moveOutDate?.trim()?.slice(0, 10) ?? row.lease_end.slice(0, 10));
+    const today = new Date();
+    const moveOut = new Date(`${moveOutDate}T00:00:00`);
+    const leaseStart = new Date(`${row.lease_start.slice(0, 10)}T00:00:00`);
+    const currentEnd = new Date(`${row.lease_end.slice(0, 10)}T00:00:00`);
+    if (isNaN(moveOut.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid move-out date." },
+        { status: 400 }
+      );
+    }
+    if (moveOut.getTime() < new Date(`${today.toISOString().slice(0, 10)}T00:00:00`).getTime()) {
+      return NextResponse.json(
+        { error: "Move-out date must be today or later." },
+        { status: 400 }
+      );
+    }
+    if (moveOut.getTime() <= leaseStart.getTime()) {
+      return NextResponse.json(
+        { error: "Move-out date must be after your move-in date." },
+        { status: 400 }
+      );
+    }
+    if (moveOut.getTime() >= currentEnd.getTime()) {
+      return NextResponse.json(
+        { error: "Move-out date must be before your current lease end date." },
+        { status: 400 }
+      );
+    }
 
     await pool.query(
       `UPDATE public.student_dorm_reservations
-       SET status = 'MoveOut',
+       SET status = 'TerminatePending',
            move_out_date = $1::date,
-           moved_out_at = now(),
            updated_at = now()
        WHERE id = $2::uuid`,
       [moveOutDate, id]
@@ -296,7 +331,7 @@ export async function POST(
          balance_remaining, ended_by, ended_reason)
        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
                $5, $6::date, $7::date, $8::date,
-               'MoveOut', $9, $10, $11, $12, 'tenant', $13)`,
+               'TerminatePending', $9, $10, $11, $12, 'tenant', $13)`,
       [
         id,
         studentId,
@@ -310,7 +345,7 @@ export async function POST(
         Number(row.advance_amount),
         Number(row.deposit_amount),
         Number(row.balance_remaining),
-        `Student-requested move-out on ${moveOutDate}`,
+        `Student requested early termination on ${moveOutDate}`,
       ]
     );
 

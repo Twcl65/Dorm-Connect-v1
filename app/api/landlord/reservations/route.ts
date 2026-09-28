@@ -96,12 +96,14 @@ export async function GET() {
       notes: string | null;
       lease_extension_status: string | null;
       lease_extension_requested_end: string | null;
+      move_out_date: string | null;
     }>(
       `SELECT s.id, s.created_at, r.room_no, stu.full_name AS guest_name, stu.email AS student_email,
               s.student_user_id, p.id AS property_id,
               s.lease_start::text, s.lease_end::text, s.status, s.rent_payment_status,
               p.name AS property_name, s.notes,
-              s.lease_extension_status, s.lease_extension_requested_end::text
+              s.lease_extension_status, s.lease_extension_requested_end::text,
+              s.move_out_date::text AS move_out_date
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -153,8 +155,10 @@ export async function GET() {
           roomNo: s.room_no ?? "—",
           name: s.guest_name,
           leasePeriod: period(s.lease_start, s.lease_end),
-          reservationStatus: s.status as "Confirmed" | "Pending" | "Cancelled",
+          reservationStatus: s.status as "Confirmed" | "Pending" | "Cancelled" | "TerminatePending",
           dormName: s.property_name,
+          moveOutDate: s.move_out_date?.slice(0, 10) ?? "",
+          terminateDate: s.move_out_date?.slice(0, 10) ?? "",
           email: s.student_email,
           contact: undefined as string | undefined,
           rentPaymentStatus,

@@ -20,7 +20,7 @@ import { formatLongDate } from "@/lib/student-db";
 import { Input as FileInput } from "@/components/ui/input";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 
-type ReservationStatus = "Pending" | "Approved" | "Cancelled";
+type ReservationStatus = "Pending" | "Approved" | "Cancelled" | "TerminatePending";
 type TabView = "reservations" | "history";
 type PaymentMethod = "gcash" | "bank" | "card";
 type LeaseExtensionInfo = {
@@ -97,14 +97,16 @@ function StatusBadge({ status }: { status: ReservationStatus }) {
       ? "bg-emerald-100 text-emerald-800"
       : status === "Pending"
         ? "bg-amber-100 text-amber-800"
-        : "bg-red-100 text-red-800";
+        : status === "TerminatePending"
+          ? "bg-sky-100 text-sky-800"
+          : "bg-red-100 text-red-800";
 
   return (
     <Badge
       className={`${colorClasses} rounded-full px-3 py-1 text-xs font-medium`}
       variant="outline"
     >
-      {status}
+      {status === "TerminatePending" ? "Terminate Requested" : status}
     </Badge>
   );
 }
@@ -132,6 +134,24 @@ export default function StudentReservationsPage() {
     useState(false);
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [reopenDetailsAfterLightbox, setReopenDetailsAfterLightbox] =
+    useState(false);
+
+  const openLightbox = useCallback((url: string) => {
+    setReopenDetailsAfterLightbox(true);
+    setShowDetailsDialog(false);
+    setLightboxUrl(url);
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    const shouldReopen = reopenDetailsAfterLightbox;
+    setLightboxUrl(null);
+    if (shouldReopen) {
+      setReopenDetailsAfterLightbox(false);
+      setShowDetailsDialog(true);
+    }
+  }, [reopenDetailsAfterLightbox]);
+
   const [showExtendDialog, setShowExtendDialog] = useState(false);
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
   const [extendDate, setExtendDate] = useState("");
@@ -243,13 +263,15 @@ export default function StudentReservationsPage() {
   }, [totalPages]);
 
   useEffect(() => {
-    if (!showDetailsDialog) setLightboxUrl(null);
-  }, [showDetailsDialog]);
+    if (!showDetailsDialog) {
+      closeLightbox();
+    }
+  }, [showDetailsDialog, closeLightbox]);
 
   useEffect(() => {
     if (!lightboxUrl) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLightboxUrl(null);
+      if (e.key === "Escape") closeLightbox();
     };
     window.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -434,9 +456,15 @@ export default function StudentReservationsPage() {
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <StatusBadge status={res.status} />
-                        {res.stayLabel ? (
+                        {res.status !== "Cancelled" && res.stayLabel ? (
                           <span className="text-[0.65rem] text-muted-foreground">
                             {res.stayLabel}
+                          </span>
+                        ) : null}
+                        {res.status === "TerminatePending" &&
+                        res.leaseEndDate ? (
+                          <span className="text-[0.65rem] font-medium text-sky-700">
+                            Requesting ({formatLongDate(res.leaseEndDate)})
                           </span>
                         ) : null}
                         {res.leaseExtension?.status === "Pending" ? (
@@ -546,6 +574,7 @@ export default function StudentReservationsPage() {
                   <TableHead>Dorm / Room</TableHead>
                   <TableHead>Lease Period</TableHead>
                   <TableHead>Move-out Date</TableHead>
+                  <TableHead>Terminate Lease</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Ended</TableHead>
                 </TableRow>
@@ -554,7 +583,7 @@ export default function StudentReservationsPage() {
                 {historyLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-8 text-center text-xs text-muted-foreground"
                     >
                       Loading history…
@@ -563,10 +592,10 @@ export default function StudentReservationsPage() {
                 ) : historyData.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-8 text-center text-xs text-muted-foreground"
                     >
-                      {historyError ?? "No reservation history yet."}
+                      No history yet.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -581,6 +610,21 @@ export default function StudentReservationsPage() {
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
                         {formatLongDate(item.moveOutDate)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-slate-900">
+                            Terminate Lease
+                          </p>
+                          <p className="text-[0.65rem] text-muted-foreground">
+                            {formatLongDate(item.moveOutDate)}
+                          </p>
+                          {item.endedReason ? (
+                            <p className="text-[0.65rem] text-muted-foreground">
+                              {item.endedReason}
+                            </p>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col items-start gap-1">
@@ -601,11 +645,6 @@ export default function StudentReservationsPage() {
                           <p className="text-[0.65rem] text-muted-foreground">
                             {new Date(item.endedAt).toLocaleDateString()}
                           </p>
-                          {item.endedReason ? (
-                            <p className="text-[0.65rem] text-muted-foreground">
-                              {item.endedReason}
-                            </p>
-                          ) : null}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -840,7 +879,7 @@ export default function StudentReservationsPage() {
                     type="button"
                     className="group relative h-52 w-full overflow-hidden rounded-md bg-slate-200 text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary"
                     onClick={() =>
-                      setLightboxUrl(selectedReservation.images[0] ?? null)
+                      openLightbox(selectedReservation.images[0] ?? null)
                     }
                     aria-label="View cover photo larger"
                   >
@@ -860,7 +899,7 @@ export default function StudentReservationsPage() {
                           key={src}
                           type="button"
                           className="relative h-16 w-24 overflow-hidden rounded border border-slate-200 outline-none ring-offset-1 focus-visible:ring-2 focus-visible:ring-primary"
-                          onClick={() => setLightboxUrl(src)}
+                          onClick={() => openLightbox(src)}
                           aria-label="View photo larger"
                         >
                           <img
@@ -1028,7 +1067,7 @@ export default function StudentReservationsPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2 border-t bg-white pt-3">
+              <div className="flex flex-wrap justify-end gap-2 border-t bg-white pt-3">
                 {selectedReservation.leaseExtension?.status === "Pending" ? (
                   <p className="w-full text-[0.7rem] text-amber-800">
                     Lease extension requested until{" "}
@@ -1057,7 +1096,7 @@ export default function StudentReservationsPage() {
                   <Button
                     type="button"
                     size="sm"
-                    className="ml-auto h-8 px-3 text-xs bg-sky-600 hover:bg-sky-700"
+                    className="h-8 px-3 text-xs bg-sky-600 hover:bg-sky-700"
                     onClick={() => {
                       setShowDetailsDialog(false);
                       setPaymentMethod("gcash");
@@ -1071,9 +1110,9 @@ export default function StudentReservationsPage() {
                 ) : (
                   <Button
                     type="button"
-                    size="sm"
                     variant="secondary"
-                    className="ml-auto h-8 px-3 text-xs"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
                     disabled
                   >
                     Payment sent
@@ -1091,14 +1130,14 @@ export default function StudentReservationsPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Photo preview"
-          onClick={() => setLightboxUrl(null)}
+          onClick={closeLightbox}
         >
           <button
             type="button"
             className="absolute right-3 top-3 rounded-full bg-white/10 p-2 text-white backdrop-blur transition hover:bg-white/20"
             onClick={(e) => {
               e.stopPropagation();
-              setLightboxUrl(null);
+              closeLightbox();
             }}
             aria-label="Close preview"
           >
@@ -1237,7 +1276,7 @@ export default function StudentReservationsPage() {
                           method: "PATCH",
                           credentials: "include",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ leaseEnd: terminateDate }),
+                          body: JSON.stringify({ moveOutDate: terminateDate }),
                         }
                       );
                       const j = (await res.json()) as { error?: string };

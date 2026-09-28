@@ -308,7 +308,11 @@ export default function AdminUsersPage() {
                         {user.studentId ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
-                        {user.role}
+                        {user.role === "ICT Admin"
+                          ? "Admin"
+                          : user.role === "OSA/SAS Admin"
+                            ? "OSA Admin"
+                            : user.role}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -327,7 +331,13 @@ export default function AdminUsersPage() {
                       <TableCell className="text-[0.65rem] text-slate-600">
                         {user.role === "Student"
                           ? user.ictVerificationStatus
-                          : "—"}
+                          : user.role === "Landlord"
+                            ? "Accredited"
+                            : user.role === "ICT Admin"
+                              ? "Admin"
+                              : user.role === "OSA/SAS Admin"
+                                ? "OSA Admin"
+                                : "—"}
                       </TableCell>
                       <TableCell className="pr-4">
                         <div className="flex justify-center gap-2">

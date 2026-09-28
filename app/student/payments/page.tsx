@@ -43,6 +43,8 @@ type Payment = {
   referenceNo?: string;
   paidAt?: string;
   leasePeriod?: string;
+  scheduleMonthNumber?: number;
+  leaseMonthLabel?: string;
 };
 
 type UnpaidMonth = {
@@ -95,6 +97,7 @@ export default function StudentPaymentsPage() {
     gcashQrCodeUrl: string | null;
     landlordName: string | null;
   } | null>(null);
+  const [pendingReopenDetails, setPendingReopenDetails] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -347,7 +350,7 @@ export default function StudentPaymentsPage() {
                   <TableHead>Dorm Name</TableHead>
                   <TableHead>Room No.</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Date (Month)</TableHead>
+                  <TableHead>Month</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="pr-4 font-semibold text-slate-600">
@@ -385,7 +388,7 @@ export default function StudentPaymentsPage() {
                         ₱{payment.amount.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
-                        {formatMonthYear(payment.date)}
+                        {payment.leaseMonthLabel ?? (payment.scheduleMonthNumber ? `Month ${payment.scheduleMonthNumber}` : formatMonthYear(payment.date))}
                       </TableCell>
                       <TableCell className="text-xs text-slate-700">
                         {payment.method}

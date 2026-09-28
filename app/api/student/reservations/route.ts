@@ -82,6 +82,7 @@ export async function GET() {
       rent_payment_status: string;
       lease_extension_status: string | null;
       lease_extension_requested_end: string | null;
+      move_out_date: string | null;
     }>(
       `SELECT s.id, p.name AS property_name, r.room_no,
               s.lease_start::text, s.lease_end::text, s.status,
@@ -96,6 +97,7 @@ export async function GET() {
               s.rent_payment_status,
               s.lease_extension_status,
               s.lease_extension_requested_end::text,
+              s.move_out_date::text AS move_out_date,
               EXISTS (
                 SELECT 1 FROM public.student_payment_records pr
                 WHERE pr.reservation_id = s.id
@@ -181,6 +183,7 @@ export async function GET() {
           x.lease_extension_status,
           x.lease_extension_requested_end
         ),
+        moveOutDate: x.move_out_date?.slice(0, 10) ?? "",
       };
     }));
 

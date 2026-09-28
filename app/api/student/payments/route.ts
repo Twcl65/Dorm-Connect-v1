@@ -28,6 +28,41 @@ function getScheduleMonthLabel(leaseStart: string | null, monthNumber: number | 
   return `Month ${monthNumber} (${start.toLocaleDateString("en-US", { month: "long" })})`;
 }
 
+function getScheduleMonthFromDates(leaseStart: string | null, createdAt: string | null): number | null {
+  if (!leaseStart || !createdAt) return null;
+  const start = new Date(leaseStart);
+  const created = new Date(createdAt);
+  if (isNaN(start.getTime()) || isNaN(created.getTime())) return null;
+  const diffMs = created.getTime() - start.getTime();
+  const months = Math.floor(diffMs / (30.44 * 24 * 60 * 60 * 1000));
+  return months >= 0 ? months + 1 : 1;
+}
+
+function getMonthLabelWithLeaseFallback(leaseStart: string | null, monthNumber: number | null, fallbackDate: string | null): string | undefined {
+  if (leaseStart && monthNumber) {
+    const start = new Date(leaseStart);
+    if (!isNaN(start.getTime())) {
+      start.setHours(12, 0, 0, 0);
+      start.setMonth(start.getMonth() + monthNumber - 1);
+      return `Month ${monthNumber} (${start.toLocaleDateString("en-US", { month: "long" })})`;
+    }
+  }
+  if (leaseStart) {
+    const start = new Date(leaseStart);
+    if (!isNaN(start.getTime())) {
+      start.setHours(12, 0, 0, 0);
+      return `Month 1 (${start.toLocaleDateString("en-US", { month: "long" })})`;
+    }
+  }
+  if (fallbackDate) {
+    const d = new Date(fallbackDate);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
+  }
+  return undefined;
+}
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -173,7 +208,18 @@ export async function GET() {
         x.lease_start && x.lease_end
           ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
           : "—";
-      const leasePeriod = getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? defaultLeasePeriod;
+      const scheduleMonth =
+        x.schedule_month_number ??
+        getScheduleMonthFromDates(x.lease_start, x.created_at?.toISOString?.() ?? null);
+      const leasePeriod =
+        scheduleMonth && x.lease_start
+          ? getScheduleMonthLabel(x.lease_start, scheduleMonth) ??
+            defaultLeasePeriod
+          : defaultLeasePeriod;
+      const leaseMonthLabel =
+        getMonthLabelWithLeaseFallback(x.lease_start, x.schedule_month_number, x.created_at?.toISOString?.() ?? null) ??
+        getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ??
+        undefined;
       const months =
         x.lease_start && x.lease_end
           ? Math.max(
@@ -236,6 +282,7 @@ export async function GET() {
           : undefined,
         leasePeriod,
         scheduleMonthNumber: x.schedule_month_number ?? undefined,
+        leaseMonthLabel: getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? undefined,
       };
     });
     const fromLandlord = landlordRows.map((x) => {
@@ -243,7 +290,18 @@ export async function GET() {
         x.lease_start && x.lease_end
           ? formatLeasePeriod(new Date(x.lease_start), new Date(x.lease_end))
           : "—";
-      const leasePeriod = getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? defaultLeasePeriod;
+      const scheduleMonth =
+        x.schedule_month_number ??
+        getScheduleMonthFromDates(x.lease_start, x.created_at?.toISOString?.() ?? null);
+      const leasePeriod =
+        scheduleMonth && x.lease_start
+          ? getScheduleMonthLabel(x.lease_start, scheduleMonth) ??
+            defaultLeasePeriod
+          : defaultLeasePeriod;
+      const leaseMonthLabel =
+        getMonthLabelWithLeaseFallback(x.lease_start, x.schedule_month_number, x.created_at?.toISOString?.() ?? null) ??
+        getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ??
+        undefined;
       const months =
         x.lease_start && x.lease_end
           ? Math.max(
