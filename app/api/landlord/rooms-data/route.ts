@@ -138,6 +138,7 @@ export async function GET(req: Request) {
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
        WHERE l.owner_user_id = $1::uuid AND l.property_id = $2::uuid
+         AND l.payment_status <> 'Completed'
        ORDER BY r.room_no`,
       [ownerId, propertyId]
     );
@@ -232,6 +233,7 @@ export async function GET(req: Request) {
        JOIN public.landlord_rooms r ON r.id = l.room_id
        WHERE l.owner_user_id = $1::uuid
          AND l.property_id = $2::uuid
+         AND l.payment_status <> 'Completed'
        GROUP BY l.room_id`,
       [ownerId, propertyId]
     );

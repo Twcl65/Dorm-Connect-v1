@@ -9,7 +9,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,21 +17,11 @@ import { Input } from "@/components/ui/input";
 import { Eye, Loader2, Menu, X } from "lucide-react";
 import { formatLongDate } from "@/lib/student-db";
 
-function normWs(s: string): string {
-  return s.replace(/\s+/g, " ").trim();
-}
-
-function showRoomDetailsAside(
-  description: string,
-  roomDetails: string | null | undefined
-): boolean {
-  if (!roomDetails?.trim()) return false;
-  return !normWs(description).includes(normWs(roomDetails));
-}
 import { Input as FileInput } from "@/components/ui/input";
 import { uploadDormConnectFile } from "@/lib/upload-file-client";
 
 type ReservationStatus = "Pending" | "Approved" | "Cancelled";
+type TabView = "reservations" | "history";
 type PaymentMethod = "gcash" | "bank" | "card";
 type LeaseExtensionInfo = {
   status: "Pending" | "Approved" | "Rejected";
@@ -70,6 +60,37 @@ type Reservation = {
   leaseExtension?: LeaseExtensionInfo;
 };
 
+type HistoryRow = {
+  id: string;
+  reservationId: string;
+  tenantName: string;
+  roomNo: string;
+  propertyName: string;
+  leaseStart: string;
+  leaseEnd: string;
+  moveOutDate: string;
+  status: string;
+  rentPaymentStatus: string;
+  advanceAmount: number;
+  depositAmount: number;
+  balanceRemaining: number;
+  endedBy: string;
+  endedReason: string;
+  endedAt: string;
+};
+
+function normWs(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function showRoomDetailsAside(
+  description: string,
+  roomDetails: string | null | undefined
+): boolean {
+  if (!roomDetails?.trim()) return false;
+  return !normWs(description).includes(normWs(roomDetails));
+}
+
 function StatusBadge({ status }: { status: ReservationStatus }) {
   const colorClasses =
     status === "Approved"
@@ -90,6 +111,10 @@ function StatusBadge({ status }: { status: ReservationStatus }) {
 
 export default function StudentReservationsPage() {
   const [reservationsData, setReservationsData] = useState<Reservation[]>([]);
+  const [historyData, setHistoryData] = useState<HistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabView>("reservations");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,11 +127,9 @@ export default function StudentReservationsPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>("gcash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("gcash");
   const [showGcashPaymentSection, setShowGcashPaymentSection] =
     useState(false);
-  /** Proof image/PDF for GCash or bank transfer. */
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showExtendDialog, setShowExtendDialog] = useState(false);
@@ -119,8 +142,6 @@ export default function StudentReservationsPage() {
     gcashQrCodeUrl: string | null;
     landlordName: string | null;
   } | null>(null);
-
-  // Dropdown menu state
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
 
@@ -145,9 +166,36 @@ export default function StudentReservationsPage() {
     }
   }, []);
 
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch("/api/student/reservations/history", {
+        credentials: "include",
+      });
+      const json = (await res.json()) as {
+        history?: HistoryRow[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load history");
+      setHistoryData(json.history ?? []);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : "Failed to load history");
+      setHistoryData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      void loadHistory();
+    }
+  }, [activeTab, loadHistory]);
 
   const filteredReservations = useMemo(
     () =>
@@ -275,237 +323,340 @@ export default function StudentReservationsPage() {
         </div>
       )}
 
+      <div className="inline-flex rounded-md border border-gray-300 bg-white p-1">
+        <Button
+          type="button"
+          size="sm"
+          variant={activeTab === "reservations" ? "default" : "ghost"}
+          className="h-7 px-3 text-xs"
+          onClick={() => setActiveTab("reservations")}
+        >
+          Reservations
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={activeTab === "history" ? "default" : "ghost"}
+          className="h-7 px-3 text-xs"
+          onClick={() => setActiveTab("history")}
+        >
+          History
+        </Button>
+      </div>
+
       <Card className="border border-gray-300 bg-white">
         <CardHeader className="pb-3 border-b bg-muted/40">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <CardTitle className="text-sm font-semibold text-slate-800">
-                Reservations
+                {activeTab === "history" ? "Reservation History" : "Reservations"}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Current and past reservation requests.
+                {activeTab === "history"
+                  ? "Approved stays that have already ended."
+                  : "Current and past reservation requests."}
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Input
-                placeholder="Search ID, dorm, or room..."
-                className="h-8 w-full bg-muted text-xs sm:w-56"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <select
-                className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:w-40"
-                value={statusFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setStatusFilter(
-                    e.target.value === "all"
-                      ? "all"
-                      : (e.target.value as ReservationStatus)
-                  )
-                }
-              >
-                <option value="all">All statuses</option>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
+            {activeTab === "reservations" ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input
+                  placeholder="Search ID, dorm, or room..."
+                  className="h-8 w-full bg-muted text-xs sm:w-56"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <select
+                  className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:w-40"
+                  value={statusFilter}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                    setStatusFilter(
+                      e.target.value === "all"
+                        ? "all"
+                        : (e.target.value as ReservationStatus)
+                    )
+                  }
+                >
+                  <option value="all">All statuses</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
-          <Table bordered={false}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Dorm Name</TableHead>
-                <TableHead>Room No.</TableHead>
-                <TableHead>Lease Duration</TableHead>
-                <TableHead>Move-out Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="pr-4 font-semibold text-slate-600">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedReservations.length === 0 && (
+          {activeTab === "reservations" ? (
+            <Table bordered={false}>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-8 text-center text-xs text-muted-foreground"
-                  >
-                    {loading
-                      ? "Loading…"
-                      : "No reservations yet. Browse dorms to create one."}
-                  </TableCell>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Dorm Name</TableHead>
+                  <TableHead>Room No.</TableHead>
+                  <TableHead>Lease Duration</TableHead>
+                  <TableHead>Move-out Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="pr-4 font-semibold text-slate-600">
+                    Actions
+                  </TableHead>
                 </TableRow>
-              )}
-              {paginatedReservations.map((res) => (
-                <TableRow key={res.id}>
-                  <TableCell className="text-xs font-mono text-slate-500">
-                    {res.id.slice(0, 8)}…
-                  </TableCell>
-                  <TableCell className="text-sm font-medium text-slate-800">
-                    {res.dorm}
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-700">
-                    {res.room}
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-700">
-                    {res.leaseMonths} {res.leaseMonths === 1 ? "month" : "months"}
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-700">
-                    {res.leaseEndDate ? formatLongDate(res.leaseEndDate) : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <StatusBadge status={res.status} />
-                      {res.stayLabel ? (
-                        <span className="text-[0.65rem] text-muted-foreground">
-                          {res.stayLabel}
-                        </span>
-                      ) : null}
-                      {res.leaseExtension?.status === "Pending" ? (
-                        <span className="text-[0.65rem] font-medium text-amber-700">
-                          Extension pending
-                        </span>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="pr-4 align-top">
-                    <div className="flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-[0.7rem] bg-white hover:bg-slate-50 hover:text-slate-900"
-                        onClick={(e) => {
-                          if (openMenuId === res.id) {
-                            setOpenMenuId(null);
-                          } else {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setMenuPos({
-                              top: rect.bottom + 4,
-                              right: window.innerWidth - rect.right,
-                            });
-                            setOpenMenuId(res.id);
-                          }
-                        }}
-                      >
-                        <Menu className="h-3 w-3 mr-1" />
-                        Menu
-                      </Button>
+              </TableHeader>
+              <TableBody>
+                {paginatedReservations.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      {loading
+                        ? "Loading…"
+                        : "No reservations yet. Browse dorms to create one."}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {paginatedReservations.map((res) => (
+                  <TableRow key={res.id}>
+                    <TableCell className="text-xs font-mono text-slate-500">
+                      {res.id.slice(0, 8)}…
+                    </TableCell>
+                    <TableCell className="text-sm font-medium text-slate-800">
+                      {res.dorm}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {res.room}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {res.leaseMonths} {res.leaseMonths === 1 ? "month" : "months"}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {res.leaseEndDate ? formatLongDate(res.leaseEndDate) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={res.status} />
+                        {res.stayLabel ? (
+                          <span className="text-[0.65rem] text-muted-foreground">
+                            {res.stayLabel}
+                          </span>
+                        ) : null}
+                        {res.leaseExtension?.status === "Pending" ? (
+                          <span className="text-[0.65rem] font-medium text-amber-700">
+                            Extension pending
+                          </span>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="pr-4 align-top">
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[0.7rem] bg-white hover:bg-slate-50 hover:text-slate-900"
+                          onClick={(e) => {
+                            if (openMenuId === res.id) {
+                              setOpenMenuId(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setMenuPos({
+                                top: rect.bottom + 4,
+                                right: window.innerWidth - rect.right,
+                              });
+                              setOpenMenuId(res.id);
+                            }
+                          }}
+                        >
+                          <Menu className="h-3 w-3 mr-1" />
+                          Menu
+                        </Button>
 
-                      {openMenuId === res.id && typeof document !== "undefined"
-                        ? createPortal(
-                            <>
-                              <div
-                                className="fixed inset-0 z-[9998]"
-                                onClick={() => setOpenMenuId(null)}
-                              />
-                              <div
-                                className="fixed z-[9999] flex w-36 flex-col gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-md"
-                                style={{ top: menuPos.top, right: menuPos.right }}
-                              >
-                                <Button
-                                  size="sm"
-                                  className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-slate-700 shadow-none hover:bg-slate-100 hover:text-slate-900"
-                                  onClick={() => {
-                                    setOpenMenuId(null);
-                                    setSelectedReservation(res);
-                                    setPaymentMethod("gcash");
-                                    setShowGcashPaymentSection(false);
-                                    setPaymentProofFile(null);
-                                    setShowDetailsDialog(true);
-                                  }}
+                        {openMenuId === res.id && typeof document !== "undefined"
+                          ? createPortal(
+                              [
+                                <div
+                                  className="fixed inset-0 z-[9998]"
+                                  onClick={() => setOpenMenuId(null)}
+                                />,
+                                <div
+                                  className="fixed z-[9999] flex w-36 flex-col gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-md"
+                                  style={{ top: menuPos.top, right: menuPos.right }}
                                 >
-                                  <Eye className="h-3 w-3 mr-1" />
-                                  View Details
-                                </Button>
-                                {res.status === "Approved" && res.stayLabel === "Current Staying" ? (
-                                  <>
-                                    {res.leaseExtension?.status !== "Pending" ? (
+                                  <Button
+                                    size="sm"
+                                    className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-slate-700 shadow-none hover:bg-slate-100 hover:text-slate-900"
+                                    onClick={() => {
+                                      setOpenMenuId(null);
+                                      setSelectedReservation(res);
+                                      setPaymentMethod("gcash");
+                                      setShowGcashPaymentSection(false);
+                                      setPaymentProofFile(null);
+                                      setShowDetailsDialog(true);
+                                    }}
+                                  >
+                                    <Eye className="h-3 w-3 mr-1" />
+                                    View Details
+                                  </Button>
+                                  {res.status === "Approved" && res.stayLabel === "Current Staying" ? (
+                                    <>
+                                      {res.leaseExtension?.status !== "Pending" ? (
+                                        <Button
+                                          size="sm"
+                                          className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-indigo-600 shadow-none hover:bg-indigo-50 hover:text-indigo-700"
+                                          onClick={() => {
+                                            setOpenMenuId(null);
+                                            setSelectedReservation(res);
+                                            const current = res.leaseEndDate ?? "";
+                                            const d = new Date(`${current}T12:00:00`);
+                                            d.setMonth(d.getMonth() + 1);
+                                            setExtendDate(d.toISOString().slice(0, 10));
+                                            setShowExtendDialog(true);
+                                          }}
+                                        >
+                                          Extend Lease
+                                        </Button>
+                                      ) : null}
                                       <Button
                                         size="sm"
-                                        className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-indigo-600 shadow-none hover:bg-indigo-50 hover:text-indigo-700"
+                                        className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-rose-600 shadow-none hover:bg-rose-50 hover:text-rose-700"
                                         onClick={() => {
                                           setOpenMenuId(null);
                                           setSelectedReservation(res);
-                                          const current = res.leaseEndDate ?? "";
-                                          const d = new Date(`${current}T12:00:00`);
-                                          d.setMonth(d.getMonth() + 1);
-                                          setExtendDate(d.toISOString().slice(0, 10));
-                                          setShowExtendDialog(true);
+                                          setTerminateDate(new Date().toISOString().slice(0, 10));
+                                          setShowTerminateDialog(true);
                                         }}
                                       >
-                                        Extend Lease
+                                        Terminate contract
                                       </Button>
-                                    ) : null}
-                                    <Button
-                                      size="sm"
-                                      className="h-7 w-full justify-start rounded-sm bg-transparent px-2 text-[0.7rem] text-rose-600 shadow-none hover:bg-rose-50 hover:text-rose-700"
-                                      onClick={() => {
-                                        setOpenMenuId(null);
-                                        setSelectedReservation(res);
-                                        setTerminateDate(new Date().toISOString().slice(0, 10));
-                                        setShowTerminateDialog(true);
-                                      }}
-                                    >
-                                      Terminate contract
-                                    </Button>
-                                  </>
-                                ) : null}
-                              </div>
-                            </>,
-                            document.body
-                          )
-                        : null}
-                    </div>
-                  </TableCell>
+                                    </>
+                                  ) : null}
+                                </div>
+                              ],
+                              document.body
+                            )
+                          : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <Table bordered={false}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Dorm / Room</TableHead>
+                  <TableHead>Lease Period</TableHead>
+                  <TableHead>Move-out Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Ended</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          <div className="flex flex-col gap-2 border-t px-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[0.7rem] text-muted-foreground">
-              Showing {from}–{to} of {filteredReservations.length} reservations
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-[0.7rem]"
-                onClick={() => handlePageChange(page - 1)}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <div className="flex items-center gap-1 text-[0.7rem]">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (p) => (
-                    <Button
-                      key={p}
-                      variant={p === page ? "default" : "outline"}
-                      size="sm"
-                      className="h-7 w-7 px-0 text-[0.7rem]"
-                      onClick={() => handlePageChange(p)}
+              </TableHeader>
+              <TableBody>
+                {historyLoading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-8 text-center text-xs text-muted-foreground"
                     >
-                      {p}
-                    </Button>
-                  )
+                      Loading history…
+                    </TableCell>
+                  </TableRow>
+                ) : historyData.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      {historyError ?? "No reservation history yet."}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  historyData.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="text-sm font-medium text-slate-800">
+                        {item.propertyName} – Room {item.roomNo}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {formatLongDate(item.leaseStart)} -{" "}
+                        {formatLongDate(item.leaseEnd)}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {formatLongDate(item.moveOutDate)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge status="Cancelled" />
+                          <span className="text-[0.65rem] text-muted-foreground">
+                            {item.rentPaymentStatus}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        <div className="space-y-1">
+                          <p>
+                            By:{" "}
+                            <span className="font-medium text-slate-900">
+                              {item.endedBy === "tenant" ? "You" : item.endedBy}
+                            </span>
+                          </p>
+                          <p className="text-[0.65rem] text-muted-foreground">
+                            {new Date(item.endedAt).toLocaleDateString()}
+                          </p>
+                          {item.endedReason ? (
+                            <p className="text-[0.65rem] text-muted-foreground">
+                              {item.endedReason}
+                            </p>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
+              </TableBody>
+            </Table>
+          )}
+
+          {activeTab === "reservations" ? (
+            <div className="flex flex-col gap-2 border-t px-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[0.7rem] text-muted-foreground">
+                Showing {from}–{to} of {filteredReservations.length} reservations
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[0.7rem]"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page === 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1 text-[0.7rem]">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (p) => (
+                      <Button
+                        key={p}
+                        variant={p === page ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 w-7 px-0 text-[0.7rem]"
+                        onClick={() => handlePageChange(p)}
+                      >
+                        {p}
+                      </Button>
+                    )
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[0.7rem]"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page === totalPages}
+                >
+                  Next
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-[0.7rem]"
-                onClick={() => handlePageChange(page + 1)}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
             </div>
-          </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -541,9 +692,7 @@ export default function StudentReservationsPage() {
                 </p>
                 <p className="text-muted-foreground">
                   Reservation ID:{" "}
-                  <span className="font-mono">
-                    {selectedReservation.id}
-                  </span>
+                  <span className="font-mono">{selectedReservation.id}</span>
                 </p>
                 <p className="text-muted-foreground">
                   Location: {selectedReservation.location}
@@ -844,10 +993,8 @@ export default function StudentReservationsPage() {
                       {selectedReservation.monthlyRent.toLocaleString()}
                     </p>
                     <p>
-                      <span className="font-semibold">
-                        Advance (1 month):
-                      </span>{" "}
-                      ₱{selectedReservation.monthlyRent.toLocaleString()}
+                      <span className="font-semibold">Advance (1 month):</span> ₱
+                      {selectedReservation.monthlyRent.toLocaleString()}
                     </p>
                     <p>
                       <span className="font-semibold">
@@ -858,9 +1005,7 @@ export default function StudentReservationsPage() {
                   </div>
                   <hr className="my-2 border-slate-200" />
                   <ul className="space-y-1 text-[0.7rem] text-slate-700">
-                    <li>
-                      Advance applies to your first month&apos;s rent.
-                    </li>
+                    <li>Advance applies to your first month&apos;s rent.</li>
                     <li>
                       Security deposit is refundable when the lease ends if terms
                       are met.
@@ -1406,4 +1551,3 @@ export default function StudentReservationsPage() {
     </div>
   );
 }
-

@@ -48,6 +48,7 @@ export async function GET() {
        JOIN public.landlord_rooms r ON r.id = l.room_id
        JOIN public.landlord_properties p ON p.id = l.property_id
        WHERE l.owner_user_id = $1::uuid
+         AND l.payment_status <> 'Completed'
        ORDER BY r.room_no`,
       [ownerId]
     );

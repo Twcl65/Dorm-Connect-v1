@@ -55,6 +55,13 @@ export async function PATCH(req: Request, context: Ctx) {
       return NextResponse.json({ error: "Reservation not found." }, { status: 404 });
     }
 
+    if (row.status === "MoveOut") {
+      return NextResponse.json(
+        { error: "This stay has already been moved out." },
+        { status: 400 }
+      );
+    }
+
     if (body.leaseEnd) {
       if (row.status !== "Confirmed") {
         return NextResponse.json(
@@ -200,6 +207,128 @@ export async function PATCH(req: Request, context: Ctx) {
         row.owner_user_id,
         "Reservation cancelled",
         `${session.name} cancelled a request for ${row.property_name} · Room ${row.room_no}.`,
+        "reservation"
+      );
+    } catch {
+      /* non-fatal */
+    }
+    invalidateStudentUser(studentId);
+    invalidateLandlordUser(row.owner_user_id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to update";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function POST(
+  req: Request,
+  context: Ctx
+): Promise<NextResponse> {
+  const session = await requireStudent();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  const studentId = session.sub;
+  const { id } = context.params;
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  }
+
+  try {
+    const body = (await req.json()) as { moveOutDate?: string };
+    const pool = await getPool();
+
+    const { rows: current } = await pool.query<{
+      id: string;
+      status: string;
+      lease_start: string;
+      lease_end: string;
+      room_id: string;
+      owner_user_id: string;
+      property_name: string;
+      room_no: string;
+      rent_payment_status: string;
+      advance_amount: string;
+      deposit_amount: string;
+      balance_remaining: string;
+    }>(
+      `SELECT s.id, s.status, s.lease_start::text, s.lease_end::text, s.room_id,
+              r.owner_user_id, p.name AS property_name, r.room_no,
+              s.rent_payment_status, s.advance_amount::text, s.deposit_amount::text, s.balance_remaining::text
+       FROM public.student_dorm_reservations s
+       JOIN public.landlord_rooms r ON r.id = s.room_id
+       JOIN public.landlord_properties p ON p.id = r.property_id
+       WHERE s.id = $1::uuid AND s.student_user_id = $2::uuid`,
+      [id, studentId]
+    );
+    const row = current[0];
+    if (!row) {
+      return NextResponse.json({ error: "Reservation not found." }, { status: 404 });
+    }
+
+    if (row.status === "MoveOut") {
+      return NextResponse.json(
+        { error: "This stay has already been moved out." },
+        { status: 400 }
+      );
+    }
+
+    const moveOutDate =
+      (body.moveOutDate?.trim()?.slice(0, 10) ?? row.lease_end.slice(0, 10));
+
+    await pool.query(
+      `UPDATE public.student_dorm_reservations
+       SET status = 'MoveOut',
+           move_out_date = $1::date,
+           moved_out_at = now(),
+           updated_at = now()
+       WHERE id = $2::uuid`,
+      [moveOutDate, id]
+    );
+
+    await pool.query(
+      `INSERT INTO public.student_reservation_history
+        (reservation_id, student_user_id, property_id, room_id,
+         tenant_name, lease_start, lease_end, move_out_date,
+         status, rent_payment_status, advance_amount, deposit_amount,
+         balance_remaining, ended_by, ended_reason)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
+               $5, $6::date, $7::date, $8::date,
+               'MoveOut', $9, $10, $11, $12, 'tenant', $13)`,
+      [
+        id,
+        studentId,
+        row.owner_user_id,
+        row.room_id,
+        row.property_name,
+        row.lease_start,
+        row.lease_end,
+        moveOutDate,
+        row.rent_payment_status,
+        Number(row.advance_amount),
+        Number(row.deposit_amount),
+        Number(row.balance_remaining),
+        `Student-requested move-out on ${moveOutDate}`,
+      ]
+    );
+
+    await pool.query(
+      `UPDATE public.landlord_tenant_leases
+       SET lease_end = $1::date,
+           payment_status = 'Completed',
+           updated_at = now()
+       WHERE student_reservation_id = $2::uuid`,
+      [moveOutDate, id]
+    );
+
+    await refreshRoomFromStudentReservations(pool, row.room_id);
+    try {
+      await insertNotification(
+        pool,
+        row.owner_user_id,
+        "Move-out requested",
+        `${session.name} requested to move out of ${row.property_name} · Room ${row.room_no} by ${moveOutDate}.`,
         "reservation"
       );
     } catch {

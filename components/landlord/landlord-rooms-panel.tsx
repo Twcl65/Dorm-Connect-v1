@@ -25,7 +25,7 @@ import { PenSquare, Eye, Settings, Loader2, Trash2 } from "lucide-react";
 import { uploadDormConnectFiles } from "@/lib/upload-file-client";
 import type { RoomsManagementTab } from "@/components/landlord/rooms-management-types";
 
-type PaymentStatus = "Paid" | "Pending" | "Overdue";
+type PaymentStatus = "Paid" | "Pending" | "Overdue" | "Completed";
 type RoomStatus = "Occupied" | "Available" | "Reserved" | "Maintenance";
 
 type Room = {

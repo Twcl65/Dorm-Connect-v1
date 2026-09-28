@@ -106,7 +106,8 @@ export async function GET() {
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
        JOIN public.boarding_house_app_users stu ON stu.id = s.student_user_id
-       WHERE r.owner_user_id = $1::uuid`,
+       WHERE r.owner_user_id = $1::uuid
+         AND s.status <> 'MoveOut'`,
       [ownerId]
     );
 

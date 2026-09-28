@@ -106,6 +106,7 @@ export async function GET() {
        JOIN public.boarding_house_app_users u
          ON u.id = COALESCE(p.owner_user_id, r.owner_user_id)
        WHERE s.student_user_id = $1::uuid
+         AND s.status <> 'MoveOut'
        ORDER BY s.created_at DESC`,
       [studentId]
     );

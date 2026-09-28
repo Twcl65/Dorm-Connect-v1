@@ -43,6 +43,8 @@ export async function PATCH(req: Request, context: Ctx) {
       notes?: string;
       holdApplication?: boolean;
       leaseExtension?: "Approved" | "Rejected";
+      moveOut?: boolean;
+      moveOutDate?: string;
     };
 
     const pool = await getPool();
@@ -58,10 +60,18 @@ export async function PATCH(req: Request, context: Ctx) {
       room_no: string;
       lease_extension_status: string | null;
       lease_extension_requested_end: string | null;
+      lease_start: string;
+      lease_end: string;
+      monthly_rent: string;
+      advance_amount: string;
+      deposit_amount: string;
+      balance_remaining: string;
     }>(
       `SELECT s.room_id, s.student_user_id, s.status, s.rent_payment_status, s.guest_name,
               p.name AS property_name, p.id AS property_id, r.room_no,
-              s.lease_extension_status, s.lease_extension_requested_end::text
+              s.lease_extension_status, s.lease_extension_requested_end::text,
+              s.lease_start::text, s.lease_end::text, s.monthly_rent::text,
+              s.advance_amount::text, s.deposit_amount::text, s.balance_remaining::text
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -72,6 +82,76 @@ export async function PATCH(req: Request, context: Ctx) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
     const row = cur[0];
+
+    if (body.moveOut === true) {
+      const moveOutDate =
+        body.moveOutDate?.trim()?.slice(0, 10) ??
+        row.lease_end.slice(0, 10);
+      await pool.query(
+        `UPDATE public.student_dorm_reservations
+         SET status = 'MoveOut',
+             move_out_date = $1::date,
+             moved_out_at = now(),
+             updated_at = now()
+         WHERE id = $2::uuid`,
+        [moveOutDate, id]
+      );
+
+      await pool.query(
+        `INSERT INTO public.student_reservation_history
+          (reservation_id, student_user_id, property_id, room_id,
+           tenant_name, lease_start, lease_end, move_out_date,
+           status, rent_payment_status, advance_amount, deposit_amount,
+           balance_remaining, ended_by, ended_reason)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
+                 $5, $6::date, $7::date, $8::date,
+                 'MoveOut', $9, $10, $11, $12, 'landlord', $13)`,
+        [
+          id,
+          row.student_user_id,
+          row.property_id,
+          row.room_id,
+          row.guest_name,
+          row.lease_start,
+          row.lease_end,
+          moveOutDate,
+          row.rent_payment_status,
+          Number(row.advance_amount),
+          Number(row.deposit_amount),
+          Number(row.balance_remaining),
+          body.notes?.trim() || "Approved move-out",
+        ]
+      );
+
+      await pool.query(
+        `UPDATE public.landlord_tenant_leases
+         SET lease_end = $1::date,
+             payment_status = 'Completed',
+             updated_at = now()
+         WHERE student_reservation_id = $2::uuid`,
+        [moveOutDate, id]
+      );
+
+      await refreshRoomFromStudentReservations(pool, row.room_id);
+      await landlordLog(
+        pool,
+        ownerId,
+        `Approved move-out for ${row.guest_name} · Room ${row.room_no}`
+      );
+      try {
+        await insertNotification(
+          pool,
+          row.student_user_id,
+          "Move-out approved",
+          `Your move-out request for ${row.property_name} · Room ${row.room_no} has been approved. Your lease has been marked as completed.`,
+          "reservation"
+        );
+      } catch {
+        /* non-fatal */
+      }
+      invalidateLandlordUser(session.sub);
+      return NextResponse.json({ ok: true });
+    }
 
     if (body.leaseExtension === "Approved" || body.leaseExtension === "Rejected") {
       if (row.lease_extension_status !== "Pending" || !row.lease_extension_requested_end) {

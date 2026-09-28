@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -8,7 +8,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Eye, Check, Loader2, AlertTriangle, PauseCircle, X } from "lucide-react";
 import { cn } from "@/components/ui/utils";
 
-type ReservationStatus = "Confirmed" | "Pending" | "Cancelled";
+type ReservationStatus = "Confirmed" | "Pending" | "Cancelled" | "MoveOut";
+type TabView = "reservations" | "history";
 
 type UnpaidElsewhere = {
   dormName: string;
@@ -41,10 +42,30 @@ type Reservation = {
   hasUnpaidElsewhere?: boolean;
   unpaidElsewhere?: UnpaidElsewhere[];
   leaseEndDate?: string;
+  moveOutDate?: string;
   leaseExtension?: {
     status: "Pending" | "Approved" | "Rejected";
     requestedEnd: string;
   } | null;
+};
+
+type HistoryRow = {
+  id: string;
+  reservationId: string;
+  tenantName: string;
+  roomNo: string;
+  propertyName: string;
+  leaseStart: string;
+  leaseEnd: string;
+  moveOutDate: string;
+  status: string;
+  rentPaymentStatus: string;
+  advanceAmount: number;
+  depositAmount: number;
+  balanceRemaining: number;
+  endedBy: string;
+  endedReason: string;
+  endedAt: string;
 };
 
 const ROWS_PER_PAGE = 5;
@@ -90,7 +111,9 @@ function ReservationStatusBadge({ status }: { status: ReservationStatus }) {
       ? "bg-emerald-100 text-emerald-800"
       : status === "Pending"
         ? "bg-amber-100 text-amber-800"
-        : "bg-red-100 text-red-800";
+        : status === "MoveOut"
+          ? "bg-slate-100 text-slate-700"
+          : "bg-red-100 text-red-800";
 
   return (
     <Badge
@@ -114,6 +137,10 @@ export function LandlordReservationsPanel({
   const [statusFilter, setStatusFilter] =
     useState<ReservationStatus | "all">("all");
   const [reservationsData, setReservationsData] = useState<Reservation[]>([]);
+  const [historyData, setHistoryData] = useState<HistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabView>("reservations");
   const [stats, setStats] = useState({
     total: 0,
     confirmed: 0,
@@ -142,7 +169,10 @@ export function LandlordReservationsPanel({
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load");
-      setReservationsData(json.reservations ?? []);
+      const reservations = (json.reservations ?? []).filter(
+        (r) => r.reservationStatus !== "MoveOut"
+      );
+      setReservationsData(reservations);
       if (json.stats) setStats(json.stats);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
@@ -152,9 +182,36 @@ export function LandlordReservationsPanel({
     }
   }, []);
 
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch("/api/landlord/reservations/history", {
+        credentials: "include",
+      });
+      const json = (await res.json()) as {
+        history?: HistoryRow[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load history");
+      setHistoryData(json.history ?? []);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : "Failed to load history");
+      setHistoryData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      void loadHistory();
+    }
+  }, [activeTab, loadHistory]);
 
   const summaryCards = useMemo(
     () => [
@@ -283,12 +340,45 @@ export function LandlordReservationsPanel({
         }
       );
       const j = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(j.error ?? "Failed to update extension");
+      if (!response.ok)
+        throw new Error(j.error ?? "Failed to update extension");
       setShowDetailsDialog(false);
       await loadData();
     } catch (e) {
       setLoadError(
         e instanceof Error ? e.message : "Failed to update extension"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approveMoveOut = async (res: Reservation) => {
+    if (res.source !== "student") return;
+    setSaving(true);
+    setLoadError(null);
+    try {
+      const response = await fetch(
+        `/api/landlord/student-reservations/${res.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            moveOut: true,
+            moveOutDate: res.moveOutDate ?? res.leaseEndDate ?? undefined,
+            notes: "Approved by landlord",
+          }),
+        }
+      );
+      const j = (await response.json()) as { error?: string };
+      if (!response.ok)
+        throw new Error(j.error ?? "Failed to approve move-out");
+      setShowDetailsDialog(false);
+      await loadData();
+    } catch (e) {
+      setLoadError(
+        e instanceof Error ? e.message : "Failed to approve move-out"
       );
     } finally {
       setSaving(false);
@@ -314,15 +404,41 @@ export function LandlordReservationsPanel({
             another boarding house before confirming.
           </p>
         )}
+        <div className="inline-flex rounded-md border border-gray-300 bg-white p-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "reservations" ? "default" : "ghost"}
+            className="h-7 px-3 text-xs"
+            onClick={() => setActiveTab("reservations")}
+          >
+            Reservations
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "history" ? "default" : "ghost"}
+            className="h-7 px-3 text-xs"
+            onClick={() => setActiveTab("history")}
+          >
+            History
+          </Button>
+        </div>
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="h-8 text-xs"
-          onClick={() => void loadData()}
-          disabled={loading}
+          onClick={() => {
+            if (activeTab === "history") {
+              void loadHistory();
+            } else {
+              void loadData();
+            }
+          }}
+          disabled={activeTab === "history" ? historyLoading : loading}
         >
-          {loading ? (
+          {(activeTab === "history" ? historyLoading : loading) ? (
             <>
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               Loading…
@@ -339,321 +455,378 @@ export function LandlordReservationsPanel({
         </div>
       )}
 
-      <Card className="border-sky-200 bg-sky-50/50 shadow-sm">
-        <CardHeader className="pb-3 border-b border-sky-100 bg-sky-50">
-          <CardTitle className="text-base font-semibold text-sky-900 flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-sky-600" />
-            Pending Lease Extensions
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4">
-          {!reservationsData.some((r) => r.leaseExtension?.status === "Pending") ? (
-            <div className="text-sm text-sky-800 py-2">
-              No pending lease extension requests from students.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {reservationsData
-                .filter((r) => r.leaseExtension?.status === "Pending")
-                .map((res) => (
-                  <div
-                    key={res.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-lg border border-sky-200 shadow-sm"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900">{res.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          ({res.dormName} - Room {res.roomNo})
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-600 mt-1">
-                        Requested to extend stay until{" "}
-                        <span className="font-medium text-sky-700">
-                          {res.leaseExtension?.requestedEnd
-                            ? new Date(`${res.leaseExtension.requestedEnd}T12:00:00`).toLocaleDateString(
-                                undefined,
-                                {
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                }
-                              )
-                            : ""}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-                        disabled={saving}
-                        onClick={() => void decideLeaseExtension(res, "Rejected")}
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        Decline
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white"
-                        disabled={saving}
-                        onClick={() => void decideLeaseExtension(res, "Approved")}
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {activeTab === "history" && historyError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          {historyError}
+        </div>
+      )}
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {summaryCards.map((card) => (
-          <Card
-            key={card.label}
-            className="border border-gray-300 bg-white shadow-sm"
-          >
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-xs font-medium text-muted-foreground">
-                {card.label}
+      {activeTab === "reservations" ? (
+        <>
+          <Card className="border-sky-200 bg-sky-50/50 shadow-sm">
+            <CardHeader className="pb-3 border-b border-sky-100 bg-sky-50">
+              <CardTitle className="text-base font-semibold text-sky-900 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-sky-600" />
+                Pending Lease Extensions
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex items-end justify-between pt-0">
-              <p className="text-2xl font-semibold tracking-tight">
-                {card.value}
-              </p>
-              <Badge
-                variant={card.badgeVariant}
-                className="text-[0.7rem]"
-              >
-                {card.badge}
-              </Badge>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <Card className="border border-gray-300 bg-white">
-        <CardHeader className="pb-3 border-b bg-muted/40">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <CardTitle className="text-sm font-semibold text-slate-800">
-                Reservations
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Reservation status: pending, confirmed, or cancelled.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Input
-                placeholder="Search ID, room, or name..."
-                className="h-8 w-full bg-muted text-xs sm:w-56"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <select
-                className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:w-40"
-                value={statusFilter}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setStatusFilter(
-                    e.target.value === "all"
-                      ? "all"
-                      : (e.target.value as ReservationStatus)
-                  )
-                }
-              >
-                <option value="all">All statuses</option>
-                <option value="Confirmed">Confirmed</option>
-                <option value="Pending">Pending</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-0">
-          <Table bordered={false}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Room No.</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Lease Period</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="pr-4 font-semibold text-slate-600">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedReservations.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-8 text-center text-xs text-muted-foreground"
-                  >
-                    {loading
-                      ? "Loading…"
-                      : "No reservations yet."}
-                  </TableCell>
-                </TableRow>
-              )}
-              {paginatedReservations.map((res) => (
-                <TableRow
-                  key={`${res.source ?? "manual"}-${res.id}`}
-                  className={cn(
-                    res.hasUnpaidElsewhere &&
-                      res.reservationStatus === "Pending" &&
-                      "bg-amber-50/70"
-                  )}
-                >
-                  <TableCell className="text-xs font-mono text-slate-500">
-                    {res.id.slice(0, 8)}…
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-600">
-                    {res.source === "student" ? "Student app" : "Manual"}
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-700">
-                    {res.roomNo}
-                  </TableCell>
-                  <TableCell className="text-sm font-medium text-slate-800">
-                    {res.name}
-                  </TableCell>
-                  <TableCell className="text-xs text-slate-700">
-                    {res.leasePeriod}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <ReservationStatusBadge
-                        status={res.reservationStatus}
-                      />
-                      {res.hasUnpaidElsewhere &&
-                        res.reservationStatus === "Pending" && (
-                          <Badge
-                            variant="outline"
-                            className="rounded-full bg-amber-100 px-2 py-0 text-[0.65rem] font-semibold text-amber-900 ring-1 ring-amber-300"
-                          >
-                            Unpaid at other BH
-                          </Badge>
-                        )}
-                      {res.leaseExtension?.status === "Pending" && (
-                        <Badge
-                          variant="outline"
-                          className="rounded-full bg-sky-100 px-2 py-0 text-[0.65rem] font-semibold text-sky-900 ring-1 ring-sky-300"
-                        >
-                          Extension request
-                        </Badge>
-                      )}
-                      {res.source === "student" && res.rentPaymentStatus && (
-                        <span className="text-[0.65rem] leading-snug text-muted-foreground">
-                          {res.rentPaymentStatus}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="pr-4">
-                    <div className="flex flex-nowrap items-center justify-center gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
-                        onClick={() => {
-                          setSelectedReservation(res);
-                          setShowDetailsDialog(true);
-                        }}
+            <CardContent className="pt-4">
+              {!reservationsData.some((r) => r.leaseExtension?.status === "Pending") ? (
+                <div className="text-sm text-sky-800 py-2">
+                  No pending lease extension requests from students.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reservationsData
+                    .filter((r) => r.leaseExtension?.status === "Pending")
+                    .map((res) => (
+                      <div
+                        key={res.id}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-white rounded-lg border border-sky-200 shadow-sm"
                       >
-                        <Eye className="h-3 w-3" />
-                        View Details
-                      </Button>
-                      {res.reservationStatus === "Pending" && (
-                        <Button
-                          size="sm"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-emerald-500 text-white hover:bg-emerald-600"
-                          onClick={() => {
-                            setSelectedReservation(res);
-                            setShowConfirmDialog(true);
-                          }}
-                        >
-                          <Check className="h-3 w-3" />
-                          Confirm reservation
-                        </Button>
-                      )}
-                      {res.leaseExtension?.status === "Pending" && (
-                        <>
+                        <div>
+                          <p className="text-sm font-semibold text-sky-900">
+                            {res.name}
+                          </p>
+                          <p className="text-xs text-sky-700">
+                            {res.dormName} · Room {res.roomNo}
+                          </p>
+                          <p className="text-xs text-sky-700">
+                            Requested end:{" "}
+                            {new Date(
+                              `${res.leaseExtension!.requestedEnd}T12:00:00`
+                            ).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
                           <Button
                             size="sm"
-                            className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-sky-600 text-white hover:bg-sky-700"
+                            className="h-8 px-3 text-xs bg-sky-600 text-white hover:bg-sky-700"
                             disabled={saving}
-                            onClick={() => void decideLeaseExtension(res, "Approved")}
+                            onClick={() =>
+                              void decideLeaseExtension(res, "Approved")
+                            }
                           >
-                            <Check className="h-3 w-3" />
-                            Approve extension
+                            Approve
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-red-300 text-red-700 hover:bg-red-50"
+                            className="h-8 px-3 text-xs border-red-300 text-red-700 hover:bg-red-50"
                             disabled={saving}
-                            onClick={() => void decideLeaseExtension(res, "Rejected")}
+                            onClick={() =>
+                              void decideLeaseExtension(res, "Rejected")
+                            }
                           >
-                            <X className="h-3 w-3" />
                             Decline
                           </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          <div className="flex flex-col gap-2 border-t px-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[0.7rem] text-muted-foreground">
-              Showing {from}–{to} of {filteredReservations.length} reservations
-            </p>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-[0.7rem]"
-                onClick={() => handlePageChange(page - 1)}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <div className="flex items-center gap-1 text-[0.7rem]">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (p) => (
-                    <Button
-                      key={p}
-                      variant={p === page ? "default" : "outline"}
-                      size="sm"
-                      className="h-7 w-7 px-0 text-[0.7rem]"
-                      onClick={() => handlePageChange(p)}
-                    >
-                      {p}
-                    </Button>
-                  )
-                )}
+          <Card className="border border-gray-300 bg-white">
+            <CardHeader className="pb-3 border-b bg-muted/40">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle className="text-sm font-semibold text-slate-800">
+                    Reservations
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Reservation status: pending, confirmed, or cancelled.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    placeholder="Search ID, room, or name..."
+                    className="h-8 w-full bg-muted text-xs sm:w-56"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  <select
+                    className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs sm:w-40"
+                    value={statusFilter}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                      setStatusFilter(
+                        e.target.value === "all"
+                          ? "all"
+                          : (e.target.value as ReservationStatus)
+                      )
+                    }
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2 text-[0.7rem]"
-                onClick={() => handlePageChange(page + 1)}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <Table bordered={false}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Room No.</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Lease Period</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="pr-4 font-semibold text-slate-600">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedReservations.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={7}
+                        className="py-8 text-center text-xs text-muted-foreground"
+                      >
+                        {loading
+                          ? "Loading…"
+                          : "No reservations yet."}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {paginatedReservations.map((res) => (
+                    <TableRow
+                      key={`${res.source ?? "manual"}-${res.id}`}
+                      className={cn(
+                        res.hasUnpaidElsewhere &&
+                          res.reservationStatus === "Pending" &&
+                          "bg-amber-50/70"
+                      )}
+                    >
+                      <TableCell className="text-xs font-mono text-slate-500">
+                        {res.id.slice(0, 8)}…
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">
+                        {res.source === "student" ? "Student app" : "Manual"}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {res.roomNo}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-slate-800">
+                        {res.name}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-700">
+                        {res.leasePeriod}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <ReservationStatusBadge
+                            status={res.reservationStatus}
+                          />
+                          {res.hasUnpaidElsewhere &&
+                            res.reservationStatus === "Pending" && (
+                              <Badge
+                                variant="outline"
+                                className="rounded-full bg-amber-100 px-2 py-0 text-[0.65rem] font-semibold text-amber-900 ring-1 ring-amber-300"
+                              >
+                                Unpaid at other BH
+                              </Badge>
+                            )}
+                          {res.leaseExtension?.status === "Pending" && (
+                            <Badge
+                              variant="outline"
+                              className="rounded-full bg-sky-100 px-2 py-0 text-[0.65rem] font-semibold text-sky-900 ring-1 ring-sky-300"
+                            >
+                              Extension request
+                            </Badge>
+                          )}
+                          {res.source === "student" &&
+                            res.rentPaymentStatus && (
+                              <span className="text-[0.65rem] leading-snug text-muted-foreground">
+                                {res.rentPaymentStatus}
+                              </span>
+                            )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="pr-4">
+                        <div className="flex flex-nowrap items-center justify-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-sky-400 text-sky-600 hover:bg-sky-50 hover:text-sky-600"
+                            onClick={() => {
+                              setSelectedReservation(res);
+                              setShowDetailsDialog(true);
+                            }}
+                          >
+                            <Eye className="h-3 w-3" />
+                            View Details
+                          </Button>
+                          {res.reservationStatus === "Pending" && (
+                            <Button
+                              size="sm"
+                              className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-emerald-500 text-white hover:bg-emerald-600"
+                              onClick={() => {
+                                setSelectedReservation(res);
+                                setShowConfirmDialog(true);
+                              }}
+                            >
+                              <Check className="h-3 w-3" />
+                              Confirm reservation
+                            </Button>
+                          )}
+                          {res.leaseExtension?.status === "Pending" && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1 bg-sky-600 text-white hover:bg-sky-700"
+                                disabled={saving}
+                                onClick={() =>
+                                  void decideLeaseExtension(res, "Approved")
+                                }
+                              >
+                                <Check className="h-3 w-3" />
+                                Approve extension
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-red-300 text-red-700 hover:bg-red-50"
+                                disabled={saving}
+                                onClick={() =>
+                                  void decideLeaseExtension(res, "Rejected")
+                                }
+                              >
+                                <X className="h-3 w-3" />
+                                Decline
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              <div className="flex flex-col gap-2 border-t px-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[0.7rem] text-muted-foreground">
+                  Showing {from}–{to} of {filteredReservations.length} reservations
+                </p>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[0.7rem]"
+                    onClick={() => handlePageChange(page - 1)}
+                    disabled={page === 1}
+                  >
+                    Previous
+                  </Button>
+                  <div className="flex items-center gap-1 text-[0.7rem]">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                      (p) => (
+                        <Button
+                          key={p}
+                          variant={p === page ? "default" : "outline"}
+                          size="sm"
+                          className="h-7 w-7 px-0 text-[0.7rem]"
+                          onClick={() => handlePageChange(p)}
+                        >
+                          {p}
+                        </Button>
+                      )
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[0.7rem]"
+                    onClick={() => handlePageChange(page + 1)}
+                    disabled={page === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card className="border border-gray-300 bg-white">
+          <CardHeader className="pb-3 border-b bg-muted/40">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Move-out history
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Archived reservations with move-out or end-lease records.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            <Table bordered={false}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Reservation</TableHead>
+                  <TableHead>Tenant</TableHead>
+                  <TableHead>Room</TableHead>
+                  <TableHead>Lease</TableHead>
+                  <TableHead>Move-out</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="pr-4">Payments</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyData.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-8 text-center text-xs text-muted-foreground"
+                    >
+                      {historyLoading ? "Loading…" : "No history yet."}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {historyData.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="text-xs font-mono text-slate-500">
+                      {row.reservationId.slice(0, 8)}…
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {row.tenantName}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {row.propertyName} · {row.roomNo}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {row.leaseStart} → {row.leaseEnd}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-700">
+                      {row.moveOutDate || "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge
+                        variant="outline"
+                        className="rounded-full bg-slate-100 px-2 py-1 text-[0.65rem] font-medium text-slate-800"
+                      >
+                        {row.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pr-4 text-xs text-slate-700">
+                      <div className="space-y-1">
+                        <p>Rent: {row.rentPaymentStatus || "—"}</p>
+                        <p>
+                          Advance: {formatMoney(row.advanceAmount)} · Deposit:{" "}
+                          {formatMoney(row.depositAmount)}
+                        </p>
+                        <p>Balance: {formatMoney(row.balanceRemaining)}</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* View reservation details dialog */}
       {showDetailsDialog && selectedReservation && (
@@ -827,6 +1000,19 @@ export function LandlordReservationsPanel({
                     </Button>
                   </>
                 )}
+                {selectedReservation.source === "student" &&
+                  selectedReservation.reservationStatus === "Confirmed" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-3 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                      disabled={saving}
+                      onClick={() => void approveMoveOut(selectedReservation)}
+                    >
+                      Approve move-out
+                    </Button>
+                  )}
                 <Button
                   type="button"
                   size="sm"
@@ -970,4 +1156,9 @@ export function LandlordReservationsPanel({
       )}
     </div>
   );
+}
+
+function formatMoney(value?: number) {
+  if (value == null || Number.isNaN(value)) return "—";
+  return `₱${Number(value).toLocaleString()}`;
 }
