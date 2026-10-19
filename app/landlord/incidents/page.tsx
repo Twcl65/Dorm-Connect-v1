@@ -6,7 +6,7 @@ import { SectionTabBar } from "@/components/landlord/section-tab-bar";
 import type { ReportsManagementTab } from "@/components/landlord/rooms-management-types";
 import { LandlordIncidentsPanel } from "@/components/landlord/incidents-panel";
 import { LandlordDormReportsPanel } from "@/components/landlord/landlord-dorm-reports-panel";
-import { LandlordIncomeReportsPanel } from "@/app/landlord/reports/income/page";
+import { LandlordIncomeReportsPanel } from "@/components/landlord/income-reports-panel";
 import { LandlordActivityLogsPanel } from "@/components/landlord/activity-logs-panel";
 import { TenantReportsPanel } from "@/components/landlord/tenant-reports-panel";
 
