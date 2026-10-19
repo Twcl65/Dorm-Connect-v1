@@ -1,0 +1,18 @@
+node_modules
+.env
+.env.local
+.env.*.local
+
+# Next.js build output
+.next/
+out/
+dist/
+build/
+.turbo/
+.vercel/
+coverage/
+*.tsbuildinfo
+
+# Uploaded dorm photos / proofs (keep folder)
+public/uploads/dormconnect/*
+!public/uploads/dormconnect/.gitkeep

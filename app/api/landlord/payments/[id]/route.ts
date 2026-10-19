@@ -1,0 +1,185 @@
+import { NextResponse } from "next/server";
+import { getPool } from "@/lib/db";
+import { landlordLog } from "@/lib/landlord-db";
+import {
+  applyRecordedPaymentToSchedule,
+  resolveLeaseIdForRoom,
+  resolveReservationIdForPaymentContext,
+} from "@/lib/payment-schedule";
+import { requireOwner } from "@/lib/require-owner";
+
+export const dynamic = "force-dynamic";
+
+type Ctx = { params: { id: string } };
+
+export async function PATCH(req: Request, context: Ctx) {
+  const session = await requireOwner();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+  const ownerId = session.sub;
+  const { id } = context.params;
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  }
+
+  try {
+    const body = (await req.json()) as {
+      status?: string;
+      method?: string;
+      amount?: number;
+      referenceNo?: string;
+      proofUrl?: string;
+      paidOn?: string;
+    };
+
+    const pool = await getPool();
+
+    // First try landlord_payments
+    const { rows: cur } = await pool.query<{
+      payer_name: string;
+      amount: string;
+      method: string;
+      status: string;
+      reference_no: string | null;
+      proof_url: string | null;
+      paid_on: string | null;
+      room_id: string | null;
+      tenant_lease_id: string | null;
+    }>(
+      `SELECT payer_name, amount::text, method, status, reference_no, proof_url,
+              paid_on::text, room_id, tenant_lease_id
+       FROM public.landlord_payments
+       WHERE owner_user_id = $1::uuid AND id = $2::uuid`,
+      [ownerId, id]
+    );
+
+    if (cur[0]) {
+      // --- Landlord payment update ---
+      const c = cur[0];
+      let status = c.status;
+      if (
+        body.status === "Paid" ||
+        body.status === "Pending" ||
+        body.status === "Overdue"
+      ) {
+        status = body.status;
+      }
+      let method = c.method;
+      if (
+        body.method === "GCash" ||
+        body.method === "Cash" ||
+        body.method === "Bank Transfer"
+      ) {
+        method = body.method;
+      }
+      const amount =
+        body.amount != null ? Math.max(0, Number(body.amount)) : Number(c.amount);
+      const referenceNo =
+        body.referenceNo !== undefined
+          ? body.referenceNo.trim() || null
+          : c.reference_no;
+      const proofUrl =
+        body.proofUrl !== undefined ? body.proofUrl.trim() || null : c.proof_url;
+      const paidOn =
+        body.paidOn !== undefined
+          ? body.paidOn.slice(0, 10) || null
+          : c.paid_on?.slice(0, 10) ?? null;
+
+      await pool.query(
+        `UPDATE public.landlord_payments SET
+          amount = $1,
+          method = $2,
+          status = $3,
+          reference_no = $4,
+          proof_url = $5,
+          paid_on = $6::date,
+          updated_at = now()
+         WHERE owner_user_id = $7::uuid AND id = $8::uuid`,
+        [amount, method, status, referenceNo, proofUrl, paidOn, ownerId, id]
+      );
+      if (status === "Paid" && c.room_id) {
+        const reservationId = await resolveReservationIdForPaymentContext(pool, {
+          tenantLeaseId: c.tenant_lease_id,
+          roomId: c.room_id,
+        });
+
+        if (reservationId) {
+          await applyRecordedPaymentToSchedule(pool, {
+            reservationId,
+            amount,
+            paidOn,
+          });
+        } else {
+          const leaseId =
+            c.tenant_lease_id ??
+            (await resolveLeaseIdForRoom(pool, ownerId, c.room_id));
+          if (leaseId) {
+            await applyRecordedPaymentToSchedule(pool, {
+              leaseId,
+              amount,
+              paidOn,
+            });
+          }
+        }
+      }
+      await landlordLog(pool, ownerId, `Updated payment ${c.payer_name}`);
+      return NextResponse.json({ ok: true });
+    }
+
+    // --- Fallback: try student_payment_records ---
+    const { rows: stuCur } = await pool.query<{
+      student_user_id: string;
+      amount: string;
+      method: string;
+      status: string;
+      receipt_url: string | null;
+      paid_at: string | null;
+      reservation_id: string | null;
+    }>(
+      `SELECT pay.student_user_id, pay.amount::text, pay.method, pay.status,
+              pay.receipt_url, pay.paid_at::text, pay.reservation_id
+       FROM public.student_payment_records pay
+       JOIN public.student_dorm_reservations s ON s.id = pay.reservation_id
+       JOIN public.landlord_rooms r ON r.id = s.room_id
+       WHERE r.owner_user_id = $1::uuid AND pay.id = $2::uuid`,
+      [ownerId, id]
+    );
+
+    if (!stuCur[0]) {
+      return NextResponse.json({ error: "Not found." }, { status: 404 });
+    }
+
+    const sc = stuCur[0];
+    let stuStatus = sc.status;
+    // Map Overdue → Failed for student payments
+    if (body.status === "Paid") stuStatus = "Paid";
+    else if (body.status === "Pending") stuStatus = "Pending";
+    else if (body.status === "Overdue" || body.status === "Failed") stuStatus = "Failed";
+
+    let stuMethod = body.method || sc.method;
+    const stuAmount =
+      body.amount != null ? Math.max(0, Number(body.amount)) : Number(sc.amount);
+    const stuPaidAt =
+      body.paidOn !== undefined
+        ? body.paidOn.slice(0, 10) || null
+        : sc.paid_at?.slice(0, 10) ?? null;
+
+    await pool.query(
+      `UPDATE public.student_payment_records SET
+        amount = $1,
+        method = $2,
+        status = $3,
+        paid_at = $4::timestamptz,
+        receipt_url = $5
+       WHERE id = $6::uuid`,
+      [stuAmount, stuMethod, stuStatus, stuPaidAt, sc.receipt_url, id]
+    );
+
+    await landlordLog(pool, ownerId, `Updated payment ${sc.status}`);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to update";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

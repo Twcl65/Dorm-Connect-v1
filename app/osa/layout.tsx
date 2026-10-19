@@ -1,0 +1,30 @@
+"use client";
+
+import { ReactNode } from "react";
+import { RoleShell, RoleIcons } from "@/components/layouts/role-shell";
+
+export default function OsaLayout({ children }: { children: ReactNode }) {
+  return (
+    <RoleShell
+      roleLabel="OSA / SAS Administrator"
+      sidebarItems={[
+        { label: "Dashboard", href: "/osa", icon: RoleIcons.dashboard },
+        { label: "Accreditation", href: "/osa/accreditation", icon: RoleIcons.accreditation },
+        { label: "Tenant Monitoring", href: "/osa/tenants", icon: RoleIcons.users },
+        { label: "Dorm Monitoring", href: "/osa/monitoring", icon: RoleIcons.monitoring },
+        {
+          label: "Accreditation monitoring",
+          href: "/osa/accreditation-monitoring",
+          icon: RoleIcons.dashboard,
+        },
+        { label: "Announcements", href: "/osa/announcements", icon: RoleIcons.announcements },
+        { label: "Landlord Reports", href: "/osa/landlord-reports", icon: RoleIcons.announcements },
+        { label: "Generate Reports", href: "/osa/reports", icon: RoleIcons.dashboard },
+        { label: "Account & settings", href: "/osa/settings", icon: RoleIcons.settings }
+      ]}
+    >
+      {children}
+    </RoleShell>
+  );
+}
+

@@ -1,0 +1,29 @@
+import type { Metadata } from "next";
+import "./globals.css";
+import { ThemeProvider } from "@/components/theme-provider";
+
+export const metadata: Metadata = {
+  title: "DormConnect – Accredited Dormitories & Boarding Houses",
+  description:
+    "Browse OSA-accredited dormitories and boarding houses near USTP. View landlord-posted room availability and rates on DormConnect.",
+  icons: {
+    icon: "/icon.png",
+  }
+};
+
+export default function RootLayout({
+  children
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ThemeProvider attribute="class" defaultTheme="light" forcedTheme="light" enableSystem={false}>
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+

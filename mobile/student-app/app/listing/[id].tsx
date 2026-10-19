@@ -1,0 +1,604 @@
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  ApiError,
+  apiRequest,
+  formatSignInError,
+  type Listing,
+  type RoomReview,
+} from "@/lib/api";
+import { ImageGallery } from "@/components/image-gallery";
+import { DateField } from "@/components/date-field";
+import {
+  Badge,
+  Button,
+  Card,
+  CenteredLoader,
+  Screen,
+  Subtitle,
+  Title,
+  colors,
+} from "@/components/ui";
+import { useAuth } from "@/context/AuthContext";
+import { InfoGrid } from "@/components/info-grid";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  RESERVATION_TERMS,
+  formatLeaseSummary,
+  listingImageUrls,
+  showRoomDetailsAside,
+} from "@/lib/listing-utils";
+import { KeyboardAwareSheet } from "@/components/keyboard-aware-modal";
+import { bottomNavPad } from "@/lib/nav-inset";
+
+function Stars({ rating }: { rating: number }) {
+  return (
+    <Text style={styles.stars}>
+      {"★".repeat(rating)}
+      {"☆".repeat(5 - rating)}
+    </Text>
+  );
+}
+
+export default function ListingDetailScreen() {
+  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const { token, user } = useAuth();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const [listing, setListing] = useState<Listing | null>(null);
+  const [reviews, setReviews] = useState<RoomReview[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [showTerms, setShowTerms] = useState(false);
+  const [bookingStep, setBookingStep] = useState<0 | 2 | 3>(0);
+  const [moveInDate, setMoveInDate] = useState("");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const ictStatus = user?.ictVerificationStatus ?? null;
+  const canBook = ictStatus === "Verified";
+  const hasReservation = Boolean(listing?.myReservationStatus);
+
+  const load = useCallback(async () => {
+    if (!token || !id) return;
+    setError(null);
+    const res = await apiRequest<{ listings: Listing[] }>(
+      "/api/student/listings",
+      { token }
+    );
+    const found = res.listings.find((l) => l.id === id) ?? null;
+    setListing(found);
+
+    if (found) {
+      const rev = await apiRequest<{ reviews: RoomReview[] }>(
+        `/api/student/reviews?roomId=${found.id}`,
+        { token }
+      );
+      setReviews(rev.reviews ?? []);
+    } else {
+      setReviews([]);
+    }
+  }, [token, id]);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        await load();
+      } catch (e) {
+        setError(formatSignInError(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [load]);
+
+  const startBooking = () => {
+    if (!canBook) {
+      Alert.alert(
+        "Cannot book yet",
+        ictStatus === "Pending Verification"
+          ? "Your account is pending ICT verification. You can browse listings, but reservation is available only after verification."
+          : "Your registration was not approved by ICT. You can browse, but you cannot reserve a room."
+      );
+      return;
+    }
+    if (hasReservation) return;
+    setSubmitError(null);
+    const today = new Date().toISOString().slice(0, 10);
+    setMoveInDate(today);
+    const defaultEnd = new Date(`${today}T12:00:00`);
+    defaultEnd.setMonth(defaultEnd.getMonth() + 12);
+    defaultEnd.setDate(defaultEnd.getDate() - 1);
+    setLeaseEndDate(defaultEnd.toISOString().slice(0, 10));
+    setShowTerms(true);
+  };
+
+  const leasePreview =
+    moveInDate.trim() && leaseEndDate.trim()
+      ? formatLeaseSummary(moveInDate.trim(), leaseEndDate.trim())
+      : null;
+
+  const minLeaseEnd = moveInDate.trim()
+    ? new Date(`${moveInDate.trim()}T12:00:00`)
+    : new Date();
+
+  const submitReservation = async () => {
+    if (!token || !listing || !moveInDate.trim() || !leaseEndDate.trim()) return;
+    if (leaseEndDate.trim() <= moveInDate.trim()) {
+      setSubmitError("Lease end date must be after move-in date.");
+      return;
+    }
+    const preview = formatLeaseSummary(moveInDate.trim(), leaseEndDate.trim());
+    if (preview.months < 1) {
+      setSubmitError("Lease period must be at least 1 month.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await apiRequest("/api/student/reservations", {
+        method: "POST",
+        token,
+        body: {
+          roomId: listing.id,
+          leaseStart: moveInDate.trim(),
+          leaseEnd: leaseEndDate.trim(),
+          guestName: user?.name,
+        },
+      });
+      setBookingStep(0);
+      setShowTerms(false);
+      Alert.alert(
+        "Reservation submitted",
+        "Your request was sent to the landlord. Check Bookings for status.",
+        [{ text: "OK", onPress: () => router.replace("/(tabs)/reservations") }]
+      );
+      await load();
+    } catch (e) {
+      setSubmitError(
+        e instanceof ApiError ? e.message : "Reservation failed."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return <CenteredLoader />;
+  if (!listing) {
+    return (
+      <Screen>
+        <Text style={styles.error}>{error ?? "Listing not found."}</Text>
+        <Button label="Go back" variant="outline" onPress={() => router.back()} />
+      </Screen>
+    );
+  }
+
+  const galleryUrls = listingImageUrls(listing);
+
+  return (
+    <Screen style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {ictStatus && ictStatus !== "Verified" && (
+          <Card style={styles.warnCard}>
+            <Text style={styles.warnText}>
+              {ictStatus === "Pending Verification"
+                ? "ICT verification pending — you can view listings, but booking opens after verification."
+                : "ICT registration not approved — browsing only."}
+            </Text>
+          </Card>
+        )}
+
+        <ImageGallery urls={galleryUrls} alt={listing.name} />
+
+        <Title>{listing.name}</Title>
+        <Subtitle>
+          {listing.location} · {listing.distance}
+        </Subtitle>
+        <Text style={styles.price}>
+          ₱{listing.price.toLocaleString()}{" "}
+          <Text style={styles.priceUnit}>/ month</Text>
+        </Text>
+
+        {listing.myReservationStatus && (
+          <Badge
+            label={
+              listing.myReservationStatus === "Confirmed"
+                ? "Booking confirmed"
+                : "Sent booking request"
+            }
+            tone={
+              listing.myReservationStatus === "Confirmed" ? "success" : "warning"
+            }
+          />
+        )}
+
+        {listing.reviewSummary.count > 0 && (
+          <Text style={styles.reviewAvg}>
+            {listing.reviewSummary.avg != null
+              ? `${listing.reviewSummary.avg.toFixed(1)} ★`
+              : "—"}{" "}
+            ({listing.reviewSummary.count} review
+            {listing.reviewSummary.count === 1 ? "" : "s"})
+          </Text>
+        )}
+
+        <Card>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/landlord-profile/[id]",
+                params: { id: listing.propertyId },
+              })
+            }
+            style={styles.managedBy}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.section}>Managed by</Text>
+              <Text style={styles.linkName}>{listing.landlord}</Text>
+              <Text style={styles.muted}>Tap to view accreditation, payments, and all reviews</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </Card>
+
+        <Card>
+          <Text style={styles.sectionTitle}>Room</Text>
+          <InfoGrid
+            rows={[
+              [
+                { label: "Monthly rent", value: `₱${listing.price.toLocaleString()}` },
+                { label: "Room type", value: listing.roomType },
+              ],
+              [
+                { label: "Capacity", value: listing.capacity },
+                {
+                  label: "Size",
+                  value: listing.roomSizeLabel?.trim() || "—",
+                },
+              ],
+              [{ label: "Accreditation", value: listing.documentType }],
+            ]}
+          />
+          <Text style={styles.section}>Amenities</Text>
+          <View style={styles.amenityRow}>
+            {listing.amenities.map((a) => (
+              <Badge key={a} label={a} />
+            ))}
+          </View>
+        </Card>
+
+        <Card>
+          <Text style={styles.sectionTitle}>About this room</Text>
+          <Text style={styles.body}>{listing.description}</Text>
+          {showRoomDetailsAside(listing.description, listing.roomDetails) &&
+          listing.roomDetails ? (
+            <>
+              <Text style={styles.section}>Other details</Text>
+              <Text style={styles.body}>{listing.roomDetails}</Text>
+            </>
+          ) : null}
+        </Card>
+
+        <Card>
+          <Text style={styles.sectionTitle}>Property</Text>
+          <Text style={styles.bodyStrong}>{listing.propertyName}</Text>
+          {(listing.propertyAddress || listing.propertyCity) && (
+            <Text style={styles.body}>
+              {[listing.propertyAddress, listing.propertyCity]
+                .filter(Boolean)
+                .join(", ")}
+            </Text>
+          )}
+          {listing.propertyContactPhone ? (
+            <Text style={styles.body}>{listing.propertyContactPhone}</Text>
+          ) : null}
+          {listing.propertyDescription ? (
+            <Text style={styles.body}>{listing.propertyDescription}</Text>
+          ) : null}
+        </Card>
+
+        <Card>
+          <Text style={styles.sectionTitle}>Student reviews</Text>
+          {reviews.length === 0 ? (
+            <Text style={styles.muted}>No reviews yet for this room.</Text>
+          ) : (
+            reviews.map((r) => (
+              <View key={`${r.author}-${r.date}`} style={styles.review}>
+                <View style={styles.reviewHead}>
+                  <Text style={styles.bodyStrong}>{r.author}</Text>
+                  <Text style={styles.muted}>{r.date}</Text>
+                </View>
+                <Stars rating={r.rating} />
+                <Text style={styles.body}>{r.comment}</Text>
+              </View>
+            ))
+          )}
+        </Card>
+      </ScrollView>
+
+      <View style={[styles.footer, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}>
+        {hasReservation ? (
+          <Text style={styles.footerHint}>
+            You already have a reservation for this room.
+          </Text>
+        ) : (
+          <Button
+            label="Book now"
+            fullWidth
+            onPress={startBooking}
+            disabled={!canBook}
+          />
+        )}
+      </View>
+
+      {/* Terms — same as website */}
+      <Modal visible={showTerms} animationType="slide" transparent>
+        <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Card style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Terms & conditions</Text>
+            <Text style={styles.muted}>Please read before booking {listing.name}.</Text>
+            <ScrollView style={styles.termsScroll}>
+              {RESERVATION_TERMS.map((t) => (
+                <Text key={t} style={styles.termItem}>
+                  • {t}
+                </Text>
+              ))}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <View style={styles.modalBtn}>
+                <Button
+                  label="Cancel"
+                  variant="outline"
+                  onPress={() => setShowTerms(false)}
+                />
+              </View>
+              <View style={styles.modalBtn}>
+                <Button
+                  label="I agree — continue"
+                  onPress={() => {
+                    setShowTerms(false);
+                    setBookingStep(2);
+                  }}
+                />
+              </View>
+            </View>
+          </Card>
+        </View>
+      </Modal>
+
+      {/* Step 2: Rental terms summary */}
+      <Modal visible={bookingStep === 2} animationType="slide" transparent>
+        <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Card style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rental terms summary</Text>
+            <Text style={styles.muted}>Review before continuing.</Text>
+            <Text style={styles.body}>
+              <Text style={styles.bodyStrong}>Monthly rent: </Text>₱
+              {listing.price.toLocaleString()}
+            </Text>
+            <Text style={styles.body}>
+              <Text style={styles.bodyStrong}>Advance (1 month): </Text>₱
+              {listing.price.toLocaleString()}
+            </Text>
+            <Text style={styles.body}>
+              <Text style={styles.bodyStrong}>Security deposit (1 month): </Text>₱
+              {listing.price.toLocaleString()}
+            </Text>
+            <Text style={styles.termItem}>
+              Advance is applied to your first month&apos;s rent.
+            </Text>
+            <Text style={styles.termItem}>
+              Security deposit is refundable at end of lease if terms are met.
+            </Text>
+            <Text style={styles.termItem}>
+              Utilities may be billed separately per dorm policy.
+            </Text>
+            <View style={styles.modalActions}>
+              <View style={styles.modalBtn}>
+                <Button
+                  label="Back"
+                  variant="outline"
+                  onPress={() => {
+                    setBookingStep(0);
+                    setShowTerms(true);
+                  }}
+                />
+              </View>
+              <View style={styles.modalBtn}>
+                <Button label="Next" onPress={() => setBookingStep(3)} />
+              </View>
+            </View>
+          </Card>
+        </View>
+      </Modal>
+
+      {/* Step 3: Move-in & lease */}
+      <Modal visible={bookingStep === 3} animationType="slide" transparent>
+        <KeyboardAwareSheet scrollable={false} sheetStyle={styles.modalCardInner}>
+          <Text style={styles.modalTitle}>Confirm reservation</Text>
+          <Text style={styles.muted}>Choose move-in and lease end dates on the calendar.</Text>
+          {submitError ? (
+            <Text style={styles.error}>{submitError}</Text>
+          ) : null}
+          <DateField
+            label="Move-in date"
+            value={moveInDate}
+            onChange={(iso) => {
+              setMoveInDate(iso);
+              if (leaseEndDate && leaseEndDate <= iso) {
+                const next = new Date(`${iso}T12:00:00`);
+                next.setMonth(next.getMonth() + 1);
+                next.setDate(next.getDate() - 1);
+                setLeaseEndDate(next.toISOString().slice(0, 10));
+              }
+            }}
+            minimumDate={new Date()}
+          />
+          <DateField
+            label="Lease end date"
+            value={leaseEndDate}
+            onChange={setLeaseEndDate}
+            minimumDate={minLeaseEnd}
+          />
+          {leasePreview ? (
+            <View style={styles.leasePreview}>
+              <Text style={styles.leasePreviewTitle}>Lease period</Text>
+              <Text style={styles.leasePreviewValue}>{leasePreview.label}</Text>
+              <Text style={styles.muted}>
+                Last day of lease: {leasePreview.endLabel}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={styles.muted}>
+            Final terms are subject to landlord confirmation.
+          </Text>
+          <View
+            style={[
+              styles.modalActions,
+              { marginBottom: bottomNavPad(insets.bottom, 8) },
+            ]}
+          >
+            <View style={styles.modalBtn}>
+              <Button
+                label="Back"
+                variant="outline"
+                onPress={() => setBookingStep(2)}
+              />
+            </View>
+            <View style={styles.modalBtn}>
+              <Button
+                label={submitting ? "Submitting…" : "Confirm"}
+                onPress={() => void submitReservation()}
+                loading={submitting}
+                disabled={
+                  !moveInDate.trim() || !leaseEndDate.trim() || submitting
+                }
+              />
+            </View>
+          </View>
+        </KeyboardAwareSheet>
+      </Modal>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { paddingBottom: 0 },
+  scroll: { paddingBottom: 120 },
+  error: { color: colors.red, fontSize: 13, marginBottom: 8 },
+  warnCard: { backgroundColor: "#fffbeb", borderColor: "#fcd34d" },
+  warnText: { fontSize: 13, color: "#92400e", lineHeight: 18 },
+  price: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.sky,
+    marginVertical: 8,
+  },
+  priceUnit: { fontSize: 14, fontWeight: "400", color: colors.muted },
+  reviewAvg: { fontSize: 13, color: colors.muted, marginBottom: 8 },
+  section: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+    marginTop: 12,
+    textTransform: "uppercase",
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.navy,
+    marginBottom: 8,
+  },
+  body: { fontSize: 14, color: "#334155", lineHeight: 20, marginTop: 4 },
+  bodyStrong: { fontSize: 14, fontWeight: "600", color: colors.navy },
+  muted: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  managedBy: { flexDirection: "row", alignItems: "center", gap: 8 },
+  linkName: { fontSize: 16, fontWeight: "700", color: colors.sky, marginTop: 4 },
+  chevron: { fontSize: 28, color: colors.sky, fontWeight: "300" },
+  amenityRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  review: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 10,
+    marginTop: 10,
+  },
+  reviewHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  stars: { color: "#d97706", fontSize: 14, marginVertical: 4 },
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  footerHint: { textAlign: "center", fontSize: 13, color: colors.muted },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+    padding: 16,
+  },
+  modalCard: { maxHeight: "85%" },
+  modalCardInner: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalTitle: { fontSize: 17, fontWeight: "700", color: colors.navy },
+  termsScroll: { maxHeight: 280, marginVertical: 12 },
+  termItem: { fontSize: 13, color: "#334155", lineHeight: 20, marginBottom: 8 },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 12 },
+  modalBtn: { flex: 1 },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.navy,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  leasePreview: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: colors.brandMuted,
+    borderWidth: 1,
+    borderColor: colors.brand,
+  },
+  leasePreviewTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+    textTransform: "uppercase",
+  },
+  leasePreviewValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.navy,
+    marginTop: 4,
+  },
+});

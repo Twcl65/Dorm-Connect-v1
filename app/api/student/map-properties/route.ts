@@ -1,0 +1,180 @@
+import { NextResponse } from "next/server";
+import { getPool } from "@/lib/db";
+import { requireStudent } from "@/lib/require-student";
+import {
+  buildPublicListingDescription,
+  buildRoomListingGallery,
+} from "@/lib/listing-description";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const session = await requireStudent();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  try {
+    const pool = await getPool();
+    const { rows: props } = await pool.query<{
+      id: string;
+      name: string;
+      address: string | null;
+      city: string | null;
+      contact_phone: string | null;
+      description: string;
+      cover_image_url: string | null;
+      gallery_image_urls: unknown;
+      latitude: number;
+      longitude: number;
+      property_type: string;
+      landlord_name: string;
+      landlord_user_id: string;
+      operational_status: string;
+    }>(
+      `SELECT p.id, p.name, p.address, p.city, p.contact_phone,
+              COALESCE(NULLIF(trim(p.description), ''), '') AS description,
+              p.cover_image_url, p.gallery_image_urls,
+              p.latitude, p.longitude, p.property_type,
+              u.full_name AS landlord_name, u.id AS landlord_user_id, p.operational_status
+       FROM public.landlord_properties p
+       JOIN public.boarding_house_app_users u ON u.id = p.owner_user_id
+       WHERE p.latitude IS NOT NULL
+         AND p.longitude IS NOT NULL
+         AND p.operational_status <> 'Not Operating'
+         AND EXISTS (
+           SELECT 1 FROM public.landlord_accreditation_requests a
+           WHERE a.property_id = p.id AND a.status = 'Approved'
+         )
+         AND EXISTS (
+           SELECT 1 FROM public.landlord_rooms r
+           WHERE r.property_id = p.id
+             AND r.is_listed = true
+             AND r.status = 'Available'
+         )
+       ORDER BY p.name`
+    );
+
+    const out = [];
+    for (const p of props) {
+      const { rows: rooms } = await pool.query<{
+        id: string;
+        room_no: string;
+        capacity: number;
+        monthly_rate: string;
+        status: string;
+        occupied_count: number;
+        listing_description: string | null;
+        remarks: string | null;
+        room_details: string | null;
+        listing_image_urls: unknown;
+        listing_background_url: string | null;
+        room_image_urls: unknown;
+      }>(
+        `SELECT r.id, r.room_no, r.capacity, r.monthly_rate::text, r.status,
+                r.listing_description, r.remarks, r.room_details,
+                r.listing_image_urls, r.listing_background_url, r.room_image_urls,
+                COALESCE((
+                  SELECT COUNT(*)::int FROM (
+                    SELECT l.id FROM public.landlord_tenant_leases l
+                    WHERE l.room_id = r.id
+                      AND l.payment_status <> 'Completed'
+                    UNION ALL
+                    SELECT s.id FROM public.student_dorm_reservations s
+                    WHERE s.room_id = r.id
+                      AND s.status IN ('Pending', 'Confirmed')
+                      AND NOT EXISTS (
+                        SELECT 1 FROM public.landlord_tenant_leases l2
+                        WHERE l2.student_reservation_id = s.id
+                          AND l2.payment_status <> 'Completed'
+                      )
+                    UNION ALL
+                    SELECT lr.id FROM public.landlord_reservations lr
+                    WHERE lr.room_id = r.id
+                      AND lr.status IN ('Pending', 'Confirmed')
+                  ) occ
+                ), 0) AS occupied_count
+         FROM public.landlord_rooms r
+         WHERE r.property_id = $1::uuid
+           AND r.is_listed = true
+           AND r.status = 'Available'
+         ORDER BY r.room_no`,
+        [p.id]
+      );
+
+      const { rows: reviewRows } = await pool.query<{
+        avg_rating: string | null;
+        review_count: string;
+      }>(
+        `SELECT AVG(review.rating)::text AS avg_rating,
+                COUNT(*)::text AS review_count
+         FROM public.student_dorm_reviews review
+         JOIN public.landlord_rooms r ON r.id = review.room_id
+         WHERE r.property_id = $1::uuid`,
+        [p.id]
+      );
+      const reviewSummary = {
+        avg: reviewRows[0]?.avg_rating ? Number(reviewRows[0].avg_rating) : null,
+        count: Number(reviewRows[0]?.review_count ?? 0),
+      };
+
+      const gallery = Array.isArray(p.gallery_image_urls)
+        ? (p.gallery_image_urls as string[])
+        : [];
+      const cover = p.cover_image_url?.trim() || null;
+      const propertyImages = [
+        ...(cover ? [cover] : []),
+        ...gallery.filter((u) => typeof u === "string"),
+      ];
+
+      out.push({
+        id: p.id,
+        name: p.name,
+        propertyType: p.property_type,
+        address: [p.address, p.city].filter(Boolean).join(", ") || "—",
+        contactPhone: p.contact_phone?.trim() || "—",
+        description: p.description || "No description provided.",
+        landlordName: p.landlord_name,
+        landlordUserId: p.landlord_user_id,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        coverImageUrl: cover,
+        galleryImageUrls: gallery,
+        propertyImages,
+        reviewSummary,
+        rooms: rooms.map((r) => {
+          const images = buildRoomListingGallery(
+            r.listing_image_urls,
+            r.listing_background_url,
+            r.room_image_urls
+          );
+          const desc = buildPublicListingDescription(
+            r.listing_description,
+            r.remarks,
+            r.room_details,
+            `Room ${r.room_no}`
+          );
+          const occupied = Math.max(0, Number(r.occupied_count) || 0);
+          const capacity = Math.max(1, Number(r.capacity) || 1);
+          const availableSlots = Math.max(0, capacity - occupied);
+          return {
+            id: r.id,
+            roomNo: r.room_no,
+            capacity,
+            occupied,
+            availableSlots,
+            price: Number(r.monthly_rate),
+            status: r.status,
+            description: desc,
+            images: images.length ? images : propertyImages.slice(0, 1),
+          };
+        }),
+      });
+    }
+
+    return NextResponse.json({ properties: out });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to load map data";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

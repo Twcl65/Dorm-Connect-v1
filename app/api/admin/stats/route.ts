@@ -1,0 +1,69 @@
+import { NextResponse } from "next/server";
+import {
+  API_CACHE_TTL_MS,
+  cacheKey,
+  getCached,
+  setCached,
+} from "@/lib/api-cache";
+import { getPool } from "@/lib/db";
+import { requireIctAdminUnlessBootstrapEmpty } from "@/lib/admin-api-guard";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    if (!(await requireIctAdminUnlessBootstrapEmpty())) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const cacheK = cacheKey(["admin", "stats"]);
+    const hit = getCached<Record<string, unknown>>(cacheK);
+    if (hit) {
+      return NextResponse.json(hit, { headers: { "X-Cache": "HIT" } });
+    }
+
+    const pool = await getPool();
+    const { rows } = await pool.query<{
+      total_users: string;
+      inactive_accounts: string;
+      dormitories: string;
+      rooms: string;
+      student_reservations: string;
+      landlord_reservations: string;
+      accredited: string;
+      pending_accreditation: string;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM public.boarding_house_app_users) AS total_users,
+         (SELECT COUNT(*)::text FROM public.boarding_house_app_users WHERE status = 'Inactive') AS inactive_accounts,
+         (SELECT COUNT(*)::text FROM public.landlord_properties) AS dormitories,
+         (SELECT COUNT(*)::text FROM public.landlord_rooms) AS rooms,
+         (SELECT COUNT(*)::text FROM public.student_dorm_reservations) AS student_reservations,
+         (SELECT COUNT(*)::text FROM public.landlord_reservations) AS landlord_reservations,
+         (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests WHERE status = 'Approved') AS accredited,
+         (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests
+          WHERE status IN (
+            'Pending',
+            'Scheduled for Inspection',
+            'Recommended for Approval',
+            'Hold'
+          )) AS pending_accreditation`
+    );
+    const r = rows[0];
+    const payload = {
+      totalUsers: Number(r?.total_users ?? 0),
+      inactiveAccounts: Number(r?.inactive_accounts ?? 0),
+      dormitories: Number(r?.dormitories ?? 0),
+      rooms: Number(r?.rooms ?? 0),
+      studentReservations: Number(r?.student_reservations ?? 0),
+      landlordReservations: Number(r?.landlord_reservations ?? 0),
+      accredited: Number(r?.accredited ?? 0),
+      pendingAccreditation: Number(r?.pending_accreditation ?? 0),
+    };
+    setCached(cacheK, payload, API_CACHE_TTL_MS);
+    return NextResponse.json(payload, { headers: { "X-Cache": "MISS" } });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to load stats";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
