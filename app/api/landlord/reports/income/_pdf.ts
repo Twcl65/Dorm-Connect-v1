@@ -65,27 +65,27 @@ export async function buildPdfReport(args: {
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
   doc
-    .fillColor("0B2A3C")
+    .fillColor("#0B2A3C")
     .fontSize(20)
     .font("Helvetica-Bold")
     .text("DormConnect", 40, 30);
 
   doc
-    .fillColor("111827")
+    .fillColor("#111827")
     .fontSize(22)
     .font("Helvetica-Bold")
     .text(args.title, 40, 55);
 
   if (args.subtitle) {
     doc
-      .fillColor("475569")
+      .fillColor("#475569")
       .fontSize(12)
       .font("Helvetica")
       .text(args.subtitle, 40, 85);
   }
 
   doc
-    .fillColor("475569")
+    .fillColor("#475569")
     .fontSize(10)
     .font("Helvetica")
     .text(`Generated: ${new Date().toLocaleString()}`, 40, 110);
@@ -103,11 +103,11 @@ export async function buildPdfReport(args: {
     const col = args.columns[i];
     const x = 40 + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
     doc
-      .fillColor("FFFFFF")
+      .fillColor("#FFFFFF")
       .rect(x, y, colWidths[i], 22)
-      .fill("FFFFFF");
+      .fill("#FFFFFF");
     doc
-      .fillColor("0B2A3C")
+      .fillColor("#0B2A3C")
       .fontSize(9)
       .font("Helvetica-Bold")
       .text(col.label, x + 8, y + 5, { width: colWidths[i] - 16, align: "left" });
@@ -122,8 +122,8 @@ export async function buildPdfReport(args: {
     const rowStart = y;
 
     doc
-      .fillColor(alt ? "F3F4F6" : "FFFFFF")
-      .rect(40, rowStart, totalWidth, rowHeight).fill("FFFFFF");
+      .fillColor(alt ? "#F3F4F6" : "#FFFFFF")
+      .rect(40, rowStart, totalWidth, rowHeight).fill("#FFFFFF");
 
     const x = 40;
     for (let i = 0; i < args.columns.length; i++) {
@@ -132,7 +132,7 @@ export async function buildPdfReport(args: {
       const text = val == null ? "" : String(val);
       const cellX = x + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
       doc
-        .fillColor(alt ? "111827" : "334155")
+        .fillColor(alt ? "#111827" : "#334155")
         .fontSize(8)
         .font("Helvetica")
         .text(text, cellX + 8, rowStart + 3, {
@@ -147,7 +147,7 @@ export async function buildPdfReport(args: {
 
   if (y < 760) {
     doc
-      .fillColor("94A3B8")
+      .fillColor("#94A3B8")
       .fontSize(10)
       .font("Helvetica-Oblique")
       .text("— End of report —", 40, y + 10, { align: "right" });
@@ -204,7 +204,7 @@ export async function buildIncomePdfReport(
   data: IncomeReportData
 ): Promise<Uint8Array> {
   const formatPhp = (n: number) =>
-    `₱${n.toLocaleString("en-PH", { maximumFractionDigits: 0 })}`;
+    n.toLocaleString("en-PH", { maximumFractionDigits: 0 });
 
   function formatMonth(key: string): string {
     const [y, m] = key.split("-");
@@ -216,208 +216,219 @@ export async function buildIncomePdfReport(
     return `${months[Number(m) - 1]} ${y}`;
   }
 
-  const monthlyRows = data.monthlySummary.map((m) => ({
-    Month: formatMonth(m.month),
-    "Rent Total": formatPhp(m.total),
-    "Advance": formatPhp(m.advanceTotal),
-    "Deposit": formatPhp(m.depositTotal),
-    "Grand Total": formatPhp(m.total + m.advanceTotal + m.depositTotal),
-    "Paid Tenants": `${m.paid} / ${m.count}`,
-    Tenants: m.tenants.join(", "),
+  const monthlyRows = data.monthlySummary
+    .filter((row) => !data.targetMonth || row.month === data.targetMonth)
+    .map((row) => ({
+      month: formatMonth(row.month),
+      rent: formatPhp(row.total),
+      advance: formatPhp(row.advanceTotal),
+      deposit: formatPhp(row.depositTotal),
+      total: formatPhp(row.total + row.advanceTotal + row.depositTotal),
+      paid: `${row.paid} / ${row.count}`,
+      tenants: row.tenants.join(", "),
+    }));
+
+  const paymentRows = data.tenantPayments.map((payment) => ({
+    name: payment.payerName,
+    room: payment.roomNo,
+    dorm: payment.dormName,
+    amount: formatPhp(payment.amount),
+    method: payment.method,
+    status: payment.status,
+    period: payment.periodLabel ?? "—",
+    date: payment.date,
   }));
 
-  const paymentRows = data.tenantPayments.map((p) => ({
-    Name: p.payerName,
-    Room: p.roomNo,
-    Dorm: p.dormName,
-    Amount: formatPhp(p.amount),
-    Method: p.method,
-    Status: p.status,
-    Period: p.periodLabel ?? "—",
-    Date: p.date,
-  }));
+  const advanceRows = data.advanceSummary
+    .filter((row) => !data.targetMonth || row.month === data.targetMonth)
+    .map((row) => ({
+      month: formatMonth(row.month),
+      payer: row.payer,
+      property: row.property,
+      total: formatPhp(row.total),
+      count: String(row.count),
+    }));
 
-  const advanceRows = data.advanceSummary.map((a) => ({
-    Month: formatMonth(a.month),
-    Payer: a.payer,
-    Property: a.property,
-    Total: formatPhp(a.total),
-    Count: String(a.count),
-  }));
+  const depositRows = data.depositSummary
+    .filter((row) => !data.targetMonth || row.month === data.targetMonth)
+    .map((row) => ({
+      month: formatMonth(row.month),
+      payer: row.payer,
+      property: row.property,
+      total: formatPhp(row.total),
+      count: String(row.count),
+    }));
 
-  const depositRows = data.depositSummary.map((d) => ({
-    Month: formatMonth(d.month),
-    Payer: d.payer,
-    Property: d.property,
-    Total: formatPhp(d.total),
-    Count: String(d.count),
-  }));
-
-  const doc: any = new PDFDocument({ margin: 40 });
+  const pageMargin = 36;
+  const doc: any = new PDFDocument({
+    size: "LETTER",
+    layout: "landscape",
+    margins: { top: pageMargin, bottom: pageMargin, left: pageMargin, right: pageMargin },
+    bufferPages: true,
+  });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-  doc.fillColor("0B2A3C").fontSize(20).font("Helvetica-Bold").text("DormConnect", 40, 30);
-  doc.fillColor("111827").fontSize(22).font("Helvetica-Bold").text("Income Report", 40, 55);
-  doc.fillColor("475569").fontSize(10).font("Helvetica").text(`Generated: ${new Date().toLocaleString()}`, 40, 85);
-  if (data.targetMonth) {
-    doc.fillColor("475569").fontSize(10).font("Helvetica").text(`Month: ${formatMonth(data.targetMonth)}`, 40, 100);
-  }
+  const pageWidth = 720;
+  const pageBottom = 576;
+  let y = 0;
 
-  let y = 120;
-
-  // Monthly Summary table
-  doc.fillColor("111827").fontSize(11).font("Helvetica-Bold").text("Monthly Income Summary", 40, y);
-  y += 20;
-
-  const monthlyCols = [
-    { label: "Month", width: 16 },
-    { label: "Rent", width: 14 },
-    { label: "Advance", width: 12 },
-    { label: "Deposit", width: 12 },
-    { label: "Total", width: 14 },
-    { label: "Tenants", width: 12 },
-    { label: "Paid", width: 10 },
-    { label: "Tenant List", width: 20 },
-  ];
-  const monthlyColWidths = monthlyCols.map((c) => Math.round((c.width / 100) * 520));
-
-  // Header row
-  let x = 40;
-  doc.fillColor("0B2A3C");
-  for (let i = 0; i < monthlyCols.length; i++) {
-    doc.rect(x, y, monthlyColWidths[i], 18).fill("0B2A3C");
-    doc.fillColor("FFFFFF").fontSize(7).font("Helvetica-Bold").text(monthlyCols[i].label, x + 4, y + 4, { width: monthlyColWidths[i] - 8 });
-    doc.fillColor("0B2A3C");
-    x += monthlyColWidths[i];
-  }
-  y += 18;
-
-  // Data rows
-  for (const row of monthlyRows) {
-    if (y > 750) {
-      doc.addPage();
-      y = 50;
+  const fitText = (value: string, width: number, font: string, size: number) => {
+    doc.font(font).fontSize(size);
+    if (doc.widthOfString(value) <= width) return value;
+    const suffix = "...";
+    let low = 0;
+    let high = value.length;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (doc.widthOfString(`${value.slice(0, middle)}${suffix}`) <= width) {
+        low = middle;
+      } else {
+        high = middle - 1;
+      }
     }
-    x = 40;
-    doc.fillColor("FFFFFF");
-    for (let i = 0; i < monthlyCols.length; i++) {
-      doc.rect(x, y, monthlyColWidths[i], 16).fill("FFFFFF");
-      doc.fillColor("111827").fontSize(7).font("Helvetica").text(String((row as any)[monthlyCols[i].label]), x + 4, y + 3, { width: monthlyColWidths[i] - 8 });
-      doc.fillColor("FFFFFF");
-      x += monthlyColWidths[i];
+    return `${value.slice(0, low)}${suffix}`;
+  };
+
+  const drawPageHeading = () => {
+    doc.fillColor("#0B2A3C").font("Helvetica-Bold").fontSize(19)
+      .text("DormConnect", pageMargin, pageMargin, { lineBreak: false });
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(20)
+      .text("Income Report", pageMargin, pageMargin + 24, { lineBreak: false });
+    const monthText = data.targetMonth ? `Month: ${formatMonth(data.targetMonth)}` : "All months";
+    doc.fillColor("#475569").font("Helvetica").fontSize(9)
+      .text(`${monthText}  |  Generated: ${new Date().toLocaleString()}`, pageMargin, pageMargin + 50, { lineBreak: false });
+    y = pageMargin + 78;
+  };
+
+  const drawTableHeader = (
+    columns: Array<{ key: string; label: string; width: number; align?: "left" | "right" }>
+  ) => {
+    let x = pageMargin;
+    for (const column of columns) {
+      const width = (pageWidth * column.width) / 100;
+      doc.save();
+      doc.rect(x, y, width, 24).fill("#0B2A3C");
+      doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(8)
+        .text(column.label, x + 5, y + 7, {
+          width: width - 10,
+          lineBreak: false,
+          ellipsis: true,
+          align: column.align ?? "left",
+        });
+      doc.restore();
+      x += width;
+    }
+    y += 24;
+  };
+
+  const drawTable = (
+    title: string,
+    columns: Array<{ key: string; label: string; width: number; align?: "left" | "right" }>,
+    rows: Array<Record<string, string>>
+  ) => {
+    const rowHeight = 24;
+    if (y + 48 > pageBottom) {
+      doc.addPage();
+      drawPageHeading();
+    }
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(11)
+      .text(title, pageMargin, y, { lineBreak: false });
+    y += 19;
+    drawTableHeader(columns);
+
+    const tableRows = rows.length > 0 ? rows : [{ [columns[0].key]: "No records for this month." }];
+    for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex++) {
+      if (y + rowHeight > pageBottom) {
+        doc.addPage();
+        drawPageHeading();
+        drawTableHeader(columns);
+      }
+
+      let x = pageMargin;
+      for (const column of columns) {
+        const width = (pageWidth * column.width) / 100;
+        const background = rowIndex % 2 === 0 ? "#FFFFFF" : "#F1F5F9";
+        const value = tableRows[rowIndex][column.key] ?? "";
+        const visibleValue = fitText(value, width - 12, "Helvetica", 8);
+        const textWidth = doc.widthOfString(visibleValue);
+        const textStartX = column.align === "right"
+          ? x + width - 6 - textWidth
+          : x + 6;
+        const textY = y + 8;
+        doc.save();
+        doc.rect(x, y, width, rowHeight).fill(background);
+        doc.strokeColor("#CBD5E1").lineWidth(0.5).rect(x, y, width, rowHeight).stroke();
+        doc.fillColor("#111827").font("Helvetica").fontSize(8)
+          .text(visibleValue, x + 6, textY, {
+            width: width - 12,
+            lineBreak: false,
+            align: column.align ?? "left",
+          });
+        doc.restore();
+        x += width;
+      }
+      y += rowHeight;
     }
     y += 16;
-  }
-  y += 10;
+  };
 
-  // Tenant Payments table
-  doc.fillColor("111827").fontSize(11).font("Helvetica-Bold").text("Tenant Payments", 40, y);
-  y += 20;
+  drawPageHeading();
+  drawTable("Monthly Income Summary", [
+    { key: "month", label: "Month", width: 13 },
+    { key: "rent", label: "Monthly Rent", width: 15, align: "right" },
+    { key: "advance", label: "Advance", width: 13, align: "right" },
+    { key: "deposit", label: "Deposit", width: 13, align: "right" },
+    { key: "total", label: "Total", width: 15, align: "right" },
+    { key: "paid", label: "Paid / Total", width: 12, align: "right" },
+    { key: "tenants", label: "Tenants", width: 19 },
+  ], monthlyRows);
 
-  const payCols = [
-    { label: "Name", width: 18 },
-    { label: "Room", width: 8 },
-    { label: "Dorm", width: 18 },
-    { label: "Amount", width: 10 },
-    { label: "Method", width: 10 },
-    { label: "Status", width: 10 },
-    { label: "Period", width: 16 },
-    { label: "Date", width: 10 },
-  ];
-  const payColWidths = payCols.map((c) => Math.round((c.width / 100) * 520));
+  drawTable("Tenant Payments", [
+    { key: "name", label: "Name", width: 17 },
+    { key: "room", label: "Room", width: 8 },
+    { key: "dorm", label: "Dorm", width: 17 },
+    { key: "amount", label: "Amount", width: 12, align: "right" },
+    { key: "method", label: "Method", width: 10 },
+    { key: "status", label: "Status", width: 9 },
+    { key: "period", label: "Period", width: 15 },
+    { key: "date", label: "Date", width: 12 },
+  ], paymentRows);
 
-  x = 40;
-  doc.fillColor("0B2A3C");
-  for (let i = 0; i < payCols.length; i++) {
-    doc.rect(x, y, payColWidths[i], 18).fill("0B2A3C");
-    doc.fillColor("FFFFFF").fontSize(7).font("Helvetica-Bold").text(payCols[i].label, x + 4, y + 4, { width: payColWidths[i] - 8 });
-    doc.fillColor("0B2A3C");
-    x += payColWidths[i];
-  }
-  y += 18;
-
-  for (const row of paymentRows) {
-    if (y > 750) {
-      doc.addPage();
-      y = 50;
-    }
-    x = 40;
-    doc.fillColor("FFFFFF");
-    for (let i = 0; i < payCols.length; i++) {
-      doc.rect(x, y, payColWidths[i], 14).fill("FFFFFF");
-      doc.fillColor("111827").fontSize(6).font("Helvetica").text(String((row as any)[payCols[i].label]), x + 4, y + 2, { width: payColWidths[i] - 8 });
-      doc.fillColor("FFFFFF");
-      x += payColWidths[i];
-    }
-    y += 14;
-  }
-  y += 10;
-
-  // Advance Payments table
   if (advanceRows.length > 0) {
-    doc.fillColor("111827").fontSize(11).font("Helvetica-Bold").text("Advance Payments", 40, y);
-    y += 20;
-    const advCols = [{ label: "Month", width: 16 }, { label: "Payer", width: 20 }, { label: "Property", width: 24 }, { label: "Total", width: 14 }, { label: "Count", width: 8 }];
-    const advColWidths = advCols.map((c) => Math.round((c.width / 100) * 520));
-    x = 40;
-    doc.fillColor("0B2A3C");
-    for (let i = 0; i < advCols.length; i++) {
-      doc.rect(x, y, advColWidths[i], 18).fill("0B2A3C");
-      doc.fillColor("FFFFFF").fontSize(7).font("Helvetica-Bold").text(advCols[i].label, x + 4, y + 4, { width: advColWidths[i] - 8 });
-      doc.fillColor("0B2A3C");
-      x += advColWidths[i];
-    }
-    y += 18;
-    for (const row of advanceRows) {
-      if (y > 750) { doc.addPage(); y = 50; }
-      x = 40;
-      doc.fillColor("FFFFFF");
-      for (let i = 0; i < advCols.length; i++) {
-        doc.rect(x, y, advColWidths[i], 14).fill("FFFFFF");
-        doc.fillColor("111827").fontSize(6).font("Helvetica").text(String((row as any)[advCols[i].label]), x + 4, y + 2, { width: advColWidths[i] - 8 });
-        doc.fillColor("FFFFFF");
-        x += advColWidths[i];
-      }
-      y += 14;
-    }
-    y += 10;
+    drawTable("Advance Payments", [
+      { key: "month", label: "Month", width: 16 },
+      { key: "payer", label: "Payer", width: 23 },
+      { key: "property", label: "Property", width: 27 },
+      { key: "total", label: "Total", width: 20, align: "right" },
+      { key: "count", label: "Count", width: 14, align: "right" },
+    ], advanceRows);
   }
 
-  // Deposit Payments table
   if (depositRows.length > 0) {
-    doc.fillColor("111827").fontSize(11).font("Helvetica-Bold").text("Security Deposits", 40, y);
-    y += 20;
-    const depCols = [{ label: "Month", width: 16 }, { label: "Payer", width: 20 }, { label: "Property", width: 24 }, { label: "Total", width: 14 }, { label: "Count", width: 8 }];
-    const depColWidths = depCols.map((c) => Math.round((c.width / 100) * 520));
-    x = 40;
-    doc.fillColor("0B2A3C");
-    for (let i = 0; i < depCols.length; i++) {
-      doc.rect(x, y, depColWidths[i], 18).fill("0B2A3C");
-      doc.fillColor("FFFFFF").fontSize(7).font("Helvetica-Bold").text(depCols[i].label, x + 4, y + 4, { width: depColWidths[i] - 8 });
-      doc.fillColor("0B2A3C");
-      x += depColWidths[i];
-    }
-    y += 18;
-    for (const row of depositRows) {
-      if (y > 750) { doc.addPage(); y = 50; }
-      x = 40;
-      doc.fillColor("FFFFFF");
-      for (let i = 0; i < depCols.length; i++) {
-        doc.rect(x, y, depColWidths[i], 14).fill("FFFFFF");
-        doc.fillColor("111827").fontSize(6).font("Helvetica").text(String((row as any)[depCols[i].label]), x + 4, y + 2, { width: depColWidths[i] - 8 });
-        doc.fillColor("FFFFFF");
-        x += depColWidths[i];
-      }
-      y += 14;
-    }
-    y += 10;
+    drawTable("Security Deposits", [
+      { key: "month", label: "Month", width: 16 },
+      { key: "payer", label: "Payer", width: 23 },
+      { key: "property", label: "Property", width: 27 },
+      { key: "total", label: "Total", width: 20, align: "right" },
+      { key: "count", label: "Count", width: 14, align: "right" },
+    ], depositRows);
   }
 
-  doc.fillColor("94A3B8").fontSize(8).font("Helvetica-Oblique").text("— End of report —", 40, y, { align: "right" });
-  doc.end();
+  const pageCount = doc.bufferedPageRange().count;
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+    doc.switchToPage(pageIndex);
+    doc.fillColor("#64748B").font("Helvetica").fontSize(8)
+      .text(`Page ${pageIndex + 1} of ${pageCount}`, pageMargin, 590, {
+        width: pageWidth,
+        align: "right",
+        lineBreak: false,
+      });
+  }
+
   return new Promise<Uint8Array>((resolve, reject) => {
     doc.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
     doc.on("error", reject);
+    doc.end();
   });
 }

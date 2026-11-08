@@ -365,8 +365,10 @@ export async function GET(req: Request) {
       if (row.entry_source === "advance" || row.entry_source === "deposit") {
         continue;
       }
-      if (targetMonth && row.paid_on) {
-        if (row.paid_on.slice(0, 7) !== targetMonth) continue;
+      const paymentMonth =
+        row.paid_on?.slice(0, 7) ?? row.created_at.toISOString().slice(0, 7);
+      if (targetMonth && paymentMonth !== targetMonth) {
+        continue;
       }
       tenantPayments.push({
         id: `lp-${row.id}`,
@@ -382,7 +384,9 @@ export async function GET(req: Request) {
     }
 
     const result = {
-      monthlySummary,
+      monthlySummary: monthlySummary.filter(
+        ({ month }) => !targetMonth || month === targetMonth
+      ),
       tenantPayments,
       advanceSummary: Object.entries(advanceMap)
         .filter(([ck]) => !targetMonth || ck.startsWith(targetMonth + "|"))

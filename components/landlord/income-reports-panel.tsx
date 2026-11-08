@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,7 @@ type LandlordIncomeReportsPanelProps = {
 export function LandlordIncomeReportsPanel({ embedded = false }: LandlordIncomeReportsPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
   const [data, setData] = useState<{
     monthlySummary: MonthlySummary[];
     tenantPayments: TenantPayment[];
@@ -84,11 +85,8 @@ export function LandlordIncomeReportsPanel({ embedded = false }: LandlordIncomeR
     return "";
   });
 
-  useEffect(() => {
-    void load();
-  }, []);
-
   const load = async () => {
+    const requestId = ++requestIdRef.current;
     setError(null);
     setLoading(true);
     try {
@@ -102,6 +100,7 @@ export function LandlordIncomeReportsPanel({ embedded = false }: LandlordIncomeR
         error?: string;
       };
       if (!res.ok) throw new Error(json.error ?? "Failed to load income reports");
+      if (requestId !== requestIdRef.current) return;
       setData({
         monthlySummary: json.monthlySummary ?? [],
         tenantPayments: json.tenantPayments ?? [],
@@ -111,10 +110,11 @@ export function LandlordIncomeReportsPanel({ embedded = false }: LandlordIncomeR
       });
       if (json.targetMonth) setSelectedMonth(json.targetMonth);
     } catch (e) {
+      if (requestId !== requestIdRef.current) return;
       setError(e instanceof Error ? e.message : "Failed to load");
       setData(null);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   };
 
