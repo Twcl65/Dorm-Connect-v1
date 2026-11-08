@@ -1,8 +1,14 @@
+import { useRouter } from "expo-router";
 import { ScrollView } from "react-native";
+import { Button } from "@/components/ui";
 import { MenuLink } from "@/components/menu-link";
 import { Screen, Subtitle, Title, colors } from "@/components/ui";
+import { useAuth } from "@/context/AuthContext";
 
 export default function LandlordMoreTab() {
+  const { signOut } = useAuth();
+  const router = useRouter();
+
   return (
     <Screen>
       <Title style={{ color: colors.brand }}>More</Title>
@@ -25,10 +31,28 @@ export default function LandlordMoreTab() {
           icon="bed-outline"
         />
         <MenuLink
+          href="/landlord/reviews"
+          label="View reviews"
+          subtitle="Read student feedback and see your average rating"
+          icon="star-outline"
+        />
+        <MenuLink
+          href="/landlord/terms-settings"
+          label="Terms & conditions"
+          subtitle="Manage property-specific house rules"
+          icon="document-text-outline"
+        />
+        <MenuLink
           href="/landlord/tenants"
           label="Tenants"
           subtitle="Manage active leases and move-outs"
           icon="people-outline"
+        />
+        <MenuLink
+          href="/landlord/income-reports"
+          label="Financial reports"
+          subtitle="Monthly rent, advance payments, and held security deposits"
+          icon="cash-outline"
         />
         <MenuLink
           href="/landlord/reports"
@@ -57,6 +81,17 @@ export default function LandlordMoreTab() {
         <MenuLink
           href="/settings"
           label="Account settings"
+          subtitle="Update your profile and account details"
+          icon="settings-outline"
+        />
+        <Button
+          label="Sign out"
+          variant="danger"
+          onPress={async () => {
+            await signOut();
+            router.replace("/login");
+          }}
+        />
       </ScrollView>
     </Screen>
   );

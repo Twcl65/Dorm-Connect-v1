@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Link, useRouter, type Href } from "expo-router";
 import { useState } from "react";
 import {
+  Alert,
   Image,
   Pressable,
   StyleSheet,
@@ -15,6 +16,7 @@ import { Button, colors, Input, PasswordInput } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { pickImagesFromLibrary } from "@/lib/landlord-rooms";
 import { homeHrefForRole } from "@/lib/auth-routes";
+import { SelectField } from "@/components/select-field";
 
 type ProfilePhoto = {
   uri: string;
@@ -26,10 +28,14 @@ export default function RegisterScreen() {
   const { signIn } = useAuth();
   const router = useRouter();
   const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState<"Student" | "Landlord">("Student");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [studentId, setStudentId] = useState("");
   const [course, setCourse] = useState("");
+  const [fatherName, setFatherName] = useState("");
+  const [motherName, setMotherName] = useState("");
+  const [location, setLocation] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [profilePhoto, setProfilePhoto] = useState<ProfilePhoto | null>(null);
@@ -47,10 +53,14 @@ export default function RegisterScreen() {
       !fullName.trim() ||
       !email.trim() ||
       !password ||
-      !studentId.trim() ||
-      !course.trim() ||
-      !emergencyName.trim() ||
-      !emergencyPhone.trim()
+      (role === "Student" &&
+        (!studentId.trim() ||
+          !course.trim() ||
+          !fatherName.trim() ||
+          !motherName.trim() ||
+          !location.trim() ||
+          !emergencyName.trim() ||
+          !emergencyPhone.trim()))
     ) {
       setError("Please fill in all required fields.");
       return;
@@ -59,7 +69,7 @@ export default function RegisterScreen() {
       setError("Password must be at least 8 characters.");
       return;
     }
-    if (!profilePhoto) {
+    if (role === "Student" && !profilePhoto) {
       setError("Profile picture is required.");
       return;
     }
@@ -70,15 +80,23 @@ export default function RegisterScreen() {
       form.append("fullName", fullName.trim());
       form.append("email", email.trim().toLowerCase());
       form.append("password", password);
-      form.append("studentId", studentId.trim());
-      form.append("course", course.trim());
-      form.append("emergencyContactName", emergencyName.trim());
-      form.append("emergencyContactPhone", emergencyPhone.trim());
-      form.append("profileImage", {
-        uri: profilePhoto.uri,
-        name: profilePhoto.fileName,
-        type: profilePhoto.mimeType,
-      } as unknown as Blob);
+      form.append("role", role);
+      if (role === "Student") {
+        form.append("studentId", studentId.trim());
+        form.append("course", course.trim());
+        form.append("fatherName", fatherName.trim());
+        form.append("motherName", motherName.trim());
+        form.append("location", location.trim());
+        form.append("emergencyContactName", emergencyName.trim());
+        form.append("emergencyContactPhone", emergencyPhone.trim());
+      }
+      if (profilePhoto) {
+        form.append("profileImage", {
+          uri: profilePhoto.uri,
+          name: profilePhoto.fileName,
+          type: profilePhoto.mimeType,
+        } as unknown as Blob);
+      }
 
       const res = await fetch(`${getApiBaseUrl()}/api/auth/register`, {
         method: "POST",
@@ -88,9 +106,20 @@ export default function RegisterScreen() {
         ok?: boolean;
         error?: string;
         message?: string;
+        pendingApproval?: boolean;
       };
       if (!res.ok) {
         setError(data.error ?? "Registration failed.");
+        return;
+      }
+
+      if (data.pendingApproval) {
+        Alert.alert(
+          "Registration submitted",
+          data.message ??
+            "Your account will be available after ICT approval and activation.",
+          [{ text: "OK", onPress: () => router.replace("/login") }]
+        );
         return;
       }
 
@@ -114,12 +143,13 @@ export default function RegisterScreen() {
         <View style={styles.cardTitleIcon}>
           <Ionicons name="person-add-outline" size={18} color={colors.brand} />
         </View>
-        <Text style={styles.cardTitle}>Student registration</Text>
+        <Text style={styles.cardTitle}>
+          {role === "Student" ? "Student registration" : "Landlord registration"}
+        </Text>
       </View>
       <Text style={styles.cardDesc}>
-        Create your DormConnect account. ICT will verify your details — you can
-        browse accredited listings while pending, but booking opens after
-        verification.
+        Students can browse while ICT verifies their details. Landlord
+        registrations require ICT approval before sign-in.
       </Text>
 
       {error ? (
@@ -127,6 +157,21 @@ export default function RegisterScreen() {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
+
+      <SelectField
+        label="Account type"
+        placeholder="Choose account type"
+        value={role}
+        options={[
+          { value: "Student", label: "Student / Tenant" },
+          { value: "Landlord", label: "Landlord" },
+        ]}
+        onChange={(value) => {
+          setRole(value === "Landlord" ? "Landlord" : "Student");
+          setError(null);
+        }}
+        disabled={loading}
+      />
 
       <Text style={styles.label}>Full name</Text>
       <Input
@@ -153,67 +198,105 @@ export default function RegisterScreen() {
         editable={!loading}
       />
 
-      <View style={styles.row}>
-        <View style={styles.half}>
-          <Text style={styles.label}>Student ID</Text>
-          <Input
-            value={studentId}
-            onChangeText={setStudentId}
-            editable={!loading}
-          />
-        </View>
-        <View style={styles.half}>
-          <Text style={styles.label}>Course</Text>
-          <Input
-            value={course}
-            onChangeText={setCourse}
-            editable={!loading}
-          />
-        </View>
-      </View>
+      {role === "Student" ? (
+        <>
+          <View style={styles.row}>
+            <View style={styles.half}>
+              <Text style={styles.label}>Student ID</Text>
+              <Input
+                value={studentId}
+                onChangeText={setStudentId}
+                editable={!loading}
+              />
+            </View>
+            <View style={styles.half}>
+              <Text style={styles.label}>Course</Text>
+              <Input
+                value={course}
+                onChangeText={setCourse}
+                editable={!loading}
+              />
+            </View>
+          </View>
 
-      <View style={styles.row}>
-        <View style={styles.half}>
-          <Text style={styles.label}>Emergency contact name</Text>
-          <Input
-            value={emergencyName}
-            onChangeText={setEmergencyName}
-            editable={!loading}
-          />
-        </View>
-        <View style={styles.half}>
-          <Text style={styles.label}>Emergency contact phone</Text>
-          <Input
-            value={emergencyPhone}
-            onChangeText={setEmergencyPhone}
-            editable={!loading}
-            keyboardType="phone-pad"
-          />
-        </View>
-      </View>
+          <View style={styles.row}>
+            <View style={styles.half}>
+              <Text style={styles.label}>Father name</Text>
+              <Input
+                value={fatherName}
+                onChangeText={setFatherName}
+                editable={!loading}
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={styles.half}>
+              <Text style={styles.label}>Mother name</Text>
+              <Input
+                value={motherName}
+                onChangeText={setMotherName}
+                editable={!loading}
+                autoCapitalize="words"
+              />
+            </View>
+          </View>
 
-      <Text style={styles.label}>Profile picture</Text>
-      {profilePhoto ? (
-        <View style={styles.photoPreview}>
-          <Image source={{ uri: profilePhoto.uri }} style={styles.photoImage} />
-          <Text style={styles.photoName} numberOfLines={1}>
-            {profilePhoto.fileName}
-          </Text>
-          <Button
-            label="Change photo"
-            variant="outline"
-            onPress={() => void pickProfilePhoto()}
-            fullWidth
+          <Text style={styles.label}>Location</Text>
+          <Input
+            value={location}
+            onChangeText={setLocation}
+            editable={!loading}
+            placeholder="City or municipality"
+            autoCapitalize="words"
           />
-        </View>
-      ) : (
-        <Button
-          label="Select profile photo"
-          variant="outline"
-          onPress={() => void pickProfilePhoto()}
-          fullWidth
-        />
-      )}
+
+          <View style={styles.row}>
+            <View style={styles.half}>
+              <Text style={styles.label}>Emergency contact name</Text>
+              <Input
+                value={emergencyName}
+                onChangeText={setEmergencyName}
+                editable={!loading}
+              />
+            </View>
+            <View style={styles.half}>
+              <Text style={styles.label}>Emergency contact phone</Text>
+              <Input
+                value={emergencyPhone}
+                onChangeText={setEmergencyPhone}
+                editable={!loading}
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+        </>
+      ) : null}
+
+      {role === "Student" ? (
+        <>
+          <Text style={styles.label}>Profile picture</Text>
+          {profilePhoto ? (
+            <View style={styles.photoPreview}>
+              <Image source={{ uri: profilePhoto.uri }} style={styles.photoImage} />
+              <Text style={styles.photoName} numberOfLines={1}>
+                {profilePhoto.fileName}
+              </Text>
+              <Button
+                label="Change photo"
+                variant="outline"
+                onPress={() => void pickProfilePhoto()}
+                fullWidth
+              />
+            </View>
+          ) : (
+            <Button
+              label="Select profile photo"
+              variant="outline"
+              onPress={() => void pickProfilePhoto()}
+              fullWidth
+            />
+          )}
+        </>
+      ) : null}
 
       <View style={{ marginTop: 4 }}>
         <Button

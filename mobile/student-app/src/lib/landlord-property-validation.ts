@@ -1,4 +1,25 @@
-export type PropertyType = "Dormitory" | "Boarding House";
+export type PropertyType =
+  | "Dormitory"
+  | "Boarding House"
+  | "Apartment"
+  | "House for Rent"
+  | "House"
+  | "Pad"
+  | "Other";
+
+export const PROPERTY_TYPES: readonly PropertyType[] = [
+  "Dormitory",
+  "Boarding House",
+  "Apartment",
+  "House for Rent",
+  "House",
+  "Pad",
+  "Other",
+];
+
+function isPropertyType(value: string): value is PropertyType {
+  return PROPERTY_TYPES.includes(value as PropertyType);
+}
 
 export type LandlordPropertyFields = {
   name: string;
@@ -50,8 +71,9 @@ export function validateLandlordPropertyForm(
 ): string[] {
   const errors: string[] = [];
   const name = fields.name.trim();
-  const propertyType: PropertyType =
-    fields.propertyType === "Boarding House" ? "Boarding House" : "Dormitory";
+  const propertyType = isPropertyType(fields.propertyType)
+    ? fields.propertyType
+    : "Dormitory";
   const description = fields.description.trim();
   const address = fields.address.trim();
   const city = fields.city.trim();
@@ -68,27 +90,27 @@ export function validateLandlordPropertyForm(
     errors.push("Property name must be at least 3 characters.");
   }
 
-  if (propertyType === "Boarding House") {
+  if (propertyType !== "Dormitory") {
     if (!description) {
-      errors.push("Description is required for a boarding house.");
+      errors.push(`Description is required for a ${propertyType.toLowerCase()}.`);
     } else if (description.length < 20) {
       errors.push(
-        "Boarding house description must be at least 20 characters (include amenities, rules, or location details)."
+        "Description must be at least 20 characters (include amenities, rules, or location details)."
       );
     }
 
     if (!address) {
-      errors.push("Street address is required for a boarding house.");
+      errors.push("Street address is required.");
     } else if (address.length < 5) {
-      errors.push("Enter a complete street address for the boarding house.");
+      errors.push("Enter a complete street address.");
     }
 
     if (!city) {
-      errors.push("City / area is required for a boarding house.");
+      errors.push("City / area is required.");
     }
 
     if (!contactPhone) {
-      errors.push("Contact phone is required for a boarding house.");
+      errors.push("Contact phone is required.");
     } else if (!isValidPhilippinePhone(contactPhone)) {
       errors.push(
         "Enter a valid Philippine mobile number (e.g. 09171234567)."
@@ -96,7 +118,7 @@ export function validateLandlordPropertyForm(
     }
 
     if (totalRooms == null) {
-      errors.push("Total rooms is required for a boarding house.");
+      errors.push("Current number of rooms is required.");
     } else if (totalRooms < 1) {
       errors.push("Total rooms must be at least 1.");
     } else if (totalRooms > 500) {
@@ -104,7 +126,7 @@ export function validateLandlordPropertyForm(
     }
 
     if (maxOccupancy == null) {
-      errors.push("Max occupancy is required for a boarding house.");
+      errors.push("Current total capacity is required.");
     } else if (maxOccupancy < 1) {
       errors.push("Max occupancy must be at least 1.");
     } else if (totalRooms != null && maxOccupancy < totalRooms) {
@@ -115,7 +137,7 @@ export function validateLandlordPropertyForm(
 
     if (latitude == null || longitude == null) {
       errors.push(
-        "Map coordinates (latitude and longitude) are required for a boarding house so students can find it on the map."
+        "Map coordinates (latitude and longitude) are required so students can find the property on the map."
       );
     } else {
       if (latitude < -90 || latitude > 90) {
@@ -188,8 +210,9 @@ export function validateLandlordPropertyForm(
 export function normalizeLandlordPropertyForm(
   fields: LandlordPropertyFields
 ) {
-  const propertyType: PropertyType =
-    fields.propertyType === "Boarding House" ? "Boarding House" : "Dormitory";
+  const propertyType = isPropertyType(fields.propertyType)
+    ? fields.propertyType
+    : "Dormitory";
   const lat = parseOptionalCoord(fields.latitude);
   const lng = parseOptionalCoord(fields.longitude);
   const phone = fields.contactPhone.trim();

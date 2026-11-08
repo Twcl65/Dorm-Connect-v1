@@ -119,7 +119,7 @@ export default function LoginScreen() {
       const signedIn = await signIn(email.trim(), password);
       const home = homeHrefForRole(signedIn.role);
       if (!home) {
-        setError("This account type cannot use the mobile app.");
+        setError("Only Student, Landlord, and Staff accounts can use the mobile app.");
         return;
       }
       router.replace(home);
@@ -172,8 +172,8 @@ export default function LoginScreen() {
         <Text style={styles.cardTitle}>Sign in to DormConnect</Text>
       </View>
       <Text style={styles.cardDesc}>
-        Enter your email and password. Student and landlord accounts use the same
-        credentials as the website. Only active accounts can sign in.
+        Enter your email and password. Student, landlord, and OSA staff accounts
+        use the same credentials as the website. Only active accounts can sign in.
       </Text>
 
       {error ? (

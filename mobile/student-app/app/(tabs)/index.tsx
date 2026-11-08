@@ -27,8 +27,10 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { InfoGrid } from "@/components/info-grid";
 import { formatLeaseEndLabel } from "@/lib/listing-utils";
+import { useAndroidHomeBack } from "@/hooks/use-android-home-back";
 
 export default function HomeScreen() {
+  useAndroidHomeBack();
   const { token, user } = useAuth();
   const router = useRouter();
   const [data, setData] = useState<OverviewResponse | null>(null);

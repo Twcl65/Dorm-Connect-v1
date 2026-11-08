@@ -1,15 +1,21 @@
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { apiRequest, formatSignInError } from "@/lib/api";
+import {
+  apiRequest,
+  formatSignInError,
+  type LandlordPropertyRow,
+} from "@/lib/api";
 import {
   normalizeLandlordPropertyForm,
+  PROPERTY_TYPES,
   validateLandlordPropertyForm,
   type PropertyType,
 } from "@/lib/landlord-property-validation";
@@ -26,11 +32,15 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 
-const isBoardingHouse = (t: PropertyType) => t === "Boarding House";
+const requiresFullPropertyInfo = (t: PropertyType) => t !== "Dormitory";
 
 export default function AddPropertyScreen() {
   const { token } = useAuth();
   const router = useRouter();
+  const { propertyId } = useLocalSearchParams<{ propertyId?: string }>();
+  const editing = Boolean(propertyId);
+  const [loadingProperty, setLoadingProperty] = useState(editing);
+  const [propertyLoaded, setPropertyLoaded] = useState(!editing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +61,61 @@ export default function AddPropertyScreen() {
     { uri: string; fileName: string; mimeType: string }[]
   >([]);
 
+  useEffect(() => {
+    if (!token || !propertyId) {
+      setLoadingProperty(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await apiRequest<{
+          properties: LandlordPropertyRow[];
+        }>("/api/landlord/properties", { token });
+        const property = response.properties.find(
+          (item) => item.id === propertyId
+        );
+        if (!property) {
+          throw new Error("Property not found.");
+        }
+        if (cancelled) return;
+        setName(property.name);
+        setPropertyType(
+          PROPERTY_TYPES.find((type) => type === property.propertyType) ??
+            "Dormitory"
+        );
+        setDescription(property.description ?? "");
+        setAddress(property.address ?? "");
+        setCity(property.city ?? "");
+        setContactPhone(property.contactPhone ?? "");
+        setContactEmail(property.contactEmail ?? "");
+        setTotalRooms(
+          property.totalRooms == null ? "" : String(property.totalRooms)
+        );
+        setMaxOccupancy(
+          property.maxOccupancyCapacity == null
+            ? ""
+            : String(property.maxOccupancyCapacity)
+        );
+        setLatitude(
+          property.latitude == null ? "" : String(property.latitude)
+        );
+        setLongitude(
+          property.longitude == null ? "" : String(property.longitude)
+        );
+        setGalleryCount(property.galleryImageUrls?.length ?? 0);
+        setPropertyLoaded(true);
+      } catch (e) {
+        if (!cancelled) setError(formatSignInError(e));
+      } finally {
+        if (!cancelled) setLoadingProperty(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, propertyId]);
+
   const pickCover = async () => {
     const assets = await pickImagesFromLibrary(1);
     if (assets[0]) setCoverUri(assets[0].uri);
@@ -66,6 +131,10 @@ export default function AddPropertyScreen() {
 
   const submit = async () => {
     if (!token) return;
+    if (!propertyLoaded) {
+      setError("Property information could not be loaded. Please try again.");
+      return;
+    }
 
     const formFields = {
       name,
@@ -108,15 +177,20 @@ export default function AddPropertyScreen() {
         galleryImageUrls = await uploadMobileImages(token, galleryAssets);
       }
 
-      await apiRequest("/api/landlord/properties", {
-        token,
-        method: "POST",
-        body: {
-          ...normalized,
-          coverImageUrl: coverImageUrl ?? null,
-          galleryImageUrls,
-        },
-      });
+      await apiRequest(
+        editing
+          ? `/api/landlord/properties/${propertyId}`
+          : "/api/landlord/properties",
+        {
+          token,
+          method: editing ? "PATCH" : "POST",
+          body: {
+            ...normalized,
+            ...(coverImageUrl ? { coverImageUrl } : {}),
+            ...(galleryImageUrls ? { galleryImageUrls } : {}),
+          },
+        }
+      );
       router.back();
     } catch (e) {
       setError(formatSignInError(e));
@@ -127,31 +201,37 @@ export default function AddPropertyScreen() {
 
   return (
     <Screen>
-      <Subtitle>Add property</Subtitle>
+      <Subtitle>{editing ? "Edit property" : "Add property"}</Subtitle>
       <Text style={styles.hint}>
         Same as the website — set address and map coordinates so rooms appear
         correctly for students.
       </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {loadingProperty ? (
+        <Text style={styles.meta}>Loading property information…</Text>
+      ) : null}
 
-      {isBoardingHouse(propertyType) ? (
+      {requiresFullPropertyInfo(propertyType) ? (
         <View style={styles.requirementsBox}>
-          <Text style={styles.requirementsTitle}>Boarding house requirements</Text>
+          <Text style={styles.requirementsTitle}>Property requirements</Text>
           <Text style={styles.requirementsText}>
-            Address, city, contact phone, description, total rooms, max occupancy,
+            Address, city, contact phone, description, current rooms, current capacity,
             and map coordinates are required. Use coordinates from the website map
             pin or GPS (e.g. 8.4542, 124.6319 near USTP).
           </Text>
         </View>
       ) : null}
 
-      <ScrollView keyboardShouldPersistTaps="handled">
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        pointerEvents={loadingProperty ? "none" : "auto"}
+      >
         <Text style={styles.label}>Property name *</Text>
         <Input value={name} onChangeText={setName} placeholder="e.g. Sunrise Dorm" />
 
         <Text style={styles.label}>Type</Text>
         <View style={styles.row}>
-          {(["Dormitory", "Boarding House"] as PropertyType[]).map((t) => (
+          {PROPERTY_TYPES.map((t) => (
             <Pressable
               key={t}
               onPress={() => setPropertyType(t)}
@@ -172,26 +252,26 @@ export default function AddPropertyScreen() {
           ))}
         </View>
 
-        <Text style={styles.label}>Description{isBoardingHouse(propertyType) ? " *" : ""}</Text>
+        <Text style={styles.label}>Description{requiresFullPropertyInfo(propertyType) ? " *" : ""}</Text>
         <Input
           value={description}
           onChangeText={setDescription}
           multiline
           style={styles.textArea}
           placeholder={
-            isBoardingHouse(propertyType)
+            requiresFullPropertyInfo(propertyType)
               ? "Describe rooms, amenities, house rules, and nearby landmarks (min. 20 characters)"
               : "Brief description of your property"
           }
         />
 
-        <Text style={styles.label}>Address{isBoardingHouse(propertyType) ? " *" : ""}</Text>
+        <Text style={styles.label}>Address{requiresFullPropertyInfo(propertyType) ? " *" : ""}</Text>
         <Input value={address} onChangeText={setAddress} placeholder="Street address" />
 
-        <Text style={styles.label}>City{isBoardingHouse(propertyType) ? " *" : ""}</Text>
+        <Text style={styles.label}>City{requiresFullPropertyInfo(propertyType) ? " *" : ""}</Text>
         <Input value={city} onChangeText={setCity} placeholder="e.g. Cagayan de Oro" />
 
-        <Text style={styles.label}>Contact phone{isBoardingHouse(propertyType) ? " *" : ""}</Text>
+        <Text style={styles.label}>Contact phone{requiresFullPropertyInfo(propertyType) ? " *" : ""}</Text>
         <Input
           value={contactPhone}
           onChangeText={setContactPhone}
@@ -209,7 +289,7 @@ export default function AddPropertyScreen() {
         />
 
         <Text style={styles.label}>
-          Total rooms{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+          Current number of rooms{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
         </Text>
         <Input
           value={totalRooms}
@@ -219,7 +299,7 @@ export default function AddPropertyScreen() {
         />
 
         <Text style={styles.label}>
-          Max occupancy{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+          Current total capacity{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
         </Text>
         <Input
           value={maxOccupancy}
@@ -229,7 +309,7 @@ export default function AddPropertyScreen() {
         />
 
         <Text style={styles.label}>
-          Latitude{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+          Latitude{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
         </Text>
         <Input
           value={latitude}
@@ -239,7 +319,7 @@ export default function AddPropertyScreen() {
         />
 
         <Text style={styles.label}>
-          Longitude{isBoardingHouse(propertyType) ? " *" : " (optional)"}
+          Longitude{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
         </Text>
         <Input
           value={longitude}
@@ -255,16 +335,38 @@ export default function AddPropertyScreen() {
         <Text style={styles.label}>Gallery photos</Text>
         <Button label="Choose gallery images" variant="outline" onPress={() => void pickGallery()} />
         {galleryCount > 0 ? (
-          <Text style={styles.meta}>{galleryCount} photo(s) selected.</Text>
+          <Text style={styles.meta}>{galleryCount} gallery photo(s).</Text>
         ) : null}
 
         <View style={styles.actions}>
           <Button
-            label={saving ? "Saving…" : "Create property"}
+            label={
+              saving
+                ? "Saving…"
+                : editing
+                  ? "Save changes"
+                  : "Create property"
+            }
             variant="brand"
             fullWidth
-            loading={saving}
-            onPress={() => void submit()}
+            loading={saving || loadingProperty}
+            onPress={() => {
+              if (!editing) {
+                void submit();
+                return;
+              }
+              Alert.alert(
+                "Confirm property changes",
+                "Save the updated information for this property?",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Save changes",
+                    onPress: () => void submit(),
+                  },
+                ]
+              );
+            }}
           />
         </View>
       </ScrollView>

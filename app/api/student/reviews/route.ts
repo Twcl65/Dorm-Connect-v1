@@ -113,9 +113,12 @@ export async function POST(req: Request) {
       [studentId, roomId, rating, packReview(title, comment)]
     );
 
-    // Notify the landlord who owns this room
+    // Notify the landlord who owns this room.
+    let roomInfo:
+      | { owner_user_id: string; room_no: string; property_name: string }
+      | undefined;
     try {
-      const { rows: roomInfo } = await pool.query<{
+      const { rows } = await pool.query<{
         owner_user_id: string;
         room_no: string;
         property_name: string;
@@ -126,19 +129,62 @@ export async function POST(req: Request) {
          WHERE r.id = $1::uuid`,
         [roomId]
       );
-      if (roomInfo[0]) {
-        const landlordUserId = roomInfo[0].owner_user_id;
-        const reviewerName = session.name?.trim() || "A student";
+      roomInfo = rows[0];
+    } catch (notifyErr) {
+      console.error(
+        "[student-reviews] Failed to load review notification details:",
+        notifyErr
+      );
+    }
+
+    if (roomInfo) {
+      const reviewerName = session.name?.trim() || "A student";
+      try {
         await insertNotification(
           pool,
-          landlordUserId,
+          roomInfo.owner_user_id,
           "New review from student",
-          `${reviewerName} left a ${rating}-star review for ${roomInfo[0].property_name} — Room ${roomInfo[0].room_no}.`,
+          `${reviewerName} left a ${rating}-star review for ${roomInfo.property_name} — Room ${roomInfo.room_no}.`,
           "review"
         );
+      } catch (notifyErr) {
+        console.error("[student-reviews] Failed to notify landlord:", notifyErr);
       }
-    } catch (notifyErr) {
-      console.error("[student-reviews] Failed to notify landlord:", notifyErr);
+
+      try {
+        const { rows: students } = await pool.query<{ id: string }>(
+          `SELECT id
+           FROM public.boarding_house_app_users
+           WHERE role = 'Student' AND status = 'Active'`
+        );
+        const reviewTitle = "New dorm review";
+        const reviewBody = `${reviewerName} left a ${rating}-star review for ${roomInfo.property_name} — Room ${roomInfo.room_no}.`;
+        let failedCount = 0;
+        for (let i = 0; i < students.length; i += 25) {
+          const batch = students.slice(i, i + 25);
+          const results = await Promise.allSettled(
+            batch.map((student) =>
+              insertNotification(
+                pool,
+                student.id,
+                reviewTitle,
+                reviewBody,
+                "review"
+              )
+            )
+          );
+          failedCount += results.filter(
+            (result) => result.status === "rejected"
+          ).length;
+        }
+        if (failedCount > 0) {
+          console.error(
+            `[student-reviews] Failed to notify ${failedCount} student(s).`
+          );
+        }
+      } catch (notifyErr) {
+        console.error("[student-reviews] Failed to notify students:", notifyErr);
+      }
     }
 
     return NextResponse.json({ ok: true });

@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const ALLOWED_ROLES = new Set([
   "Student",
   "Landlord",
+  "Staff",
   "ICT Admin",
   "OSA/SAS Admin",
 ]);
@@ -32,12 +33,16 @@ export async function GET() {
       email: string;
       role: string;
       student_id: string | null;
+      father_name: string | null;
+      mother_name: string | null;
+      location: string | null;
       profile_image_url: string | null;
       gcash_account_name: string | null;
       gcash_phone: string | null;
       gcash_qr_code_url: string | null;
     }>(
-      `SELECT full_name, email, role, student_id, profile_image_url,
+      `SELECT full_name, email, role, student_id, father_name, mother_name,
+              location, profile_image_url,
               gcash_account_name, gcash_phone, gcash_qr_code_url
        FROM public.boarding_house_app_users
        WHERE id = $1::uuid`,
@@ -95,6 +100,9 @@ export async function GET() {
         email: u.email,
         role: u.role,
         studentId: u.student_id?.trim() ? u.student_id.trim() : null,
+        fatherName: u.father_name?.trim() || null,
+        motherName: u.mother_name?.trim() || null,
+        location: u.location?.trim() || null,
         profileImageUrl: u.profile_image_url?.trim() || null,
         gcashAccountName: u.gcash_account_name?.trim() || null,
         gcashPhone: u.gcash_phone?.trim() || null,
@@ -118,6 +126,9 @@ export async function PATCH(req: Request) {
     const body = (await req.json()) as {
       fullName?: string;
       studentId?: string | null;
+      fatherName?: string | null;
+      motherName?: string | null;
+      location?: string | null;
       profileImageUrl?: string | null;
       gcashAccountName?: string | null;
       gcashPhone?: string | null;
@@ -140,6 +151,9 @@ export async function PATCH(req: Request) {
 
     let nextName = row.full_name;
     let nextStudentId: string | null | undefined;
+    let nextFatherName: string | null | undefined;
+    let nextMotherName: string | null | undefined;
+    let nextLocation: string | null | undefined;
     let nextAvatar: string | null | undefined;
     let nextGcashName: string | null | undefined;
     let nextGcashPhone: string | null | undefined;
@@ -186,6 +200,30 @@ export async function PATCH(req: Request) {
         }
       }
       nextStudentId = sid || null;
+    }
+
+    for (const [field, label, maxLength] of [
+      ["fatherName", "Father name", 200],
+      ["motherName", "Mother name", 200],
+      ["location", "Location", 300],
+    ] as const) {
+      if (body[field] === undefined) continue;
+      if (row.role !== "Student") {
+        return NextResponse.json(
+          { error: "Student details can only be updated for student accounts." },
+          { status: 400 }
+        );
+      }
+      const value = body[field] === null ? "" : String(body[field]).trim();
+      if (value.length > maxLength) {
+        return NextResponse.json(
+          { error: `${label} is too long (max ${maxLength} characters).` },
+          { status: 400 }
+        );
+      }
+      if (field === "fatherName") nextFatherName = value || null;
+      else if (field === "motherName") nextMotherName = value || null;
+      else nextLocation = value || null;
     }
 
     if (body.profileImageUrl !== undefined) {
@@ -268,6 +306,18 @@ export async function PATCH(req: Request) {
     if (nextStudentId !== undefined) {
       updates.push(`student_id = $${i++}`);
       vals.push(nextStudentId);
+    }
+    if (nextFatherName !== undefined) {
+      updates.push(`father_name = $${i++}`);
+      vals.push(nextFatherName);
+    }
+    if (nextMotherName !== undefined) {
+      updates.push(`mother_name = $${i++}`);
+      vals.push(nextMotherName);
+    }
+    if (nextLocation !== undefined) {
+      updates.push(`location = $${i++}`);
+      vals.push(nextLocation);
     }
     if (nextAvatar !== undefined) {
       updates.push(`profile_image_url = $${i++}`);

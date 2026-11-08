@@ -75,21 +75,24 @@ export async function GET() {
                 r.listing_description, r.remarks, r.room_details,
                 r.listing_image_urls, r.listing_background_url, r.room_image_urls,
                 COALESCE((
-                  SELECT COUNT(*)::int FROM (
-                    SELECT l.id FROM public.landlord_tenant_leases l
+                  SELECT COALESCE(SUM(occ.beds), 0)::int FROM (
+                    SELECT COALESCE(sr.beds_reserved, 1) AS beds
+                    FROM public.landlord_tenant_leases l
+                    LEFT JOIN public.student_dorm_reservations sr
+                      ON sr.id = l.student_reservation_id
                     WHERE l.room_id = r.id
                       AND l.payment_status <> 'Completed'
                     UNION ALL
-                    SELECT s.id FROM public.student_dorm_reservations s
+                    SELECT COALESCE(s.beds_reserved, 1) AS beds
+                    FROM public.student_dorm_reservations s
                     WHERE s.room_id = r.id
                       AND s.status IN ('Pending', 'Confirmed')
                       AND NOT EXISTS (
                         SELECT 1 FROM public.landlord_tenant_leases l2
                         WHERE l2.student_reservation_id = s.id
-                          AND l2.payment_status <> 'Completed'
                       )
                     UNION ALL
-                    SELECT lr.id FROM public.landlord_reservations lr
+                    SELECT 1 AS beds FROM public.landlord_reservations lr
                     WHERE lr.room_id = r.id
                       AND lr.status IN ('Pending', 'Confirmed')
                   ) occ

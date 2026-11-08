@@ -17,7 +17,6 @@ import { Bell, Eye, FileText, Loader2 } from "lucide-react";
 import { ProofMedia } from "@/components/proof-media";
 import { PaymentReceiptCard } from "@/components/payments/payment-receipt-card";
 import type { PaymentReceiptData } from "@/lib/payment-receipt-data";
-import { uploadDormConnectFile } from "@/lib/upload-file-client";
 import { LeasePaymentMonitoringCard } from "@/components/landlord/lease-payment-monitoring-card";
 import { LandlordGcashSettingsCard } from "@/components/landlord/gcash-settings-card";
 
@@ -159,7 +158,6 @@ export function LandlordPaymentsPanel({
   const [onsitePayerName, setOnsitePayerName] = useState("");
   const [onsiteAmount, setOnsiteAmount] = useState("");
   const [onsitePaidOn, setOnsitePaidOn] = useState(() => new Date().toISOString().slice(0, 10));
-  const [onsiteProofFile, setOnsiteProofFile] = useState<File | null>(null);
   const [onsiteError, setOnsiteError] = useState<string | null>(null);
   const [onsiteSaving, setOnsiteSaving] = useState(false);
   const [showOnsiteDialog, setShowOnsiteDialog] = useState(false);
@@ -279,7 +277,6 @@ export function LandlordPaymentsPanel({
     setOnsiteStudentUserId("");
     setOnsiteAmount("");
     setOnsitePaidOn(new Date().toISOString().slice(0, 10));
-    setOnsiteProofFile(null);
     setOnsiteError(null);
     setOnsiteMethod("Cash");
     setOnsiteScheduleMonthNumber("");
@@ -943,29 +940,6 @@ export function LandlordPaymentsPanel({
                     onChange={(e) => setOnsitePaidOn(e.target.value)}
                   />
                 </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="font-medium text-slate-800">
-                    Proof (receipt / slip photo) {onsiteMethod !== "Cash" && "(Optional)"}
-                  </label>
-                  <Input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="h-8 cursor-pointer text-xs"
-                    onChange={(e) =>
-                      setOnsiteProofFile(e.target.files?.[0] ?? null)
-                    }
-                  />
-                  {onsiteProofFile && (
-                    <div className="mt-2 w-full max-w-xs overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={URL.createObjectURL(onsiteProofFile)}
-                        alt="Onsite proof preview"
-                        className="max-h-40 w-full rounded object-contain"
-                      />
-                    </div>
-                  )}
-                </div>
               </div>
               <div className="flex flex-wrap justify-end gap-2 pt-1">
                 <Button
@@ -986,17 +960,12 @@ export function LandlordPaymentsPanel({
                     !onsiteRoomId.trim() ||
                     !onsitePayerName.trim() ||
                     !onsiteAmount ||
-                    !onsitePaidOn ||
-                    (onsiteMethod === "Cash" && !onsiteProofFile)
+                    !onsitePaidOn
                   }
                   onClick={async () => {
                     setOnsiteError(null);
                     setOnsiteSaving(true);
                     try {
-                      let proofUrl = "";
-                      if (onsiteProofFile) {
-                        proofUrl = await uploadDormConnectFile(onsiteProofFile);
-                      }
                       const hint = selectedOnsiteHint;
                       const res = await fetch("/api/landlord/payments", {
                         method: "POST",
@@ -1012,7 +981,6 @@ export function LandlordPaymentsPanel({
                           method: onsiteMethod,
                           status: "Paid",
                           paidOn: onsitePaidOn,
-                          proofUrl: proofUrl || undefined,
                           scheduleMonthNumber: onsiteScheduleMonthNumber ? Number(onsiteScheduleMonthNumber) : undefined,
                         }),
                       });

@@ -30,6 +30,7 @@ export async function GET() {
       documents_count: number;
       owner_name: string;
       owner_email: string;
+      property_id: string | null;
       property_name: string | null;
       operational_status: string | null;
       compliance_status: string | null;
@@ -39,7 +40,7 @@ export async function GET() {
     }>(
       `SELECT a.id, a.dorm_name, a.address, a.status, a.submitted_at, a.documents_count,
               u.full_name AS owner_name, u.email AS owner_email,
-              p.name AS property_name,
+              a.property_id, p.name AS property_name,
               p.operational_status, p.compliance_status,
               a.accreditation_expires_at, a.inspection_scheduled_for::text,
               a.form_data
@@ -67,6 +68,7 @@ export async function GET() {
           owner: r.owner_name,
           ownerEmail: r.owner_email,
           address: r.address,
+          propertyId: r.property_id,
           propertyName: r.property_name,
           dateSubmitted: formatDate(new Date(r.submitted_at)),
           status: r.status,
@@ -80,8 +82,22 @@ export async function GET() {
                   status: proposal.status,
                 }
               : null,
+          isRenewal: typeof formData.renewal_of_request_id === "string",
         };
       });
+
+    const renewedRequestIds = new Set(
+      rows.flatMap((r) => {
+        if (r.status !== "Approved" || !r.form_data || typeof r.form_data !== "object") {
+          return [];
+        }
+        const renewalOfRequestId = (r.form_data as Record<string, unknown>)
+          .renewal_of_request_id;
+        return typeof renewalOfRequestId === "string"
+          ? [renewalOfRequestId]
+          : [];
+      })
+    );
 
     const accredited = rows
       .filter((r) => r.status === "Approved")
@@ -98,11 +114,14 @@ export async function GET() {
         const now = Date.now();
         const msLeft = end.getTime() - now;
         const op = r.operational_status ?? "Operating";
-        let status: "Active" | "Expiring" | "Not Operating" = "Active";
+        let status: "Active" | "Expiring" | "Not Operating" | "Renewed" = "Active";
         if (op === "Not Operating") {
           status = "Not Operating";
         } else if (msLeft > 0 && msLeft < 30 * 24 * 60 * 60 * 1000) {
           status = "Expiring";
+        }
+        if (renewedRequestIds.has(r.id)) {
+          status = "Renewed";
         }
         const compliance =
           (r.compliance_status as "Compliant" | "Warning" | "Non-Compliant") ||

@@ -12,6 +12,7 @@ import {
 } from "@/lib/api-cache";
 import {
   normalizeLandlordPropertyPayload,
+  PROPERTY_TYPES,
   validateLandlordPropertyPayload,
   type NormalizedLandlordPropertyPayload,
 } from "@/lib/landlord-property-validation";
@@ -104,6 +105,39 @@ export async function GET(req: Request) {
       return { properties: mapped };
     }
 
+    const { rows: roomStats } = await pool.query<{
+      property_id: string;
+      available_rooms: string;
+      current_capacity: string;
+    }>(
+      `SELECT property_id,
+              COUNT(*) FILTER (WHERE status = 'Available')::text AS available_rooms,
+              COALESCE(SUM(capacity), 0)::text AS current_capacity
+       FROM public.landlord_rooms
+       WHERE owner_user_id = $1::uuid
+       GROUP BY property_id`,
+      [session.sub]
+    );
+    const currentStatsByProperty = new Map(
+      roomStats.map((row) => [
+        row.property_id,
+        {
+          availableRooms: Number(row.available_rooms),
+          currentCapacity: Number(row.current_capacity),
+        },
+      ])
+    );
+    const currentProperties = mapped.map((property) => {
+      const current = currentStatsByProperty.get(property.id);
+      return current
+        ? {
+            ...property,
+            totalRooms: current.availableRooms,
+            maxOccupancyCapacity: current.currentCapacity,
+          }
+        : property;
+    });
+
     const { rows: accRows } = await pool.query<{
       property_id: string;
       status: string;
@@ -130,14 +164,14 @@ export async function GET(req: Request) {
       ])
     );
 
-    const properties = mapped.filter((p) =>
+    const properties = currentProperties.filter((p) =>
       canApplyForPropertyAccreditation(latestByProperty.get(p.id))
     );
 
     return {
       properties,
-      totalProperties: mapped.length,
-      ineligibleCount: mapped.length - properties.length,
+      totalProperties: currentProperties.length,
+      ineligibleCount: currentProperties.length - properties.length,
     };
     });
   } catch (e) {
@@ -172,7 +206,7 @@ export async function POST(req: Request) {
     const payload: NormalizedLandlordPropertyPayload = normalizeLandlordPropertyPayload({
       name: body.name ?? "",
       propertyType:
-        body.propertyType === "Boarding House" ? "Boarding House" : "Dormitory",
+        PROPERTY_TYPES.find((type) => type === body.propertyType) ?? "Dormitory",
       description: body.description ?? "",
       address: body.address ?? null,
       city: body.city ?? null,

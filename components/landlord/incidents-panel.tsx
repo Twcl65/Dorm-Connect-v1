@@ -212,12 +212,12 @@ export function LandlordIncidentsPanel({
                   </div>
                 ) : null}
 
-                {r.tenantReply ? null : (
+                {r.landlordReply || r.tenantReply ? null : (
                   <div className="space-y-2 mt-2">
                     <Textarea
-                      placeholder={r.landlordReply ? "Edit your reply…" : "Type a reply to the student…"}
+                      placeholder="Type a reply to the student…"
                       className="min-h-[60px] text-xs"
-                      value={replyDraft[r.id] ?? r.landlordReply ?? ""}
+                      value={replyDraft[r.id] ?? ""}
                       onChange={(e) =>
                         setReplyDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
                       }
@@ -227,11 +227,11 @@ export function LandlordIncidentsPanel({
                         type="button"
                         size="sm"
                         className="h-7 text-[0.7rem]"
-                        disabled={updating === r.id || !(replyDraft[r.id] ?? r.landlordReply ?? "").trim()}
-                        onClick={() => void sendReply(r.id, r.landlordReply ?? undefined)}
+                        disabled={updating === r.id || !(replyDraft[r.id] ?? "").trim()}
+                        onClick={() => void sendReply(r.id)}
                       >
                         {updating === r.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
-                        {r.landlordReply ? "Update Reply" : "Send Reply"}
+                        Send Reply
                       </Button>
                     </div>
                   </div>

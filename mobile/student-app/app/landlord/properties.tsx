@@ -145,6 +145,16 @@ export default function LandlordPropertiesScreen() {
             </Text>
             <View style={styles.cardActions}>
               <Button
+                label="Edit"
+                variant="outline"
+                onPress={() =>
+                  router.push({
+                    pathname: "/landlord/add-property",
+                    params: { propertyId: item.id },
+                  })
+                }
+              />
+              <Button
                 label="Delete"
                 variant="danger"
                 onPress={() => deleteProperty(item.id, item.name)}
@@ -164,5 +174,10 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: "600", color: colors.text },
   meta: { fontSize: 13, color: colors.muted, marginTop: 4 },
   empty: { fontSize: 13, color: colors.muted },
-  cardActions: { marginTop: 12 },
+  cardActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    gap: 10,
+  },
 });

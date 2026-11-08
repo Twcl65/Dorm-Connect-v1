@@ -123,7 +123,7 @@ export async function GET(req: Request) {
       room_id: string;
       c: string;
     }>(
-      `SELECT s.room_id, COUNT(*)::text AS c
+      `SELECT s.room_id, COALESCE(SUM(s.beds_reserved), 0)::text AS c
        FROM public.student_dorm_reservations s
        WHERE s.room_id IN (
          SELECT id FROM public.landlord_rooms WHERE property_id = $1::uuid
@@ -154,10 +154,13 @@ export async function GET(req: Request) {
       room_id: string;
       c: string;
     }>(
-      `SELECT room_id, COUNT(*)::text AS c
-       FROM public.landlord_tenant_leases
-       WHERE property_id = $1::uuid
-       GROUP BY room_id`,
+      `SELECT l.room_id,
+              COALESCE(SUM(COALESCE(s.beds_reserved, 1)), 0)::text AS c
+       FROM public.landlord_tenant_leases l
+       LEFT JOIN public.student_dorm_reservations s
+         ON s.id = l.student_reservation_id
+       WHERE l.property_id = $1::uuid
+       GROUP BY l.room_id`,
       [propertyId]
     );
 

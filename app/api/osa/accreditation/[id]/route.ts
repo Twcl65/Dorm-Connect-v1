@@ -243,20 +243,34 @@ export async function PATCH(req: Request, context: Ctx) {
     }
 
     const remarks = (body.remarks ?? "").trim();
+    if (status === "Rejected" && !remarks) {
+      return NextResponse.json(
+        { error: "A reason is required to reject an accreditation request." },
+        { status: 400 }
+      );
+    }
     const pool = await getPool();
 
     const { rows: before } = await pool.query<{
       owner_user_id: string;
       dorm_name: string;
       status: string;
+      form_data: unknown;
     }>(
-      `SELECT owner_user_id, dorm_name, status FROM public.landlord_accreditation_requests WHERE id = $1::uuid`,
+      `SELECT owner_user_id, dorm_name, status, form_data
+       FROM public.landlord_accreditation_requests
+       WHERE id = $1::uuid`,
       [id]
     );
     const prev = before[0];
     if (!prev) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
+    const previousFormData =
+      prev.form_data && typeof prev.form_data === "object"
+        ? (prev.form_data as Record<string, unknown>)
+        : {};
+    const isRenewal = typeof previousFormData.renewal_of_request_id === "string";
 
     const inspDate =
       body.inspectionScheduledFor !== undefined
@@ -352,8 +366,10 @@ export async function PATCH(req: Request, context: Ctx) {
       await insertNotification(
         pool,
         prev.owner_user_id,
-        "Accreditation approved",
-        `Your application for “${prev.dorm_name}” has been approved.`,
+        isRenewal ? "Accreditation renewal approved" : "Accreditation approved",
+        isRenewal
+          ? `Your accreditation renewal for “${prev.dorm_name}” has been approved.`
+          : `Your application for “${prev.dorm_name}” has been approved.`,
         "accreditation"
       );
     }
@@ -361,8 +377,8 @@ export async function PATCH(req: Request, context: Ctx) {
       await insertNotification(
         pool,
         prev.owner_user_id,
-        "Accreditation rejected",
-        `Your application for “${prev.dorm_name}” was rejected.${remarks ? ` Note: ${remarks}` : ""}`,
+        isRenewal ? "Accreditation renewal declined" : "Accreditation rejected",
+        `Your accreditation ${isRenewal ? "renewal" : "application"} for “${prev.dorm_name}” was declined. Reason: ${remarks}`,
         "accreditation"
       );
     }

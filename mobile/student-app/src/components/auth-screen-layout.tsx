@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import type { ReactNode } from "react";
 import {
@@ -52,13 +51,6 @@ export function AuthScreenLayout({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hero}>
-            <View style={styles.badge}>
-              <Ionicons name="sparkles" size={14} color={authTheme.secondary} />
-              <Text style={styles.badgeText}>
-                Official USTP dormitory & boarding house portal
-              </Text>
-            </View>
-
             <AppLogo size="lg" variant="dark" />
 
             <Text style={styles.heroTitle}>
@@ -66,8 +58,7 @@ export function AuthScreenLayout({
               <Text style={styles.heroAccent}>accredited housing</Text>
             </Text>
             <Text style={styles.heroSubtitle}>
-              Discover OSA-approved dormitories near campus. Compare room rates,
-              check availability, and manage reservations in one place.
+              Discover OSA-approved dormitories near the USTP-Jasaan campus.
             </Text>
           </View>
 
@@ -115,25 +106,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
   },
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: authTheme.badgeBorder,
-    backgroundColor: authTheme.badgeBg,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: authTheme.textSoft,
-  },
   heroTitle: {
     textAlign: "center",
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: "800",
     lineHeight: 32,
     color: authTheme.text,
@@ -144,10 +119,10 @@ const styles = StyleSheet.create({
   },
   heroSubtitle: {
     textAlign: "center",
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 20,
     color: authTheme.textMuted,
-    maxWidth: 340,
+    maxWidth: 350,
   },
   card: {
     width: "100%",

@@ -133,16 +133,18 @@ export async function refreshRoomFromStudentReservations(
   if (dbStatus === "Maintenance") return;
 
   const { rows: leaseRows } = await pool.query<{ c: string }>(
-    `SELECT COUNT(*)::text AS c
-     FROM public.landlord_tenant_leases
-     WHERE room_id = $1::uuid
-       AND payment_status <> 'Completed'`,
+    `SELECT COALESCE(SUM(COALESCE(s.beds_reserved, 1)), 0)::text AS c
+     FROM public.landlord_tenant_leases l
+     LEFT JOIN public.student_dorm_reservations s
+       ON s.id = l.student_reservation_id
+     WHERE l.room_id = $1::uuid
+       AND l.payment_status <> 'Completed'`,
     [roomId]
   );
   const leaseCount = Number(leaseRows[0]?.c ?? 0);
 
   const { rows: studentRows } = await pool.query<{ c: string }>(
-    `SELECT COUNT(*)::text AS c
+    `SELECT COALESCE(SUM(COALESCE(s.beds_reserved, 1)), 0)::text AS c
      FROM public.student_dorm_reservations s
      WHERE s.room_id = $1::uuid
        AND s.status IN ('Pending', 'Confirmed')

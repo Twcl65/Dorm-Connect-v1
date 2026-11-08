@@ -27,6 +27,12 @@ export default function MoreScreen() {
       </Card>
 
       <MenuLink
+        href="/(tabs)/announcements"
+        label="Announcements"
+        subtitle="Official OSA notices and updates from your landlords"
+        icon="megaphone-outline"
+      />
+      <MenuLink
         href="/reviews"
         label="Reviews"
         subtitle="Rate and review your booked dormitories"

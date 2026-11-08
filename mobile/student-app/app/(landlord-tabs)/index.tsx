@@ -22,8 +22,10 @@ import {
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { useAndroidHomeBack } from "@/hooks/use-android-home-back";
 
 export default function LandlordHomeScreen() {
+  useAndroidHomeBack();
   const { token, user } = useAuth();
   const [data, setData] = useState<LandlordOverview | null>(null);
   const [loading, setLoading] = useState(true);

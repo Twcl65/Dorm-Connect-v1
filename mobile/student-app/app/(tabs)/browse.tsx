@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -19,17 +20,34 @@ import {
 } from "@/lib/api";
 import { isValidMapCoordinate } from "@/lib/map-coords";
 import {
-  Badge,
   Card,
   CenteredLoader,
   Input,
   Screen,
-  Subtitle,
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { SelectField } from "@/components/select-field";
 
-const MAP_HEIGHT = Math.round(Dimensions.get("window").height * 0.42);
+const MAP_HEIGHT = Math.max(
+  240,
+  Math.min(Math.round(Dimensions.get("window").height * 0.34), 320)
+);
+const USTP_JASAAN = { latitude: 8.4542, longitude: 124.6319 };
+
+function distanceFromUstp(latitude: number, longitude: number): number {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = radians(latitude - USTP_JASAAN.latitude);
+  const dLon = radians(longitude - USTP_JASAAN.longitude);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(USTP_JASAAN.latitude)) *
+      Math.cos(radians(latitude)) *
+      Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+type DiscoveryMode = "top" | "nearest" | "all";
 
 export default function BrowseScreen() {
   const { token } = useAuth();
@@ -39,6 +57,8 @@ export default function BrowseScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>("top");
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(
     null
   );
@@ -80,8 +100,21 @@ export default function BrowseScreen() {
         p.landlordName.toLowerCase().includes(q) ||
         p.rooms.some((r) => r.roomNo.toLowerCase().includes(q))
       );
+    }).sort((a, b) => {
+      if (discoveryMode === "nearest") {
+        return (
+          distanceFromUstp(a.latitude, a.longitude) -
+          distanceFromUstp(b.latitude, b.longitude)
+        );
+      }
+      if (discoveryMode === "top") {
+        const ratingDifference =
+          (b.reviewSummary?.avg ?? -1) - (a.reviewSummary?.avg ?? -1);
+        return ratingDifference || (b.reviewSummary?.count ?? 0) - (a.reviewSummary?.count ?? 0);
+      }
+      return a.name.localeCompare(b.name);
     });
-  }, [properties, search, selectedPropertyId]);
+  }, [properties, search, selectedPropertyId, discoveryMode]);
 
   const mapMarkers = useMemo(
     () =>
@@ -100,16 +133,16 @@ export default function BrowseScreen() {
   const listRooms = useMemo(() => {
     const rows: {
       key: string;
-      propertyId: string;
       propertyName: string;
-      landlordName: string;
       roomId: string;
       roomNo: string;
       price: number;
       address: string;
       capacity: number;
-      occupied: number;
       availableSlots: number;
+      rating: number | null;
+      reviewCount: number;
+      distanceKm: number;
     }[] = [];
     for (const p of filtered) {
       for (const r of p.rooms) {
@@ -121,16 +154,16 @@ export default function BrowseScreen() {
             : Math.max(0, capacity - occupied);
         rows.push({
           key: r.id,
-          propertyId: p.id,
           propertyName: p.name,
-          landlordName: p.landlordName,
           roomId: r.id,
           roomNo: r.roomNo,
           price: r.price,
           address: p.address,
           capacity,
-          occupied,
           availableSlots,
+          rating: p.reviewSummary?.avg ?? null,
+          reviewCount: p.reviewSummary?.count ?? 0,
+          distanceKm: distanceFromUstp(p.latitude, p.longitude),
         });
       }
     }
@@ -143,64 +176,115 @@ export default function BrowseScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <Subtitle>Tap a circle on the map or pick a room below</Subtitle>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <View style={[styles.mapBox, { height: MAP_HEIGHT }]}>
-        {mapMarkers.length > 0 ? (
-          <MapErrorBoundary
-            fallback={
-              <View style={styles.mapEmpty}>
-                <Text style={styles.mapEmptyText}>
-                  Map could not load. Scroll down to browse rooms by list.
-                </Text>
-              </View>
-            }
-          >
-            <StudentDormMap
-              markers={mapMarkers}
-              selectedId={selectedPropertyId}
-              onMarkerPress={(id) => {
-                setSelectedPropertyId((prev) => (prev === id ? null : id));
-              }}
-            />
-          </MapErrorBoundary>
-        ) : (
-          <View style={styles.mapEmpty}>
-            <Text style={styles.mapEmptyText}>
-              No dorm locations on the map yet.
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {selectedProperty ? (
-        <Card>
-          <View style={styles.selectedHeader}>
-            <View style={styles.selectedBody}>
-              <Text style={styles.selectedTitle}>{selectedProperty.name}</Text>
-              <Text style={styles.selectedMeta}>{selectedProperty.address}</Text>
-              <Text style={styles.selectedMeta}>
-                {selectedProperty.rooms.length} available room(s)
-              </Text>
-            </View>
-            <Pressable onPress={() => setSelectedPropertyId(null)}>
-              <Text style={styles.clear}>Clear</Text>
-            </Pressable>
-          </View>
-        </Card>
-      ) : null}
-
-      <Input
-        placeholder="Search dorm, location, or room…"
-        value={search}
-        onChangeText={setSearch}
-      />
-
       <FlatList
         style={styles.list}
+        contentContainerStyle={styles.listContent}
         data={listRooms}
         keyExtractor={(item) => item.key}
+        ListHeaderComponent={
+          <View>
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <View style={[styles.mapBox, { height: MAP_HEIGHT }]}>
+              {mapMarkers.length > 0 ? (
+                <MapErrorBoundary
+                  fallback={
+                    <View style={styles.mapEmpty}>
+                      <Text style={styles.mapEmptyText}>
+                        Map could not load. Browse rooms using the list below.
+                      </Text>
+                    </View>
+                  }
+                >
+                  <StudentDormMap
+                    markers={mapMarkers}
+                    selectedId={selectedPropertyId}
+                    onMarkerPress={(id) => {
+                      setSelectedPropertyId((prev) => (prev === id ? null : id));
+                    }}
+                  />
+                </MapErrorBoundary>
+              ) : (
+                <View style={styles.mapEmpty}>
+                  <Text style={styles.mapEmptyText}>
+                    No dorm locations on the map yet.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {selectedProperty ? (
+              <Card>
+                <View style={styles.selectedHeader}>
+                  <View style={styles.selectedBody}>
+                    <Text style={styles.selectedTitle}>{selectedProperty.name}</Text>
+                    <Text style={styles.selectedMeta}>{selectedProperty.address}</Text>
+                    <Text style={styles.selectedMeta}>
+                      {selectedProperty.rooms.length} available room(s)
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => setSelectedPropertyId(null)}>
+                    <Text style={styles.clear}>Unselect</Text>
+                  </Pressable>
+                </View>
+              </Card>
+            ) : null}
+
+            <Text style={styles.sortLabel}>Sort rooms</Text>
+            <View style={styles.filterRow}>
+              <Pressable
+                style={styles.searchToggle}
+                onPress={() =>
+                  setSearchVisible((visible) => {
+                    if (visible) setSearch("");
+                    return !visible;
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={searchVisible ? "Hide search" : "Show search"}
+              >
+                <Ionicons
+                  name={searchVisible ? "close" : "search"}
+                  size={21}
+                  color={colors.navy}
+                />
+              </Pressable>
+              <View style={styles.sortSelect}>
+                <SelectField
+                  label="Sort rooms"
+                  placeholder="Choose how to sort"
+                  hideLabel
+                  compact
+                  value={discoveryMode}
+                  options={[
+                    { value: "top", label: "Top reviewed" },
+                    { value: "nearest", label: "Closest to USTP Jasaan" },
+                    { value: "all", label: "Name A–Z" },
+                  ]}
+                  onChange={(value) => {
+                    if (value === "top" || value === "nearest" || value === "all") {
+                      setDiscoveryMode(value);
+                    }
+                  }}
+                />
+              </View>
+            </View>
+            {searchVisible ? (
+              <Input
+                autoFocus
+                placeholder="Search property, location, or room"
+                value={search}
+                onChangeText={setSearch}
+                returnKeyType="search"
+              />
+            ) : null}
+            <Text style={styles.sectionHint}>
+              Distance estimates are from USTP Jasaan Campus.
+            </Text>
+            <Text style={styles.sectionLabel}>
+              Available rooms ({listRooms.length})
+            </Text>
+          </View>
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -216,9 +300,7 @@ export default function BrowseScreen() {
             }}
           />
         }
-        ListEmptyComponent={
-          <Text style={styles.empty}>No rooms match your search.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>No rooms match your search.</Text>}
         renderItem={({ item }) => (
           <View style={styles.row}>
             <Pressable
@@ -235,16 +317,18 @@ export default function BrowseScreen() {
               </Text>
               <Text style={styles.rowMeta}>{item.address}</Text>
               <Text style={styles.rowMeta}>
-                Capacity {item.capacity} · {item.occupied} occupied ·{" "}
-                {item.availableSlots} available
+                {item.rating != null
+                  ? `★ ${item.rating.toFixed(1)} · ${item.reviewCount} review(s) · `
+                  : ""}
+                {item.distanceKm.toFixed(1)} km from USTP Jasaan
+              </Text>
+              <Text style={styles.rowMeta}>
+                {item.availableSlots} available space(s) · {item.capacity} capacity
               </Text>
               <Text style={styles.rowPrice}>
                 ₱{item.price.toLocaleString()} / month
               </Text>
             </Pressable>
-            <View style={styles.rowSide}>
-              <Badge label="View" tone="success" />
-            </View>
           </View>
         )}
       />
@@ -254,6 +338,7 @@ export default function BrowseScreen() {
 
 const styles = StyleSheet.create({
   screen: { paddingBottom: 0 },
+  listContent: { paddingBottom: 24 },
   error: { color: "#dc2626", fontSize: 13, marginBottom: 8 },
   mapBox: {
     borderRadius: 12,
@@ -274,6 +359,24 @@ const styles = StyleSheet.create({
   selectedTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
   selectedMeta: { fontSize: 12, color: "#64748b", marginTop: 2 },
   clear: { fontSize: 13, fontWeight: "600", color: colors.sky },
+  filterRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sortLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.muted,
+    alignSelf: "flex-start",
+  },
+  searchToggle: {
+    width: 46,
+    height: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.white,
+  },
+  sortSelect: { flex: 1 },
   list: { flex: 1 },
   empty: { textAlign: "center", color: "#94a3b8", marginTop: 16 },
   row: {
@@ -288,8 +391,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rowBody: { flex: 1 },
-  rowSide: { alignItems: "flex-end", gap: 8, maxWidth: "42%" },
   rowTitle: { fontSize: 15, fontWeight: "600", color: colors.text },
   rowMeta: { fontSize: 12, color: "#64748b", marginTop: 2 },
   rowPrice: { fontSize: 13, fontWeight: "600", color: colors.sky, marginTop: 4 },
+  sectionLabel: { fontSize: 14, fontWeight: "700", color: colors.text, marginTop: 8 },
+  sectionHint: { fontSize: 11, color: colors.muted, marginTop: 2, marginBottom: 8 },
 });

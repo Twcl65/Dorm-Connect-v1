@@ -1,4 +1,5 @@
 import { Linking, StyleSheet, Text } from "react-native";
+import { useState } from "react";
 import { getApiBaseUrl } from "@/lib/config";
 import { Button, Card, Screen, Subtitle, colors } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
@@ -12,13 +13,19 @@ const REPORTS = [
 
 export default function LandlordReportsScreen() {
   const { token } = useAuth();
+  const [error, setError] = useState<string | null>(null);
 
   const openReport = async (path: string) => {
     const url = `${getApiBaseUrl()}${path}`;
     try {
       await Linking.openURL(url);
-    } catch {
-      /* user may need to sign in on web for cookie-based download */
+      setError(null);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not open the report. Sign in on the website to download it."
+      );
     }
   };
 
@@ -29,13 +36,14 @@ export default function LandlordReportsScreen() {
         Opens in your browser. Stay signed in on the website if the download
         asks you to log in.
       </Text>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       {REPORTS.map((r) => (
         <Card key={r.path}>
           <Text style={styles.label}>{r.label}</Text>
           <Button
             label="Download"
             variant="outline"
-            onPress={() => void openReport(path)}
+            onPress={() => void openReport(r.path)}
           />
         </Card>
       ))}
@@ -49,4 +57,5 @@ export default function LandlordReportsScreen() {
 const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.muted, marginBottom: 12, lineHeight: 17 },
   label: { fontSize: 15, fontWeight: "600", color: colors.text, marginBottom: 8 },
+  error: { fontSize: 12, color: colors.red, marginBottom: 8 },
 });

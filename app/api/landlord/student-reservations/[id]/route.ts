@@ -218,6 +218,17 @@ export async function PATCH(req: Request, context: Ctx) {
       }
     }
 
+    if (
+      status === "Cancelled" &&
+      row.status === "Pending" &&
+      !body.notes?.trim()
+    ) {
+      return NextResponse.json(
+        { error: "Add a reason before declining this reservation." },
+        { status: 400 }
+      );
+    }
+
     if (status === "Confirmed" && body.holdApplication !== true) {
       const unpaidElsewhere = await fetchStudentUnpaidStaysElsewhere(
         pool,
@@ -341,7 +352,7 @@ export async function PATCH(req: Request, context: Ctx) {
             pool,
             row.student_user_id,
             "Reservation confirmed",
-            `Your reservation at ${dormLabel} has been confirmed.`,
+            `Your reservation at ${dormLabel} has been confirmed. Proceed to Payments to submit the required advance payment (₱${Number(row.advance_amount) || 0}) and security deposit (₱${Number(row.deposit_amount) || 0}).`,
             "reservation"
           );
         } else if (status === "Cancelled") {

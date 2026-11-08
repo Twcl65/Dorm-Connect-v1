@@ -56,12 +56,25 @@ export async function PATCH(
              landlord_replied_at = now(),
              status = CASE WHEN status = 'Open' THEN 'Acknowledged' ELSE status END,
              updated_at = now()
-         WHERE id = $2::uuid AND owner_user_id = $3::uuid
+         WHERE id = $2::uuid
+           AND owner_user_id = $3::uuid
+           AND landlord_reply IS NULL
          RETURNING id, reporter_user_id, title`,
         [reply, id, ownerId]
       );
       if (!rows[0]) {
-        return NextResponse.json({ error: "Report not found." }, { status: 404 });
+        const { rows: existing } = await pool.query<{ landlord_reply: string | null }>(
+          `SELECT landlord_reply FROM public.dorm_incident_reports
+           WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+          [id, ownerId]
+        );
+        if (!existing[0]) {
+          return NextResponse.json({ error: "Report not found." }, { status: 404 });
+        }
+        return NextResponse.json(
+          { error: "A reply has already been sent for this incident." },
+          { status: 409 }
+        );
       }
       try {
         await insertNotification(

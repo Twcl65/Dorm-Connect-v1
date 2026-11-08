@@ -40,6 +40,8 @@ type Reservation = {
   leaseEndDate?: string;
   leaseMonths: number;
   monthlyRent: number;
+  rentalType?: "Bedspace" | "Whole room";
+  bedsReserved?: number;
   location: string;
   landlord: string;
   gcashAccountName?: string | null;
@@ -752,6 +754,14 @@ export default function StudentReservationsPage() {
                   Lease period:{" "}
                   <span className="font-medium text-slate-900">
                     {selectedReservation.leaseMonths} months
+                  </span>
+                </p>
+                <p className="text-muted-foreground">
+                  Rental option:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {selectedReservation.rentalType === "Whole room"
+                      ? "Whole room"
+                      : "Bedspace"}
                   </span>
                 </p>
                 <p className="text-muted-foreground">

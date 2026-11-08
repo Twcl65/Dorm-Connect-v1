@@ -1,7 +1,7 @@
 import type { Href } from "expo-router";
 
 /** Roles supported in the unified DormConnect mobile app. */
-export const MOBILE_APP_ROLES = ["Student", "Landlord"] as const;
+export const MOBILE_APP_ROLES = ["Student", "Landlord", "Staff"] as const;
 export type MobileAppRole = (typeof MOBILE_APP_ROLES)[number];
 
 export function isMobileAppRole(role: string): role is MobileAppRole {
@@ -10,9 +10,11 @@ export function isMobileAppRole(role: string): role is MobileAppRole {
 
 const STUDENT_HOME = "/(tabs)" as Href;
 const LANDLORD_HOME = "/(landlord-tabs)" as Href;
+const STAFF_HOME = "/(staff-tabs)" as Href;
 
 export function homeHrefForRole(role: string): Href | null {
   if (role === "Student") return STUDENT_HOME;
   if (role === "Landlord") return LANDLORD_HOME;
+  if (role === "Staff") return STAFF_HOME;
   return null;
 }

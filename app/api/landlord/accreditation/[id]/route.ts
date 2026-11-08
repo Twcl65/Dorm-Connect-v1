@@ -22,6 +22,7 @@ export async function GET(_req: Request, context: Ctx) {
     const pool = await getPool();
     const { rows } = await pool.query<{
       id: string;
+      property_id: string | null;
       dorm_name: string;
       address: string;
       status: string;
@@ -33,7 +34,7 @@ export async function GET(_req: Request, context: Ctx) {
       owner_name: string;
       landlord_location: string | null;
     }>(
-      `SELECT a.id, a.dorm_name, a.address, a.status, a.documents_count,
+      `SELECT a.id, a.property_id, a.dorm_name, a.address, a.status, a.documents_count,
               a.submitted_at, a.updated_at, a.accreditation_expires_at, a.form_data,
               u.full_name AS owner_name, p.address AS landlord_location
        FROM public.landlord_accreditation_requests a
@@ -72,6 +73,7 @@ export async function GET(_req: Request, context: Ctx) {
 
     return NextResponse.json({
       id: r.id,
+      propertyId: r.property_id,
       dormName: r.dorm_name,
       address: r.address,
       status: r.status,
@@ -110,7 +112,13 @@ export async function PATCH(req: Request, context: Ctx) {
     const body = (await req.json()) as {
       status?: string;
       remarks?: string;
-      documents?: Array<{ mimeType?: string; fileName: string; fileUrl?: string }>;
+      documents?: Array<{
+        mimeType?: string;
+        fileName: string;
+        fileUrl?: string;
+        documentKey?: string;
+        additionalDocumentIndex?: number;
+      }>;
       inspectionScheduleAction?: "approve" | "change";
       inspectionScheduleDate?: string;
     };
@@ -209,12 +217,24 @@ export async function PATCH(req: Request, context: Ctx) {
       return NextResponse.json({ ok: true, inspectionScheduledFor: confirmedDate });
     }
 
-    const { documents } = body;
+    const documents = Array.isArray(body.documents) ? body.documents : null;
     if (!documents || documents.length === 0) {
       return NextResponse.json({ error: "No documents provided." }, { status: 400 });
     }
-    if (documents.some((document) => !document.fileUrl?.trim())) {
-      return NextResponse.json({ error: "Every document must include an uploaded file." }, { status: 400 });
+    if (
+      documents.some(
+        (document) =>
+          !document ||
+          typeof document.fileName !== "string" ||
+          !document.fileName.trim() ||
+          typeof document.fileUrl !== "string" ||
+          !document.fileUrl.trim()
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Every document must include a file name and uploaded file." },
+        { status: 400 }
+      );
     }
 
     const pool = await getPool();
@@ -233,29 +253,158 @@ export async function PATCH(req: Request, context: Ctx) {
     if (!r) {
       return NextResponse.json({ error: "Not found." }, { status: 404 });
     }
-    if (r.status !== "Hold") {
+    const currentFormData: Record<string, unknown> =
+      r.form_data && typeof r.form_data === "object" ? (r.form_data as Record<string, unknown>) : {};
+    const existingDocs =
+      currentFormData.documents && typeof currentFormData.documents === "object"
+        ? (currentFormData.documents as Record<string, unknown>)
+        : {};
+    const existingAdditionalDocuments = Array.isArray(
+      currentFormData.additional_documents
+    )
+      ? currentFormData.additional_documents
+      : [];
+    const canEditPendingDocuments =
+      currentFormData.landlord_document_revision_open === true ||
+      existingAdditionalDocuments.length > 0;
+    if (r.status !== "Hold" && !(r.status === "Pending" && canEditPendingDocuments)) {
       return NextResponse.json(
-        { error: "Documents can only be added to requests on hold." },
+        { error: "Documents can only be updated while the request is on hold or awaiting OSA review." },
         { status: 409 }
       );
     }
+    const allowedDocumentKeys = new Set([
+      "businessPermit",
+      "barangayClearance",
+      "fireSafetyCertificate",
+      "occupancyPermit",
+      "sanitaryPermit",
+    ]);
+    const replacements = documents.filter(
+      (document) =>
+        "documentKey" in document &&
+        typeof document.documentKey === "string" &&
+        allowedDocumentKeys.has(document.documentKey)
+    );
+    const additionalReplacements = documents.filter(
+      (document) => document.additionalDocumentIndex !== undefined
+    );
+    const additions = documents.filter(
+      (document) =>
+        !("documentKey" in document && document.documentKey) &&
+        document.additionalDocumentIndex === undefined
+    );
+    if (
+      documents.some(
+        (document) =>
+          "documentKey" in document &&
+          document.documentKey !== undefined &&
+          (typeof document.documentKey !== "string" ||
+            !allowedDocumentKeys.has(document.documentKey))
+      )
+    ) {
+      return NextResponse.json({ error: "Invalid accreditation document type." }, { status: 400 });
+    }
+    if (
+      additionalReplacements.some(
+        (document) =>
+          !Number.isInteger(document.additionalDocumentIndex) ||
+          document.additionalDocumentIndex! < 0 ||
+          document.additionalDocumentIndex! >= existingAdditionalDocuments.length
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Invalid supplemental document to replace." },
+        { status: 400 }
+      );
+    }
 
-    const currentFormData: Record<string, unknown> =
-      r.form_data && typeof r.form_data === "object" ? (r.form_data as Record<string, unknown>) : {};
-    const existingAdditionalDocuments = Array.isArray(currentFormData.additional_documents)
-      ? currentFormData.additional_documents
-      : [];
-    const additionalDocuments = [...existingAdditionalDocuments, ...documents];
-    const existingAttachmentUrls = Array.isArray(currentFormData.attachmentUrls)
-      ? currentFormData.attachmentUrls.filter((url): url is string => typeof url === "string")
+    const updatedDocuments = { ...existingDocs };
+    for (const document of replacements) {
+      const key = document.documentKey as string;
+      updatedDocuments[key] = {
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+        url: document.fileUrl!.trim(),
+      };
+    }
+    const additionalDocuments = [...existingAdditionalDocuments];
+    for (const document of additionalReplacements) {
+      const index = document.additionalDocumentIndex!;
+      additionalDocuments[index] = {
+        fileName: document.fileName,
+        mimeType: document.mimeType,
+        fileUrl: document.fileUrl!.trim(),
+      };
+    }
+    additionalDocuments.push(...additions);
+    const owner = currentFormData.owner;
+    const ownerData =
+      owner && typeof owner === "object"
+        ? (owner as Record<string, unknown>)
+        : {};
+    const replacedUrls = new Set([
+      ...replacements.flatMap((document) => {
+        if (!document.documentKey) return [];
+        const previous = existingDocs[document.documentKey];
+        if (typeof previous === "string") return [previous];
+        if (!previous || typeof previous !== "object") return [];
+        const previousValue = previous as Record<string, unknown>;
+        const previousUrl = previousValue.url ?? previousValue.fileUrl;
+        return typeof previousUrl === "string" ? [previousUrl] : [];
+      }),
+      ...additionalReplacements.flatMap((document) => {
+        const previous =
+          existingAdditionalDocuments[document.additionalDocumentIndex!];
+        if (typeof previous === "string") return [previous];
+        if (!previous || typeof previous !== "object") return [];
+        const value = previous as Record<string, unknown>;
+        const url = value.fileUrl ?? value.url;
+        return typeof url === "string" ? [url] : [];
+      }),
+    ]);
+    const legacyAttachmentUrls = Array.isArray(currentFormData.attachmentUrls)
+      ? currentFormData.attachmentUrls.filter(
+          (url): url is string =>
+            typeof url === "string" && !replacedUrls.has(url)
+        )
       : [];
     const attachmentUrls = Array.from(
-      new Set([...existingAttachmentUrls, ...documents.map((document) => document.fileUrl!.trim())])
+      new Set(
+        [
+          ...legacyAttachmentUrls,
+          ownerData.ownerIdFrontUrl,
+          ownerData.ownerIdBackUrl,
+          ...[...allowedDocumentKeys].flatMap((key) => {
+              const document = updatedDocuments[key];
+              if (!document || typeof document !== "object") return [];
+              const url = (document as Record<string, unknown>).url;
+              return typeof url === "string" ? [url] : [];
+            }),
+          ...(() => {
+            const supporting = updatedDocuments.supporting;
+            if (!supporting || typeof supporting !== "object") return [];
+            const urls = (supporting as Record<string, unknown>).urls;
+            return Array.isArray(urls)
+              ? urls.filter((url): url is string => typeof url === "string")
+              : [];
+          })(),
+          ...additionalDocuments.flatMap((document) => {
+            if (typeof document === "string") return [document];
+            if (!document || typeof document !== "object") return [];
+            const value = document as Record<string, unknown>;
+            const url = value.fileUrl ?? value.url;
+            return typeof url === "string" ? [url] : [];
+          }),
+        ].filter((url): url is string => typeof url === "string" && !!url.trim())
+      )
     );
 
     const updatedFormData = {
       ...currentFormData,
+      documents: updatedDocuments,
       additional_documents: additionalDocuments,
+      landlord_document_revision_open: true,
       attachmentUrls,
     };
 
@@ -265,18 +414,34 @@ export async function PATCH(req: Request, context: Ctx) {
            documents_count = $2,
            status = 'Pending',
            updated_at = now()
-       WHERE id = $3::uuid AND owner_user_id = $4::uuid AND status = 'Hold'
+       WHERE id = $3::uuid AND owner_user_id = $4::uuid
+         AND (
+           status = 'Hold'
+           OR (
+             status = 'Pending'
+             AND (
+               form_data->>'landlord_document_revision_open' = 'true'
+               OR jsonb_array_length(
+                 CASE
+                   WHEN jsonb_typeof(form_data->'additional_documents') = 'array'
+                     THEN form_data->'additional_documents'
+                   ELSE '[]'::jsonb
+                 END
+               ) > 0
+             )
+           )
+         )
        RETURNING id`,
       [
         JSON.stringify(updatedFormData),
-        r.documents_count + documents.length,
+        attachmentUrls.length,
         id,
         ownerId,
       ]
     );
     if (updated.rowCount === 0) {
       return NextResponse.json(
-        { error: "This request is no longer on hold and cannot accept documents." },
+        { error: "This request is no longer eligible for document updates." },
         { status: 409 }
       );
     }
@@ -306,7 +471,7 @@ export async function PATCH(req: Request, context: Ctx) {
     return NextResponse.json({
       id,
       status: "Pending",
-      documentsCount: r.documents_count + documents.length,
+      documentsCount: attachmentUrls.length,
       documents,
     });
   } catch (e) {

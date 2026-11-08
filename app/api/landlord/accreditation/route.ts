@@ -93,6 +93,7 @@ export async function GET() {
           rawProposal && typeof rawProposal === "object"
             ? (rawProposal as Record<string, unknown>)
             : null;
+        const renewalOfRequestId = formData.renewal_of_request_id;
         return {
           id: r.id,
           dormName: r.dorm_name,
@@ -113,6 +114,8 @@ export async function GET() {
                   status: proposal.status,
                 }
               : null,
+          renewalOfRequestId:
+            typeof renewalOfRequestId === "string" ? renewalOfRequestId : null,
         };
       }),
     });
@@ -134,6 +137,7 @@ export async function POST(req: Request) {
       propertyId?: string;
       dormName?: string;
       address?: string;
+      renewalOfRequestId?: string;
       formData?: Record<string, unknown>;
     };
     const dormName = (body.dormName ?? "").trim();
@@ -145,6 +149,16 @@ export async function POST(req: Request) {
       );
     }
     const formData = body.formData ?? {};
+    const renewalOfRequestId = body.renewalOfRequestId?.trim() || null;
+    if (
+      renewalOfRequestId &&
+      !/^[0-9a-f-]{36}$/i.test(renewalOfRequestId)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid accreditation renewal reference." },
+        { status: 400 }
+      );
+    }
 
     // Server-side validation: required uploads and required checkboxes
     const urls = collectAttachmentUrls(formData);
@@ -201,11 +215,12 @@ export async function POST(req: Request) {
       }
 
       const { rows: accRows } = await pool.query<{
+        id: string;
         status: string;
         submitted_at: Date;
         accreditation_expires_at: Date | null;
       }>(
-        `SELECT status, submitted_at, accreditation_expires_at
+        `SELECT id, status, submitted_at, accreditation_expires_at
          FROM public.landlord_accreditation_requests
          WHERE owner_user_id = $1::uuid AND property_id = $2::uuid
          ORDER BY submitted_at DESC
@@ -219,7 +234,44 @@ export async function POST(req: Request) {
             accreditationExpiresAt: accRows[0].accreditation_expires_at,
           }
         : null;
-      if (!canApplyForPropertyAccreditation(latest)) {
+      if (renewalOfRequestId) {
+        const { rows: sourceRows } = await pool.query<{
+          status: string;
+          submitted_at: Date;
+          accreditation_expires_at: Date | null;
+        }>(
+          `SELECT status, submitted_at, accreditation_expires_at
+           FROM public.landlord_accreditation_requests
+           WHERE id = $1::uuid
+             AND owner_user_id = $2::uuid
+             AND property_id = $3::uuid`,
+          [renewalOfRequestId, ownerId, rawPid]
+        );
+        const source = sourceRows[0];
+        if (
+          !source ||
+          source.status !== "Approved" ||
+          !canApplyForPropertyAccreditation({
+            status: source.status,
+            submittedAt: source.submitted_at,
+            accreditationExpiresAt: source.accreditation_expires_at,
+          })
+        ) {
+          return NextResponse.json(
+            { error: "This accreditation is not eligible for renewal." },
+            { status: 409 }
+          );
+        }
+        if (
+          latest?.status !== "Approved" ||
+          accRows[0]?.id !== renewalOfRequestId
+        ) {
+          return NextResponse.json(
+            { error: "Another application for this property is already in progress." },
+            { status: 409 }
+          );
+        }
+      } else if (!canApplyForPropertyAccreditation(latest)) {
         return NextResponse.json(
           {
             error:
@@ -235,18 +287,32 @@ export async function POST(req: Request) {
       propertyId = await ensureLandlordProperty(pool, ownerId);
     }
 
+    const submittedFormData = { ...formData };
+    if (renewalOfRequestId) {
+      submittedFormData.renewal_of_request_id = renewalOfRequestId;
+    } else {
+      delete submittedFormData.renewal_of_request_id;
+    }
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO public.landlord_accreditation_requests
         (owner_user_id, property_id, dorm_name, address, documents_count, form_data, status)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'Pending')
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, $7)
        RETURNING id`,
-      [ownerId, propertyId, dormName, address, docsCount, JSON.stringify(formData)]
+      [
+        ownerId,
+        propertyId,
+        dormName,
+        address,
+        docsCount,
+        JSON.stringify(submittedFormData),
+        renewalOfRequestId ? "Renewing" : "Pending",
+      ]
     );
 
     await landlordLog(
       pool,
       ownerId,
-      `Submitted accreditation: ${dormName}`
+      `${renewalOfRequestId ? "Submitted accreditation renewal" : "Submitted accreditation"}: ${dormName}`
     );
 
     try {
@@ -259,8 +325,12 @@ export async function POST(req: Request) {
         await insertNotification(
           pool,
           admin.id,
-          "New accreditation request",
-          `${landlordName} submitted an accreditation application for "${dormName}".`,
+          renewalOfRequestId
+            ? "Accreditation renewal submitted"
+            : "New accreditation request",
+          renewalOfRequestId
+            ? `${landlordName} submitted updated documents to renew accreditation for "${dormName}".`
+            : `${landlordName} submitted an accreditation application for "${dormName}".`,
           "accreditation"
         );
       }

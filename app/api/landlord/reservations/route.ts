@@ -96,24 +96,44 @@ export async function GET() {
       notes: string | null;
       lease_extension_status: string | null;
       lease_extension_requested_end: string | null;
+      advance_amount: string | null;
+      deposit_amount: string | null;
+      balance_remaining: string | null;
+      next_payment_due_date: string | null;
       move_out_date: string | null;
       student_id: string | null;
       course: string | null;
+      rental_type: string;
+      beds_reserved: number;
+      monthly_rent: string;
+      father_name: string | null;
+      mother_name: string | null;
+      student_location: string | null;
       emergency_contact_name: string | null;
       emergency_contact_phone: string | null;
       profile_image_url: string | null;
       gcash_account_name: string | null;
       gcash_phone: string | null;
       gcash_qr_code_url: string | null;
+      property_address: string | null;
+      property_city: string | null;
+      ict_verification_status: string;
     }>(
       `SELECT s.id, s.created_at, r.room_no, stu.full_name AS guest_name, stu.email AS student_email,
               s.student_user_id, p.id AS property_id,
+              p.address AS property_address, p.city AS property_city,
               s.lease_start::text, s.lease_end::text, s.status, s.rent_payment_status,
               p.name AS property_name, s.notes,
               s.lease_extension_status, s.lease_extension_requested_end::text,
+              s.advance_amount::text, s.deposit_amount::text,
+              s.balance_remaining::text, s.next_payment_due_date::text,
               s.move_out_date::text AS move_out_date,
-              stu.student_id, stu.course, stu.emergency_contact_name, stu.emergency_contact_phone,
-              stu.profile_image_url, stu.gcash_account_name, stu.gcash_phone, stu.gcash_qr_code_url
+              stu.student_id, stu.course, stu.father_name, stu.mother_name,
+              stu.location AS student_location,
+              s.rental_type, s.beds_reserved, s.monthly_rent::text,
+              stu.emergency_contact_name, stu.emergency_contact_phone,
+              stu.profile_image_url, stu.gcash_account_name, stu.gcash_phone, stu.gcash_qr_code_url,
+              stu.ict_verification_status
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -148,9 +168,11 @@ export async function GET() {
           });
           rentPaymentStatus =
             formatReservationRentStatus(schedule) ??
-            legacyRentLabel(s.rent_payment_status);
-        } else if (s.status !== "Cancelled") {
-          rentPaymentStatus = legacyRentLabel(s.rent_payment_status);
+            (s.rent_payment_status === "Pending"
+              ? "None"
+              : legacyRentLabel(s.rent_payment_status));
+        } else {
+          rentPaymentStatus = "None";
         }
 
         const unpaidElsewhere = await fetchStudentUnpaidStaysElsewhere(
@@ -167,6 +189,10 @@ export async function GET() {
           leasePeriod: period(s.lease_start, s.lease_end),
           reservationStatus: s.status as "Confirmed" | "Pending" | "Cancelled" | "TerminatePending",
           dormName: s.property_name,
+          location: [s.property_address, s.property_city]
+            .filter((part) => part?.trim())
+            .join(", "),
+          ictVerificationStatus: s.ict_verification_status,
           moveOutDate: s.move_out_date?.slice(0, 10) ?? "",
           terminateDate: s.move_out_date?.slice(0, 10) ?? "",
           email: s.student_email,
@@ -174,6 +200,12 @@ export async function GET() {
             (s.emergency_contact_phone ?? s.gcash_phone ?? undefined) as string | undefined,
           studentId: s.student_id ?? undefined,
           course: s.course ?? undefined,
+          fatherName: s.father_name ?? undefined,
+          motherName: s.mother_name ?? undefined,
+          studentLocation: s.student_location ?? undefined,
+          rentalType: s.rental_type,
+          bedsReserved: s.beds_reserved,
+          monthlyRent: Number(s.monthly_rent),
           emergencyContactName: s.emergency_contact_name ?? undefined,
           emergencyContactPhone: s.emergency_contact_phone ?? undefined,
           profileImageUrl: s.profile_image_url ?? undefined,
@@ -181,6 +213,10 @@ export async function GET() {
           gcashPhone: s.gcash_phone ?? undefined,
           gcashQrCodeUrl: s.gcash_qr_code_url ?? undefined,
           rentPaymentStatus,
+          advanceAmount: Number(s.advance_amount ?? 0),
+          depositAmount: Number(s.deposit_amount ?? 0),
+          balanceRemaining: Number(s.balance_remaining ?? 0),
+          nextPaymentDueDate: s.next_payment_due_date?.slice(0, 10) ?? null,
           notes: s.notes ?? undefined,
           hasUnpaidElsewhere: unpaidElsewhere.length > 0,
           unpaidElsewhere: unpaidElsewhere.map((u) => ({

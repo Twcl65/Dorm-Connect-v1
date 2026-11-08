@@ -161,6 +161,8 @@ export type Listing = {
   landlordUserId?: string;
   roomType: string;
   capacity: string;
+  occupied?: number;
+  availableSlots?: number;
   roomSizeLabel?: string | null;
   roomDetails?: string | null;
   amenities: string[];
@@ -191,6 +193,7 @@ export type UnpaidRentMonth = {
   monthNumber: number;
   monthLabel: string;
   dueLabel: string;
+  paymentPending?: boolean;
   dormName?: string;
   roomNo?: string;
   reservationId?: string;
@@ -245,6 +248,8 @@ export type StudentReservation = {
   leaseEndDate?: string;
   leaseMonths: number;
   monthlyRent: number;
+  rentalType?: "Bedspace" | "Whole room";
+  bedsReserved?: number;
   location: string;
   landlord: string;
   distance?: string;
@@ -257,6 +262,7 @@ export type StudentReservation = {
   images?: string[];
   leasePeriod?: string;
   paymentSent?: boolean;
+  paymentConfirmed?: boolean;
   gcashAccountName?: string | null;
   gcashPhone?: string | null;
   gcashQrCodeUrl?: string | null;
@@ -377,7 +383,13 @@ export type ProfilePayload = {
   email: string;
   role: string;
   studentId: string | null;
+  fatherName?: string | null;
+  motherName?: string | null;
+  location?: string | null;
   profileImageUrl: string | null;
+  gcashAccountName?: string | null;
+  gcashPhone?: string | null;
+  gcashQrCodeUrl?: string | null;
 };
 
 export type NotificationItem = {
@@ -414,6 +426,7 @@ export type MapProperty = {
   latitude: number;
   longitude: number;
   coverImageUrl: string | null;
+  reviewSummary: { avg: number | null; count: number };
   galleryImageUrls: string[];
   propertyImages: string[];
   rooms: MapPropertyRoom[];
@@ -495,6 +508,10 @@ export type LandlordReservation = {
   reservationStatus: "Confirmed" | "Pending" | "Cancelled";
   dormName: string;
   rentPaymentStatus?: string;
+  advanceAmount?: number;
+  depositAmount?: number;
+  balanceRemaining?: number;
+  nextPaymentDueDate?: string | null;
   createdAt: string;
   leaseEndDate?: string;
   leaseExtension?: {
@@ -513,6 +530,7 @@ export type LandlordPayment = {
   amountValue?: number;
   method: string;
   status: "Paid" | "Pending" | "Overdue";
+  proofOfPaymentUrl?: string;
   date?: string;
   periodLabel?: string;
   createdAt: string;
@@ -586,10 +604,18 @@ export type LandlordTenantAnnouncement = {
 export type LandlordPropertyRow = {
   id: string;
   name: string;
-  address?: string;
-  city?: string;
+  address?: string | null;
+  city?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
   propertyType?: string;
-  totalRooms?: number;
+  description?: string | null;
+  totalRooms?: number | null;
+  maxOccupancyCapacity?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  coverImageUrl?: string | null;
+  galleryImageUrls?: string[];
   operationalStatus?: string;
 };
 
@@ -609,6 +635,8 @@ export type LandlordAccreditationRow = {
   status: string;
   documentsCount: number;
   submittedDate: string;
+  propertyId: string | null;
+  expiresAt: string | null;
 };
 
 export type ActivityLogRow = {

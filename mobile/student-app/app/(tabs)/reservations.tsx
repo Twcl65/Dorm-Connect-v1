@@ -16,6 +16,7 @@ import {
   Screen,
   Subtitle,
   Title,
+  colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { formatLeaseEndLabel } from "@/lib/listing-utils";
@@ -132,13 +133,11 @@ export default function ReservationsScreen() {
         <Button
           label="Reservations"
           variant={activeTab === "reservations" ? "sky" : "outline"}
-          size="sm"
           onPress={() => setActiveTab("reservations")}
         />
         <Button
           label="History"
           variant={activeTab === "history" ? "sky" : "outline"}
-          size="sm"
           onPress={() => setActiveTab("history")}
         />
       </View>
@@ -174,7 +173,12 @@ export default function ReservationsScreen() {
               <Text style={styles.empty}>No active reservations yet.</Text>
             </Card>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const stayLabel =
+              item.status === "Pending"
+                ? "Wait for landlord confirmation"
+                : item.stayLabel ?? item.status;
+            return (
             <Card>
               <InfoGrid
                 rows={[
@@ -194,23 +198,40 @@ export default function ReservationsScreen() {
                         : "—",
                     },
                   ],
-                  [
-                    { label: "Stay", value: item.stayLabel ?? item.status },
-                    { label: "Rent", value: item.rentLabel ?? "—" },
-                  ],
+                  ...(item.status === "Pending"
+                    ? []
+                    : [[
+                        { label: "Stay", value: stayLabel },
+                        { label: "Rent", value: item.rentLabel ?? "—" },
+                      ]]),
                 ]}
               />
+              {item.status === "Pending" ? (
+                <View style={styles.pendingStatusRow}>
+                  <View style={styles.pendingStatus}>
+                    <Text style={styles.pendingStatusLabel}>STATUS</Text>
+                    <Text style={styles.pendingStatusValue}>Pending</Text>
+                  </View>
+                  <View style={styles.confirmationNotice}>
+                    <Text style={styles.confirmationNoticeText}>
+                      Wait for landlord confirmation
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
               <View style={styles.badges}>
-                <Badge
-                  label={item.stayLabel ?? item.status}
-                  tone={
-                    item.status === "Approved" || item.status === "Active"
-                      ? "success"
-                      : item.status === "Cancelled"
-                        ? "danger"
-                        : "warning"
-                  }
-                />
+                {item.status !== "Pending" ? (
+                  <Badge
+                    label={stayLabel}
+                    tone={
+                      item.status === "Approved" || item.status === "Active"
+                        ? "success"
+                        : item.status === "Cancelled"
+                          ? "danger"
+                          : "warning"
+                    }
+                  />
+                ) : null}
                 {item.paymentSent ? (
                   <Badge label="Payment submitted" tone="success" />
                 ) : null}
@@ -226,7 +247,8 @@ export default function ReservationsScreen() {
                 />
               </View>
             </Card>
-          )}
+            );
+          }}
         />
       ) : (
         <FlatList
@@ -338,6 +360,43 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  pendingStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 10,
+  },
+  pendingStatus: { flex: 1 },
+  pendingStatusLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.muted,
+    letterSpacing: 0.3,
+  },
+  pendingStatusValue: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.text,
+    marginTop: 3,
+  },
+  confirmationNotice: {
+    flex: 1.4,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#facc15",
+    borderRadius: 10,
+    backgroundColor: "#fefce8",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  confirmationNoticeText: {
+    color: "#854d0e",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   actions: { marginTop: 12 },
   note: { fontSize: 12, color: "#475569", marginTop: 8 },
 });

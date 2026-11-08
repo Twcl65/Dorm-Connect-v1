@@ -36,9 +36,12 @@ type Reservation = {
   leasePeriod: string;
   reservationStatus: ReservationStatus;
   dormName: string;
+  location?: string;
+  ictVerificationStatus?: string;
   email?: string;
   contact?: string;
   rentPaymentStatus?: string;
+  balanceRemaining?: number;
   notes?: string;
   hasUnpaidElsewhere?: boolean;
   unpaidElsewhere?: UnpaidElsewhere[];
@@ -51,6 +54,12 @@ type Reservation = {
   } | null;
   studentId?: string;
   course?: string;
+  fatherName?: string;
+  motherName?: string;
+  studentLocation?: string;
+  rentalType?: "Bedspace" | "Whole room";
+  bedsReserved?: number;
+  monthlyRent?: number;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   profileImageUrl?: string;
@@ -446,6 +455,13 @@ export function LandlordReservationsPanel({
       setSaving(false);
     }
   };
+
+  const unpaidElsewhere = selectedReservation?.unpaidElsewhere ?? [];
+  const hasUnpaidOnCurrentProperty =
+    selectedReservation?.source === "student" &&
+    selectedReservation.reservationStatus === "Confirmed" &&
+    ((selectedReservation.balanceRemaining ?? 0) > 0 ||
+      /overdue|not yet paid/i.test(selectedReservation.rentPaymentStatus ?? ""));
 
   return (
     <div className="space-y-6">
@@ -1144,7 +1160,7 @@ export function LandlordReservationsPanel({
                     Student / Tenant Details
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Registered account information (pending ICT admin approval).
+                    Registered account and reservation information.
                   </p>
                 </div>
                 <Button
@@ -1163,12 +1179,67 @@ export function LandlordReservationsPanel({
                 <p className="text-sm font-semibold text-slate-900">
                   {selectedReservation.name}
                 </p>
+                {selectedReservation.studentId && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Student ID:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.studentId}
+                    </span>
+                  </p>
+                )}
+                {selectedReservation.fatherName && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Father name:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.fatherName}
+                    </span>
+                  </p>
+                )}
+                {selectedReservation.motherName && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Mother name:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.motherName}
+                    </span>
+                  </p>
+                )}
+                {selectedReservation.studentLocation && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Student location:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.studentLocation}
+                    </span>
+                  </p>
+                )}
+                {selectedReservation.rentalType && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Rental option:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.rentalType === "Bedspace"
+                        ? `Bedspace (${selectedReservation.bedsReserved ?? 1} bed)`
+                        : `Whole room (${selectedReservation.bedsReserved ?? 1} beds)`}
+                    </span>
+                  </p>
+                )}
+                {selectedReservation.monthlyRent != null && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Monthly rent:{" "}
+                    <span className="font-medium text-slate-900">
+                      ₱{selectedReservation.monthlyRent.toLocaleString()}
+                    </span>
+                  </p>
+                )}
                 <p className="text-[0.7rem] text-muted-foreground">
                   Reservation ID: <span className="font-mono">{selectedReservation.id}</span>
                 </p>
                 <p className="text-[0.7rem] text-muted-foreground">
                   Dorm / Room: <span className="font-medium text-slate-900">
                     {selectedReservation.dormName} – Room {selectedReservation.roomNo}
+                  </span>
+                </p>
+                <p className="text-[0.7rem] text-muted-foreground">
+                  Location: <span className="font-medium text-slate-900">
+                    {selectedReservation.location || "Not provided"}
                   </span>
                 </p>
                 <p className="text-[0.7rem] text-muted-foreground">
@@ -1186,16 +1257,34 @@ export function LandlordReservationsPanel({
                     Contact: <span className="font-medium text-slate-900">{selectedReservation.contact}</span>
                   </p>
                 )}
+                {selectedReservation.emergencyContactName && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Emergency contact name:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.emergencyContactName}
+                    </span>
+                  </p>
+                )}
+                {selectedReservation.emergencyContactPhone && (
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    Emergency contact phone:{" "}
+                    <span className="font-medium text-slate-900">
+                      {selectedReservation.emergencyContactPhone}
+                    </span>
+                  </p>
+                )}
                 {selectedReservation.notes && (
                   <p className="text-[0.7rem] text-muted-foreground rounded border bg-slate-50 px-2 py-1.5">
                     <span className="font-semibold text-slate-800">Note: </span>
                     {selectedReservation.notes}
                   </p>
                 )}
-                {selectedReservation.unpaidElsewhere && (
-                  <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[0.7rem] text-amber-950 space-y-1">
-                    <p className="font-semibold">Unpaid at another boarding house</p>
-                    {selectedReservation.unpaidElsewhere.map((u, i) => (
+                {unpaidElsewhere.length > 0 && (
+                  <div className="space-y-1 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[0.7rem] text-amber-950">
+                    <p className="font-semibold">
+                      Unpaid balance at another boarding house or property
+                    </p>
+                    {unpaidElsewhere.map((u, i) => (
                       <p key={i}>
                         {u.dormName} · Room {u.roomNo} · {u.leasePeriod}
                         {u.balanceRemaining > 0 && ` · ₱${u.balanceRemaining.toLocaleString()} remaining`}
@@ -1204,14 +1293,53 @@ export function LandlordReservationsPanel({
                     ))}
                   </div>
                 )}
+                {hasUnpaidOnCurrentProperty && (
+                  <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[0.7rem] text-amber-950">
+                    <p className="font-semibold">
+                      Unpaid balance on this boarding house or property
+                    </p>
+                    <p>
+                      {selectedReservation.dormName} · Room {selectedReservation.roomNo}
+                      {(selectedReservation.balanceRemaining ?? 0) > 0 &&
+                        ` · ₱${selectedReservation.balanceRemaining!.toLocaleString()} remaining`}
+                    </p>
+                  </div>
+                )}
+                {unpaidElsewhere.length === 0 && !hasUnpaidOnCurrentProperty && (
+                  <div className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-[0.7rem] text-emerald-950">
+                    <p className="font-semibold">No unpaid balance</p>
+                  </div>
+                )}
               </div>
 
-              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[0.7rem] text-amber-950">
+              <div
+                className={`rounded-md border px-3 py-2 text-[0.7rem] ${
+                  selectedReservation.ictVerificationStatus === "Verified"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                    : selectedReservation.ictVerificationStatus === "Rejected"
+                      ? "border-red-300 bg-red-50 text-red-950"
+                      : "border-amber-300 bg-amber-50 text-amber-950"
+                }`}
+              >
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {selectedReservation.ictVerificationStatus !== "Verified" && (
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                  )}
                   <div>
-                    <p className="font-semibold">Registration pending</p>
-                    <p>This student/tenant account is registered and pending ICT admin approval. The full account profile will appear here once approved.</p>
+                    <p className="font-semibold">
+                      {selectedReservation.ictVerificationStatus === "Verified"
+                        ? "Registration active"
+                        : selectedReservation.ictVerificationStatus === "Rejected"
+                          ? "Registration rejected"
+                          : "Registration pending"}
+                    </p>
+                    <p>
+                      {selectedReservation.ictVerificationStatus === "Verified"
+                        ? "This student/tenant account has been verified by the ICT admin."
+                        : selectedReservation.ictVerificationStatus === "Rejected"
+                          ? "This student/tenant account was rejected during ICT verification."
+                          : "This student/tenant account is pending ICT admin verification."}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1273,6 +1401,38 @@ export function LandlordReservationsPanel({
                       {selectedReservation.studentId}
                     </p>
                   )}
+                  {selectedReservation.fatherName && (
+                    <p>
+                      <span className="font-semibold">Father name:</span>{" "}
+                      {selectedReservation.fatherName}
+                    </p>
+                  )}
+                  {selectedReservation.motherName && (
+                    <p>
+                      <span className="font-semibold">Mother name:</span>{" "}
+                      {selectedReservation.motherName}
+                    </p>
+                  )}
+                  {selectedReservation.studentLocation && (
+                    <p>
+                      <span className="font-semibold">Student location:</span>{" "}
+                      {selectedReservation.studentLocation}
+                    </p>
+                  )}
+                  {selectedReservation.rentalType && (
+                    <p>
+                      <span className="font-semibold">Rental option:</span>{" "}
+                      {selectedReservation.rentalType === "Bedspace"
+                        ? `Bedspace (${selectedReservation.bedsReserved ?? 1} bed)`
+                        : `Whole room (${selectedReservation.bedsReserved ?? 1} beds)`}
+                    </p>
+                  )}
+                  {selectedReservation.monthlyRent != null && (
+                    <p>
+                      <span className="font-semibold">Monthly rent:</span>{" "}
+                      ₱{selectedReservation.monthlyRent.toLocaleString()}
+                    </p>
+                  )}
                   {selectedReservation.email && (
                     <p className="flex items-start gap-1">
                       <Mail className="h-3 w-3 shrink-0 mt-0.5" />
@@ -1298,10 +1458,14 @@ export function LandlordReservationsPanel({
                   )}
                   {selectedReservation.emergencyContactName && (
                     <p>
-                      <span className="font-semibold">Emergency contact:</span>{" "}
+                      <span className="font-semibold">Emergency contact name:</span>{" "}
                       {selectedReservation.emergencyContactName}
-                      {selectedReservation.emergencyContactPhone &&
-                        ` (${selectedReservation.emergencyContactPhone})`}
+                    </p>
+                  )}
+                  {selectedReservation.emergencyContactPhone && (
+                    <p>
+                      <span className="font-semibold">Emergency contact phone:</span>{" "}
+                      {selectedReservation.emergencyContactPhone}
                     </p>
                   )}
                 </div>
@@ -1482,11 +1646,17 @@ export function LandlordReservationsPanel({
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold">Remarks</label>
+                <label className="font-semibold">
+                  Remarks
+                  {selectedReservation.source === "student" &&
+                  selectedReservation.reservationStatus === "Pending"
+                    ? " (required)"
+                    : ""}
+                </label>
                 <Textarea
                   value={cancelRemarks}
                   onChange={(e) => setCancelRemarks(e.target.value)}
-                  placeholder="Reason for cancelling (e.g. room already reserved, student has unpaid dues at another BH, etc.)"
+                  placeholder="Reason for declining (e.g. room already reserved, no longer available, or another reason)"
                   className="h-20 text-xs resize-y"
                 />
               </div>
@@ -1509,7 +1679,12 @@ export function LandlordReservationsPanel({
                   type="button"
                   size="sm"
                   className="h-8 px-3 text-xs bg-red-600 text-white hover:bg-red-700"
-                  disabled={saving}
+                  disabled={
+                    saving ||
+                    (selectedReservation.source === "student" &&
+                      selectedReservation.reservationStatus === "Pending" &&
+                      !cancelRemarks.trim())
+                  }
                   onClick={async () => {
                     if (!selectedReservation) return;
                     setSaving(true);

@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (!isMobileAppRole(res.user.role)) {
       throw new ApiError(
-        "This account type cannot use the mobile app. Students and landlords only.",
+        "This account type cannot use the mobile app. Student, Landlord, and Staff accounts are supported.",
         403
       );
     }

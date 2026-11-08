@@ -198,14 +198,24 @@ export default function PaymentsScreen() {
               <Text style={styles.meta}>{m.dueLabel}</Text>
               <Text style={styles.meta}>Due date: {m.dueDate}</Text>
               <View style={styles.cardActions}>
-                <Button
-                  label="Pay now"
-                  variant="brand"
-                  onPress={() => {
-                    setPayError(null);
-                    setPayMonth(m);
-                  }}
-                />
+                {m.paymentPending ? (
+                  <Button
+                    label="Waiting for landlord to confirm the payment"
+                    variant="brand"
+                    fullWidth
+                    disabled
+                    onPress={() => {}}
+                  />
+                ) : (
+                  <Button
+                    label="Pay now"
+                    variant="brand"
+                    onPress={() => {
+                      setPayError(null);
+                      setPayMonth(m);
+                    }}
+                  />
+                )}
               </View>
             </Card>
           )}

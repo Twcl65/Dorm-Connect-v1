@@ -69,6 +69,7 @@ export async function GET() {
        WHERE a.inspection_scheduled_for IS NOT NULL
           OR i.id IS NOT NULL
           OR a.status IN (
+            'Renewing',
             'Scheduled for Inspection',
             'Recommended for Approval',
             'Hold',
@@ -271,6 +272,23 @@ export async function POST(req: Request) {
       `Inspection for “${a.dorm_name}”: ${displayResult}.${notes ? ` ${notes}` : ""}`,
       "accreditation"
     );
+
+    if (session.role === "Staff" && result === "Recommended for Approval") {
+      const { rows: osaUsers } = await pool.query<{ id: string }>(
+        `SELECT id
+         FROM public.boarding_house_app_users
+         WHERE role = 'OSA/SAS Admin' AND status = 'Active'`
+      );
+      for (const osaUser of osaUsers) {
+        await insertNotification(
+          pool,
+          osaUser.id,
+          "Inspection recommended for approval",
+          `Staff recommended “${a.dorm_name}” for accreditation approval after inspection.`,
+          "accreditation"
+        );
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -6,8 +6,9 @@ After sign-in, the app opens the UI for your role:
 
 | Role | Tabs |
 |------|------|
-| Student | Home, Browse, Reservations, Payments, Incidents, More |
-| Landlord | Home, Reservations, Payments, More |
+| Student / Tenant | Home, Browse, Reservations, Payments, Incidents, More |
+| Landlord | Home, Reservations, Payments, Incidents, Announcements, More |
+| OSA Staff | Dashboard, Inspections, Accreditation, Tenants |
 
 ## Prerequisites
 
@@ -48,15 +49,18 @@ Press `a` (Android) or `i` (iOS), or scan the QR code with Expo Go.
 
 Browse uses **Leaflet + OpenStreetMap** (same as the website). No Google Maps API key is required.
 
-## Features (MVP)
+## Features
 
-- Sign in (Student accounts only)
-- Home overview
-- Browse accredited listings
-- Request reservation (simple 12-month lease)
-- Reservations list
-- Payments history
-- Profile + sign out
+- Sign in as a Student / Tenant, Landlord, or OSA Staff user
+- Register as a student or submit a landlord account for ICT approval
+- Student dashboard, accredited listing browse, reservations, payments,
+  incident reports, announcements, reviews, top-reviewed and nearest-to-USTP
+  discovery, and account settings
+- Landlord dashboard, reservations, payments, incidents, announcements,
+  properties, rooms, tenants, student reviews, reports, accreditation documents,
+  accreditation renewals and document resubmission, property terms, financial
+  reports, activity logs, and account settings
+- OSA Staff inspection dashboard, accreditation monitoring, and tenant monitoring
 
 ## API endpoints used
 
@@ -67,5 +71,6 @@ Browse uses **Leaflet + OpenStreetMap** (same as the website). No Google Maps AP
 - `POST /api/student/reservations`
 - `GET /api/student/reservations`
 - `GET /api/student/payments`
-
-Landlord mobile app can follow the same pattern with `role: "Landlord"`.
+- `GET /api/student/announcements`
+- `GET /api/landlord/reviews`
+- Landlord screens use the corresponding `/api/landlord/*` endpoints.

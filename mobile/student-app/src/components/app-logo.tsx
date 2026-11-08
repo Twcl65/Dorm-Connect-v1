@@ -6,18 +6,20 @@ type Props = {
   size?: "md" | "lg";
   showName?: boolean;
   variant?: "light" | "dark";
+  horizontal?: boolean;
 };
 
 export function AppLogo({
   size = "lg",
   showName = true,
   variant = "light",
+  horizontal = false,
 }: Props) {
   const box = size === "lg" ? 64 : 48;
   const isDark = variant === "dark";
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, horizontal && styles.wrapHorizontal]}>
       <View
         style={[
           styles.mark,
@@ -32,7 +34,7 @@ export function AppLogo({
         />
       </View>
       {showName ? (
-        <View style={styles.nameBlock}>
+        <View style={[styles.nameBlock, horizontal && styles.nameBlockHorizontal]}>
           <Text
             style={[
               styles.name,
@@ -53,6 +55,7 @@ export function AppLogo({
 
 const styles = StyleSheet.create({
   wrap: { alignItems: "center", gap: 12 },
+  wrapHorizontal: { flexDirection: "row", alignSelf: "center", gap: 14 },
   mark: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -74,6 +77,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 2,
   },
+  nameBlockHorizontal: { alignItems: "flex-start" },
   name: {
     fontSize: 22,
     fontWeight: "800",

@@ -66,6 +66,8 @@ type DormReview = {
   rating: number;
 };
 
+type RentalType = "Bedspace" | "Whole room";
+
 type Dorm = {
   id: string;
   name: string;
@@ -115,6 +117,20 @@ function formatTermSectionLabel(key: string): string {
     .trim();
 }
 
+const USTP_JASAAN = { latitude: 8.4542, longitude: 124.6319 };
+
+function distanceFromUstp(latitude: number, longitude: number): number {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = radians(latitude - USTP_JASAAN.latitude);
+  const dLon = radians(longitude - USTP_JASAAN.longitude);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(USTP_JASAAN.latitude)) *
+      Math.cos(radians(latitude)) *
+      Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export default function StudentBrowseDormsPage() {
   const [listings, setListings] = useState<Dorm[]>([]);
   const [mapPins, setMapPins] = useState<MapPropertyPin[]>([]);
@@ -123,6 +139,7 @@ export default function StudentBrowseDormsPage() {
 
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [sortMode, setSortMode] = useState<"top" | "nearest" | "name">("top");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [showPriceDialog, setShowPriceDialog] = useState(false);
@@ -140,6 +157,7 @@ export default function StudentBrowseDormsPage() {
   } | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
   const [reservationStep, setReservationStep] = useState<1 | 2 | 3>(1);
+  const [rentalType, setRentalType] = useState<RentalType>("Bedspace");
   const [moveInDate, setMoveInDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
   const [dialogReviews, setDialogReviews] = useState<DormReview[]>([]);
@@ -153,6 +171,20 @@ export default function StudentBrowseDormsPage() {
   const [ictVerificationStatus, setIctVerificationStatus] = useState<
     string | null
   >(null);
+
+  const selectedMonthlyRent = selectedDorm
+    ? rentalType === "Whole room"
+      ? selectedDorm.price
+      : Math.round(
+          (selectedDorm.price / Math.max(1, Number(selectedDorm.capacity) || 1)) *
+            100
+        ) / 100
+    : 0;
+  const selectedRentalTypeAvailable =
+    !!selectedDorm &&
+    (rentalType === "Bedspace"
+      ? (selectedDorm.availableSlots ?? 0) > 0
+      : (selectedDorm.occupied ?? 0) === 0);
 
   const loadListings = useCallback(async () => {
     setListError(null);
@@ -308,7 +340,8 @@ export default function StudentBrowseDormsPage() {
 
   const filteredDorms = useMemo(
     () =>
-      listings.filter((dorm) => {
+      listings
+        .filter((dorm) => {
         const q = search.trim().toLowerCase();
         const matchesSearch =
           q.length === 0 ||
@@ -320,7 +353,9 @@ export default function StudentBrowseDormsPage() {
         const matchesLocation =
           locationFilter === "all" ||
           (locationFilter === "ustp" &&
-            (loc.includes("ustp") || loc.includes("gate"))) ||
+            dorm.latitude != null &&
+            dorm.longitude != null &&
+            distanceFromUstp(dorm.latitude, dorm.longitude) <= 10) ||
           (locationFilter === "kauswagan" && loc.includes("kauswagan")) ||
           (locationFilter === "downtown" && loc.includes("downtown"));
 
@@ -330,12 +365,52 @@ export default function StudentBrowseDormsPage() {
         const matchesPrice =
           maxPrice == null || dorm.price <= maxPrice;
 
-        return (
-          matchesSearch && matchesLocation && matchesDoc && matchesPrice
-        );
-      }),
-    [listings, search, locationFilter, docTypeFilter, maxPrice]
+          return (
+            matchesSearch && matchesLocation && matchesDoc && matchesPrice
+          );
+        })
+        .sort((a, b) => {
+          if (sortMode === "nearest") {
+            const distanceA =
+              a.latitude == null || a.longitude == null
+                ? Number.POSITIVE_INFINITY
+                : distanceFromUstp(a.latitude, a.longitude);
+            const distanceB =
+              b.latitude == null || b.longitude == null
+                ? Number.POSITIVE_INFINITY
+                : distanceFromUstp(b.latitude, b.longitude);
+            return distanceA - distanceB;
+          }
+          if (sortMode === "top") {
+            const ratingDifference =
+              (b.reviewSummary.avg ?? -1) - (a.reviewSummary.avg ?? -1);
+            return ratingDifference || b.reviewSummary.count - a.reviewSummary.count;
+          }
+          return a.propertyName.localeCompare(b.propertyName);
+        }),
+    [listings, search, locationFilter, docTypeFilter, maxPrice, sortMode]
   );
+
+  const topReviewedProperties = useMemo(() => {
+    const bestByProperty = new Map<string, Dorm>();
+    for (const dorm of listings) {
+      if (dorm.reviewSummary.count === 0) continue;
+      const current = bestByProperty.get(dorm.propertyId);
+      if (
+        !current ||
+        (dorm.reviewSummary.avg ?? 0) > (current.reviewSummary.avg ?? 0)
+      ) {
+        bestByProperty.set(dorm.propertyId, dorm);
+      }
+    }
+    return [...bestByProperty.values()]
+      .sort(
+        (a, b) =>
+          (b.reviewSummary.avg ?? 0) - (a.reviewSummary.avg ?? 0) ||
+          b.reviewSummary.count - a.reviewSummary.count
+      )
+      .slice(0, 3);
+  }, [listings]);
 
   /** Pins from map-properties API (accredited + coords + has listed room). Not narrowed by browse UI filters. */
   const mapMarkers = useMemo((): StudentMapMarker[] => {
@@ -417,7 +492,7 @@ export default function StudentBrowseDormsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 pt-3">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="flex items-center gap-2">
               <Input
                 placeholder="Search dorm name or keyword..."
@@ -443,7 +518,7 @@ export default function StudentBrowseDormsPage() {
               onChange={(e) => setLocationFilter(e.target.value)}
             >
               <option value="all">All locations</option>
-              <option value="ustp">Near USTP</option>
+              <option value="ustp">Within 10 km of USTP Jasaan</option>
               <option value="kauswagan">Kauswagan</option>
               <option value="downtown">Downtown</option>
             </select>
@@ -456,8 +531,23 @@ export default function StudentBrowseDormsPage() {
               <option value="Accredited">Accredited</option>
               <option value="For Accreditation">For Accreditation</option>
             </select>
+            <select
+              className="h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
+              value={sortMode}
+              onChange={(e) =>
+                setSortMode(e.target.value as "top" | "nearest" | "name")
+              }
+              aria-label="Sort establishments"
+            >
+              <option value="top">Top reviewed</option>
+              <option value="nearest">Closest to USTP Jasaan</option>
+              <option value="name">Name A–Z</option>
+            </select>
           </div>
 
+          <p className="text-[0.7rem] text-muted-foreground">
+            Distance estimates use USTP Jasaan Campus coordinates.
+          </p>
           <div className="space-y-1">
             <p className="text-[0.7rem] text-muted-foreground">
               Price filter:{" "}
@@ -468,6 +558,37 @@ export default function StudentBrowseDormsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {topReviewedProperties.length > 0 && (
+        <Card className="border border-amber-200 bg-amber-50/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Top-reviewed establishments
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Highest average ratings, with review count used to break ties.
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-3">
+            {topReviewedProperties.map((dorm) => (
+              <button
+                key={dorm.propertyId}
+                type="button"
+                className="rounded-lg border border-amber-200 bg-white p-3 text-left transition hover:border-amber-400"
+                onClick={() => setRoomsDialogPropertyId(dorm.propertyId)}
+              >
+                <span className="block font-semibold text-slate-900">
+                  {dorm.propertyName}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  ★ {dorm.reviewSummary.avg?.toFixed(1)} ·{" "}
+                  {dorm.reviewSummary.count} review(s)
+                </span>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border border-gray-300 bg-white overflow-hidden">
         <CardHeader className="pb-3 border-b bg-muted/40">
@@ -672,6 +793,7 @@ export default function StudentBrowseDormsPage() {
                               size="sm"
                               onClick={async () => {
                                 setSelectedDorm(dorm);
+                                setRentalType("Bedspace");
                                 setSubmitError(null);
                                 setRoomsDialogPropertyId(null);
                                 setTermsLoading(true);
@@ -705,17 +827,24 @@ export default function StudentBrowseDormsPage() {
       ) : null}
 
       {showTermsDialog && selectedDorm && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10">
-          <Card className="w-full max-w-lg border border-gray-300 bg-white max-h-[85vh] overflow-y-auto">
-            <CardHeader className="pb-2 border-b bg-muted/40">
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/40 px-4 py-6 sm:py-10"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="student-booking-terms-title"
+        >
+          <Card className="my-auto flex max-h-[min(85vh,800px)] w-full max-w-lg flex-col overflow-hidden border border-gray-300 bg-white">
+            <CardHeader className="shrink-0 pb-2 border-b bg-muted/40">
               <CardTitle className="text-base">
-                {termsData?.title || "Terms &amp; conditions"}
+                <span id="student-booking-terms-title">
+                  {termsData?.title || "Terms &amp; conditions"}
+                </span>
               </CardTitle>
               <p className="text-xs text-muted-foreground">
                 Please read before booking {selectedDorm.name}.
               </p>
             </CardHeader>
-            <CardContent className="space-y-3 pt-3 text-xs text-slate-700">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pt-3 text-xs text-slate-700">
               {termsLoading ? (
                 <p className="flex items-center gap-2 text-sm text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -737,35 +866,35 @@ export default function StudentBrowseDormsPage() {
                   No terms available for this property.
                 </p>
               )}
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => {
-                    setShowTermsDialog(false);
-                    setSelectedDorm(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => {
-                    setShowTermsDialog(false);
-                    setReservationStep(1);
-                    setMoveInDate("");
-                    setLeaseEndDate("");
-                    setShowDormDialog(true);
-                  }}
-                >
-                  I agree — continue
-                </Button>
-              </div>
             </CardContent>
+            <CardFooter className="shrink-0 justify-end border-t bg-white p-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setShowTermsDialog(false);
+                  setSelectedDorm(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setShowTermsDialog(false);
+                  setReservationStep(1);
+                  setMoveInDate("");
+                  setLeaseEndDate("");
+                  setShowDormDialog(true);
+                }}
+              >
+                I agree — continue
+              </Button>
+            </CardFooter>
           </Card>
         </div>
       )}
@@ -1092,22 +1221,69 @@ export default function StudentBrowseDormsPage() {
 
               {reservationStep === 2 && (
                 <div className="space-y-3 text-sm text-slate-800">
+                  <div className="space-y-2">
+                    <p className="font-semibold">Choose how you want to rent</p>
+                    <label className="flex cursor-pointer items-start gap-2 rounded-md border p-3">
+                      <input
+                        type="radio"
+                        name="rentalType"
+                        value="Bedspace"
+                        checked={rentalType === "Bedspace"}
+                        onChange={() => setRentalType("Bedspace")}
+                        disabled={(selectedDorm?.availableSlots ?? 0) < 1}
+                      />
+                      <span>
+                        <span className="block font-medium">Bedspace (shared room)</span>
+                        <span className="text-xs text-muted-foreground">
+                          One bed · {selectedDorm?.availableSlots ?? 0} of{" "}
+                          {selectedDorm?.capacity ?? 0} beds available
+                        </span>
+                      </span>
+                    </label>
+                    <label
+                      className={`flex items-start gap-2 rounded-md border p-3 ${
+                        (selectedDorm?.occupied ?? 0) > 0
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="rentalType"
+                        value="Whole room"
+                        checked={rentalType === "Whole room"}
+                        onChange={() => setRentalType("Whole room")}
+                        disabled={(selectedDorm?.occupied ?? 0) > 0}
+                      />
+                      <span>
+                        <span className="block font-medium">Whole room (private)</span>
+                        <span className="text-xs text-muted-foreground">
+                          Reserve all {selectedDorm?.capacity ?? 0} beds
+                          {(selectedDorm?.occupied ?? 0) > 0
+                            ? " · unavailable while any bed is occupied"
+                            : ""}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                   <div className="space-y-1 text-sm">
                     <p>
-                      <span className="font-semibold">Monthly Rent:</span>{" "}
-                      ₱{selectedDorm.price.toLocaleString()}
+                      <span className="font-semibold">
+                        Monthly Rent ({rentalType === "Bedspace" ? "per bed" : "whole room"}):
+                      </span>{" "}
+                      ₱{selectedMonthlyRent.toLocaleString()}
                     </p>
                     <p>
                       <span className="font-semibold">
                         Advance Payment (1 Month):
                       </span>{" "}
-                      ₱{selectedDorm.price.toLocaleString()}
+                      ₱{selectedMonthlyRent.toLocaleString()}
                     </p>
                     <p>
                       <span className="font-semibold">
                         Security Deposit (1 Month):
                       </span>{" "}
-                      ₱{selectedDorm.price.toLocaleString()}
+                      ₱{selectedMonthlyRent.toLocaleString()}
                     </p>
                   </div>
                   <hr className="my-2 border-slate-200" />
@@ -1218,7 +1394,10 @@ export default function StudentBrowseDormsPage() {
                   type="button"
                   size="sm"
                   className="h-8 px-3 text-xs"
-                  disabled={reservationStep === 1 && !canBook}
+                  disabled={
+                    (reservationStep === 1 && !canBook) ||
+                    (reservationStep === 2 && !selectedRentalTypeAvailable)
+                  }
                   onClick={() =>
                     setReservationStep(
                       (prev) => (prev + 1) as typeof reservationStep
@@ -1246,6 +1425,7 @@ export default function StudentBrowseDormsPage() {
                           roomId: selectedDorm.id,
                           leaseStart: moveInDate,
                           leaseEnd: leaseEndDate,
+                          rentalType,
                         }),
                       });
                       const j = (await res.json()) as { error?: string };

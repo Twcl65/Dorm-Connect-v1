@@ -34,6 +34,7 @@ type AccreditationRow = {
   submittedDate: string;
   status: string;
   propertyId: string | null;
+  renewalOfRequestId: string | null;
   expiresAt: string | null;
   inspectionScheduledFor: string | null;
   inspectionScheduleProposal: InspectionScheduleProposal | null;
@@ -49,6 +50,8 @@ function StatusBadge({ status }: { status: string }) {
           ? "bg-slate-200 text-slate-800"
           : status === "Pending"
             ? "bg-slate-100 text-slate-800"
+            : status === "Renewing"
+              ? "bg-amber-100 text-amber-900"
             : status === "Scheduled for Inspection"
               ? "bg-sky-100 text-sky-800"
               : status === "Recommended for Approval"
@@ -115,6 +118,63 @@ function collectFormAttachmentUrls(formData: unknown): string[] {
   return Array.from(new Set(urls));
 }
 
+const ACCREDITATION_DOCUMENTS = [
+  { key: "businessPermit", label: "Business Permit" },
+  { key: "barangayClearance", label: "Barangay Clearance" },
+  { key: "fireSafetyCertificate", label: "Fire Safety Certificate" },
+  { key: "occupancyPermit", label: "Occupancy Permit" },
+  { key: "sanitaryPermit", label: "Sanitary Permit" },
+] as const;
+
+type AccreditationDocumentKey =
+  (typeof ACCREDITATION_DOCUMENTS)[number]["key"];
+
+type StagedHoldDocument = {
+  key: string;
+  file: File;
+  documentKey?: AccreditationDocumentKey;
+  additionalDocumentIndex?: number;
+};
+
+function readDocumentFile(value: unknown): {
+  fileName: string;
+  url: string;
+} | null {
+  if (typeof value === "string" && value.trim()) {
+    return { fileName: "Uploaded document", url: value };
+  }
+  if (!value || typeof value !== "object") return null;
+  const document = value as Record<string, unknown>;
+  const url = document.url ?? document.fileUrl;
+  if (typeof url !== "string" || !url.trim()) return null;
+  return {
+    fileName:
+      typeof document.fileName === "string" && document.fileName.trim()
+        ? document.fileName
+        : "Uploaded document",
+    url,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function canEditAccreditationDocuments(status: string, formData: unknown) {
+  if (status === "Hold") return true;
+  if (status !== "Pending" || !formData || typeof formData !== "object") {
+    return false;
+  }
+  const data = formData as Record<string, unknown>;
+  return (
+    data.landlord_document_revision_open === true ||
+    (Array.isArray(data.additional_documents) &&
+      data.additional_documents.length > 0)
+  );
+}
+
 type Property = {
   id: string;
   name: string;
@@ -164,6 +224,8 @@ export default function LandlordDocumentsPage() {
   // Renewal mode: when set, the wizard pre-selects the associated property
   const [renewalForRequest, setRenewalForRequest] =
     useState<AccreditationRow | null>(null);
+  const [renewalFormData, setRenewalFormData] =
+    useState<Record<string, unknown> | null>(null);
 
   // Properties list for dropdown (eligible for new accreditation only)
   const [properties, setProperties] = useState<Property[]>([]);
@@ -175,7 +237,7 @@ export default function LandlordDocumentsPage() {
   const [dormName, setDormName] = useState("");
   const [dormAddress, setDormAddress] = useState("");
   const [dormCity, setDormCity] = useState("");
-  const [dormType, setDormType] = useState("Cement");
+  const [dormType, setDormType] = useState("Dormitory");
   const [dormRooms, setDormRooms] = useState("");
   const [dormCapacity, setDormCapacity] = useState("");
 
@@ -214,10 +276,19 @@ export default function LandlordDocumentsPage() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [detailsFormData, setDetailsFormData] = useState<unknown>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [holdDocumentFiles, setHoldDocumentFiles] = useState<
+    Record<string, File>
+  >({});
+  const [holdAdditionalFiles, setHoldAdditionalFiles] = useState<File[]>([]);
+  const [savingHoldDocuments, setSavingHoldDocuments] = useState(false);
+  const [holdDocumentsError, setHoldDocumentsError] = useState<string | null>(
+    null
+  );
   const [inspectionScheduleDate, setInspectionScheduleDate] = useState("");
   const [inspectionScheduleSaving, setInspectionScheduleSaving] = useState(false);
   const [inspectionScheduleError, setInspectionScheduleError] = useState<string | null>(null);
   const [showInspectionScheduleDialog, setShowInspectionScheduleDialog] = useState(false);
+  const [openingRenewalId, setOpeningRenewalId] = useState<string | null>(null);
 
   const refreshDocs = useCallback(async () => {
     if (!selectedRequest) return;
@@ -239,6 +310,184 @@ export default function LandlordDocumentsPage() {
       setDetailsLoading(false);
     }
   }, [selectedRequest]);
+
+  const saveHoldDocuments = async () => {
+    if (
+      !selectedRequest ||
+      (Object.keys(holdDocumentFiles).length === 0 &&
+        holdAdditionalFiles.length === 0)
+    ) {
+      return;
+    }
+    setSavingHoldDocuments(true);
+    setHoldDocumentsError(null);
+    try {
+      const current =
+        detailsFormData && typeof detailsFormData === "object"
+          ? (detailsFormData as Record<string, unknown>)
+          : {};
+      const currentDocuments =
+        current.documents && typeof current.documents === "object"
+          ? (current.documents as Record<string, unknown>)
+          : {};
+      const currentAdditionalDocuments = Array.isArray(current.additional_documents)
+        ? current.additional_documents
+        : [];
+      const staged: StagedHoldDocument[] = [];
+      for (const [key, file] of Object.entries(holdDocumentFiles)) {
+        if (key.startsWith("additional:")) {
+          const additionalDocumentIndex = Number(
+            key.slice("additional:".length)
+          );
+          if (
+            Number.isInteger(additionalDocumentIndex) &&
+            additionalDocumentIndex >= 0 &&
+            additionalDocumentIndex < currentAdditionalDocuments.length
+          ) {
+            staged.push({ key, file, additionalDocumentIndex });
+          }
+        } else if (
+          ACCREDITATION_DOCUMENTS.some((document) => document.key === key)
+        ) {
+          staged.push({
+            key,
+            file,
+            documentKey: key as AccreditationDocumentKey,
+          });
+        }
+      }
+      if (staged.length === 0) {
+        if (holdAdditionalFiles.length === 0) {
+          throw new Error("Choose a valid document to replace.");
+        }
+      }
+
+      const allFiles = [...staged.map((item) => item.file), ...holdAdditionalFiles];
+      const urls = await uploadDormConnectFiles(allFiles);
+      const documents: {
+        documentKey?: AccreditationDocumentKey;
+        additionalDocumentIndex?: number;
+        mimeType: string;
+        fileName: string;
+        fileUrl: string;
+      }[] = staged.map((item, index) => ({
+        ...(item.documentKey ? { documentKey: item.documentKey } : {}),
+        ...(item.additionalDocumentIndex !== undefined
+          ? { additionalDocumentIndex: item.additionalDocumentIndex }
+          : {}),
+        mimeType: item.file.type,
+        fileName: item.file.name,
+        fileUrl: urls[index]!,
+      }));
+      documents.push(
+        ...holdAdditionalFiles.map((file, index) => ({
+          mimeType: file.type,
+          fileName: file.name,
+          fileUrl: urls[staged.length + index]!,
+        }))
+      );
+      const res = await fetch(
+        `/api/landlord/accreditation/${selectedRequest.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ documents }),
+        }
+      );
+      const result = (await res.json()) as {
+        error?: string;
+        documentsCount?: number;
+      };
+      if (!res.ok) {
+        throw new Error(result.error ?? "Failed to save accreditation documents.");
+      }
+
+      const replacedUrls = staged.flatMap((item) => {
+        const oldValue =
+          item.additionalDocumentIndex !== undefined
+            ? currentAdditionalDocuments[item.additionalDocumentIndex]
+            : item.documentKey
+              ? currentDocuments[item.documentKey]
+              : undefined;
+        const oldDocument = readDocumentFile(oldValue);
+        return oldDocument ? [oldDocument.url] : [];
+      });
+      setDetailsFormData((previous: unknown) => {
+        const formData =
+          previous && typeof previous === "object"
+            ? (previous as Record<string, unknown>)
+            : {};
+        const savedDocuments =
+          formData.documents && typeof formData.documents === "object"
+            ? { ...(formData.documents as Record<string, unknown>) }
+            : {};
+        const savedAdditionalDocuments = Array.isArray(formData.additional_documents)
+          ? [...formData.additional_documents]
+          : [];
+
+        staged.forEach((item, index) => {
+          const savedFile = {
+            fileName: item.file.name,
+            mimeType: item.file.type,
+            url: urls[index]!,
+            fileUrl: urls[index]!,
+          };
+          if (item.additionalDocumentIndex !== undefined) {
+            savedAdditionalDocuments[item.additionalDocumentIndex] = savedFile;
+          } else if (item.documentKey) {
+            savedDocuments[item.documentKey] = savedFile;
+          }
+        });
+        savedAdditionalDocuments.push(
+          ...holdAdditionalFiles.map((file, index) => ({
+            fileName: file.name,
+            mimeType: file.type,
+            fileUrl: urls[staged.length + index]!,
+          }))
+        );
+
+        const oldUrls = new Set(replacedUrls);
+        const existingUrls = Array.isArray(formData.attachmentUrls)
+          ? formData.attachmentUrls.filter(
+              (url): url is string =>
+                typeof url === "string" && !oldUrls.has(url)
+            )
+          : collectFormAttachmentUrls(formData).filter(
+              (url) => !oldUrls.has(url)
+            );
+        return {
+          ...formData,
+          documents: savedDocuments,
+          additional_documents: savedAdditionalDocuments,
+          landlord_document_revision_open: true,
+          attachmentUrls: Array.from(new Set([...existingUrls, ...urls])),
+        };
+      });
+      const documentsCount =
+        result.documentsCount ?? selectedRequest.documentsCount;
+      setSelectedRequest((request) =>
+        request
+          ? { ...request, status: "Pending", documentsCount }
+          : request
+      );
+      setRequests((currentRequests) =>
+        currentRequests.map((request) =>
+          request.id === selectedRequest.id
+            ? { ...request, status: "Pending", documentsCount }
+            : request
+        )
+      );
+      setHoldDocumentFiles({});
+      setHoldAdditionalFiles([]);
+    } catch (error) {
+      setHoldDocumentsError(
+        error instanceof Error ? error.message : "Failed to save documents."
+      );
+    } finally {
+      setSavingHoldDocuments(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     setLoadError(null);
@@ -300,6 +549,11 @@ export default function LandlordDocumentsPage() {
   // Load properties when wizard opens
   useEffect(() => {
     if (!showWizard) return;
+    if (renewalForRequest) {
+      setSelectedPropertyId(renewalForRequest.propertyId ?? "");
+      setPropertiesLoading(false);
+      return;
+    }
     setPropertiesLoading(true);
     let cancelled = false;
     void (async () => {
@@ -317,55 +571,9 @@ export default function LandlordDocumentsPage() {
           let eligible = json.properties ?? [];
           setProperties(eligible);
           setIneligiblePropertyCount(json.ineligibleCount ?? 0);
-          // In renewal mode, pre-load the property's existing DORM data so
-          // the landlord only needs to upload updated documents (#9).
-          if (renewalForRequest && renewalForRequest.propertyId) {
-            const prop = eligible.find((p) => p.id === renewalForRequest.propertyId);
-            if (prop) {
-              setDormName(prop.name);
-              setDormAddress(prop.address ?? "");
-              setDormCity(prop.city ?? "");
-              setDormType("Cement");
-              setDormRooms(
-                prop.totalRooms != null ? String(prop.totalRooms) : ""
-              );
-              setDormCapacity(
-                prop.maxOccupancyCapacity != null
-                  ? String(prop.maxOccupancyCapacity)
-                  : ""
-              );
-            } else {
-              // Property may be ineligible list – include it for renewal
-              eligible = [
-                ...eligible,
-                ...(json.properties ?? []),
-              ];
-              const fallback = (json.properties ?? []).find(
-                (p) => p.id === renewalForRequest.propertyId
-              );
-              if (fallback) {
-                setDormName(fallback.name);
-                setDormAddress(fallback.address ?? "");
-                setDormCity(fallback.city ?? "");
-                setDormType("Cement");
-                setDormRooms(
-                  fallback.totalRooms != null
-                    ? String(fallback.totalRooms)
-                    : ""
-                );
-                setDormCapacity(
-                  fallback.maxOccupancyCapacity != null
-                    ? String(fallback.maxOccupancyCapacity)
-                    : ""
-                );
-              }
-            }
-            setSelectedPropertyId(renewalForRequest.propertyId ?? "");
-          } else {
-            setSelectedPropertyId((current) =>
-              eligible.some((p) => p.id === current) ? current : ""
-            );
-          }
+          setSelectedPropertyId((current) =>
+            eligible.some((p) => p.id === current) ? current : ""
+          );
         }
       } catch {
         if (!cancelled) {
@@ -379,7 +587,7 @@ export default function LandlordDocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [showWizard]);
+  }, [showWizard, renewalForRequest]);
 
   const filteredRequests = useMemo(
     () =>
@@ -429,6 +637,9 @@ export default function LandlordDocumentsPage() {
       return;
     }
     setDetailsLoading(true);
+    setHoldDocumentFiles({});
+    setHoldAdditionalFiles([]);
+    setHoldDocumentsError(null);
     // Prevent showing attachments from a previously selected request while loading.
     setDetailsFormData(null);
     let cancelled = false;
@@ -586,7 +797,145 @@ export default function LandlordDocumentsPage() {
     }
   };
 
+  const hasPendingRenewal = (requestId: string) =>
+    requests.some(
+      (request) =>
+        request.renewalOfRequestId === requestId &&
+        [
+          "Renewing",
+          "Pending",
+          "Scheduled for Inspection",
+          "Recommended for Approval",
+          "Hold",
+        ].includes(request.status)
+    );
+
+  const hasApprovedRenewal = (requestId: string) =>
+    requests.some(
+      (request) =>
+        request.renewalOfRequestId === requestId &&
+        request.status === "Approved"
+    );
+
+  const openRenewal = async (request: AccreditationRow) => {
+    setOpeningRenewalId(request.id);
+    setLoadError(null);
+    try {
+      const response = await fetch(
+        `/api/landlord/accreditation/${request.id}`,
+        { credentials: "include" }
+      );
+      const result = (await response.json()) as {
+        error?: string;
+        formData?: unknown;
+      };
+      if (!response.ok) {
+        throw new Error(result.error ?? "Failed to load accreditation details.");
+      }
+
+      const savedFormData = asRecord(result.formData);
+      if (Object.keys(savedFormData).length === 0) {
+        throw new Error("The approved accreditation has no saved application data.");
+      }
+      const dorm = asRecord(savedFormData.dorm);
+      const owner = asRecord(savedFormData.owner);
+      const documents = { ...asRecord(savedFormData.documents) };
+      for (const document of ACCREDITATION_DOCUMENTS) {
+        const savedDocument = readDocumentFile(documents[document.key]);
+        if (savedDocument) {
+          documents[document.key] = {
+            ...asRecord(documents[document.key]),
+            fileName: savedDocument.fileName,
+            url: savedDocument.url,
+          };
+        }
+      }
+      const savedDeclaration = asRecord(savedFormData.declaration);
+      const savedChecklist = asRecord(savedDeclaration.checklist);
+      const checklist = {
+        certify:
+          typeof savedChecklist.certify === "boolean"
+            ? savedChecklist.certify
+            : true,
+        understandSubmit:
+          typeof savedChecklist.understandSubmit === "boolean"
+            ? savedChecklist.understandSubmit
+            : true,
+        understandRevoke:
+          typeof savedChecklist.understandRevoke === "boolean"
+            ? savedChecklist.understandRevoke
+            : true,
+        understandInspect:
+          typeof savedChecklist.understandInspect === "boolean"
+            ? savedChecklist.understandInspect
+            : true,
+      };
+      const formData = {
+        ...savedFormData,
+        documents,
+        declaration: {
+          ...savedDeclaration,
+          checklist: { ...savedChecklist, ...checklist },
+        },
+      };
+      const readString = (value: unknown) =>
+        typeof value === "string" ? value : "";
+
+      setRenewalFormData(formData);
+      setDormName(readString(dorm.name) || request.dormName);
+      setDormAddress(readString(dorm.address) || request.address);
+      setDormCity(readString(dorm.city));
+      setDormType(readString(dorm.type));
+      setDormRooms(
+        dorm.rooms == null || dorm.rooms === "" ? "" : String(dorm.rooms)
+      );
+      setDormCapacity(
+        dorm.capacity == null || dorm.capacity === ""
+          ? ""
+          : String(dorm.capacity)
+      );
+      setOwnerName(readString(owner.name));
+      setOwnerBusinessName(readString(owner.businessName));
+      setOwnerContact(readString(owner.contact));
+      setOwnerEmail(readString(owner.email));
+      setSelectedPropertyId(request.propertyId ?? "");
+      setBusinessPermitFile(null);
+      setBarangayClearanceFile(null);
+      setFireSafetyCertFile(null);
+      setOccupancyPermitFile(null);
+      setSanitaryApplicable(Boolean(readDocumentFile(documents.sanitaryPermit)));
+      setSanitaryPermitFile(null);
+      setSupportingDocFiles([]);
+      setDeclCertify(checklist.certify === true);
+      setDeclUnderstandSubmit(checklist.understandSubmit === true);
+      setDeclUnderstandRevoke(checklist.understandRevoke === true);
+      setDeclUnderstandInspect(checklist.understandInspect === true);
+      setWizardErrors([]);
+      setRenewalForRequest(request);
+      setShowWizard(true);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : "Failed to load accreditation details."
+      );
+    } finally {
+      setOpeningRenewalId(null);
+    }
+  };
+
   const osaHoldMessage = readOsaHoldMessage(detailsFormData);
+  const renewalDocuments = asRecord(renewalFormData?.documents);
+  const renewalSupporting = asRecord(renewalDocuments.supporting);
+  const existingSupportingUrls = Array.isArray(renewalSupporting.urls)
+    ? renewalSupporting.urls.filter(
+        (url): url is string => typeof url === "string"
+      )
+    : [];
+  const existingSupportingNames = Array.isArray(renewalSupporting.fileNames)
+    ? renewalSupporting.fileNames
+    : [];
+  const hasExistingSanitaryPermit = Boolean(
+    readDocumentFile(renewalDocuments.sanitaryPermit)
+  );
 
   return (
     <div className="space-y-6">
@@ -622,12 +971,13 @@ export default function LandlordDocumentsPage() {
             type="button"
             onClick={() => {
               setRenewalForRequest(null);
+              setRenewalFormData(null);
               setSelectedPropertyId("");
               setIneligiblePropertyCount(0);
               setDormName("");
               setDormAddress("");
               setDormCity("");
-              setDormType("Cement");
+              setDormType("Dormitory");
               setDormRooms("");
               setDormCapacity("");
               setBusinessPermitFile(null);
@@ -758,18 +1108,29 @@ export default function LandlordDocumentsPage() {
                   </TableCell>
                   <TableCell className="pr-4">
                     <div className="flex justify-center gap-2">
-                      {req.status === "Approved" && canRenew(req) && (
+                      {req.status === "Approved" &&
+                        hasApprovedRenewal(req.id) && (
+                          <Badge className="h-7 border-emerald-300 bg-emerald-100 px-2 text-[0.7rem] text-emerald-800">
+                            Renewed
+                          </Badge>
+                        )}
+                      {req.status === "Approved" &&
+                        canRenew(req) &&
+                        !hasApprovedRenewal(req.id) &&
+                        !hasPendingRenewal(req.id) && (
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-blue-400 text-blue-600 hover:bg-blue-50 hover:text-blue-600"
-                          onClick={() => {
-                            setRenewalForRequest(req);
-                            setShowWizard(true);
-                          }}
+                          className="h-7 border-red-600 bg-red-600 px-2 text-[0.7rem] text-white flex items-center gap-1 hover:bg-red-700 hover:text-white"
+                          disabled={openingRenewalId === req.id}
+                          onClick={() => void openRenewal(req)}
                         >
-                          <RefreshCw className="h-3 w-3" />
-                          Renew
+                          {openingRenewalId === req.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          {openingRenewalId === req.id ? "Loading…" : "Renew"}
                         </Button>
                       )}
                       {req.status === "Approved" && (
@@ -867,6 +1228,7 @@ export default function LandlordDocumentsPage() {
                   onClick={() => {
                     setShowWizard(false);
                     setRenewalForRequest(null);
+                    setRenewalFormData(null);
                   }}
                 >
                   Close
@@ -904,6 +1266,14 @@ export default function LandlordDocumentsPage() {
                   </ul>
                 </div>
               )}
+              {renewalForRequest && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[0.7rem] text-red-900">
+                  Renewing <span className="font-semibold">{dormName}</span>.
+                  Your saved application information will be reused. Upload
+                  only the documents that need updating.
+                </div>
+              )}
+              {!renewalForRequest && (
                 <div className="space-y-3 border-b border-slate-200 pb-6">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     A. Owner / Landlord Information
@@ -944,7 +1314,8 @@ export default function LandlordDocumentsPage() {
                     />
                   </div>
                 </div>
-
+              )}
+              {!renewalForRequest && (
                 <div className="space-y-3 border-b border-slate-200 pb-6">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     B. Dorm Information
@@ -963,7 +1334,7 @@ export default function LandlordDocumentsPage() {
                           setDormName(prop.name);
                           setDormAddress(prop.address ?? "");
                           setDormCity(prop.city ?? "");
-                          setDormType(prop.propertyType === "Cement" ? "Cement" : prop.propertyType === "Wood" ? "Wood" : prop.propertyType === "Hybrid" ? "Hybrid" : "Cement");
+                          setDormType(prop.propertyType || "Dormitory");
                           setDormRooms(
                             prop.totalRooms != null
                               ? String(prop.totalRooms)
@@ -978,7 +1349,7 @@ export default function LandlordDocumentsPage() {
                           setDormName("");
                           setDormAddress("");
                           setDormCity("");
-                          setDormType("Cement");
+                          setDormType("");
                           setDormRooms("");
                           setDormCapacity("");
                         }
@@ -1029,17 +1400,13 @@ export default function LandlordDocumentsPage() {
                     <span className="text-[0.7rem] text-slate-700">
                       Establishment Type:
                     </span>
-                    <select
-                      className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
-                      value={dormType}
-                      onChange={(e) => setDormType(e.target.value)}
-                    >
-                      <option value="Cement">Cement</option>
-                      <option value="Wood">Wood</option>
-                      <option value="Hybrid">Hybrid</option>
-                    </select>
+                    <Input
+                      value={dormType || "—"}
+                      className="h-8 text-xs bg-slate-100"
+                      readOnly
+                    />
                     <span className="text-[0.7rem] text-slate-700">
-                      Number of Rooms:
+                      Current Number of Rooms Available:
                     </span>
                     <Input
                       value={dormRooms || "—"}
@@ -1047,7 +1414,7 @@ export default function LandlordDocumentsPage() {
                       readOnly
                     />
                     <span className="text-[0.7rem] text-slate-700">
-                      Total Capacity:
+                      Current Total Capacity:
                     </span>
                     <Input
                       value={dormCapacity || "—"}
@@ -1056,30 +1423,37 @@ export default function LandlordDocumentsPage() {
                     />
                   </div>
                 </div>
+              )}
 
                 <div className="space-y-3 border-b border-slate-200 pb-6">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
-                    C. Required Documents (Upload)
+                    {renewalForRequest
+                      ? "Updated Documents (Upload only replacements)"
+                      : "C. Required Documents (Upload)"}
                   </p>
                   <div className="space-y-3">
                     <div className="grid gap-3 md:grid-cols-2">
                       {[
                         {
+                          key: "businessPermit",
                           label: "Business Permit",
                           file: businessPermitFile,
                           set: setBusinessPermitFile,
                         },
                         {
+                          key: "barangayClearance",
                           label: "Barangay Clearance",
                           file: barangayClearanceFile,
                           set: setBarangayClearanceFile,
                         },
                         {
+                          key: "fireSafetyCertificate",
                           label: "Fire Safety Certificate",
                           file: fireSafetyCertFile,
                           set: setFireSafetyCertFile,
                         },
                         {
+                          key: "occupancyPermit",
                           label: "Occupancy Permit",
                           file: occupancyPermitFile,
                           set: setOccupancyPermitFile,
@@ -1092,6 +1466,29 @@ export default function LandlordDocumentsPage() {
                           <p className="text-[0.75rem] font-semibold text-slate-900">
                             {x.label}
                           </p>
+                          {renewalForRequest &&
+                            (() => {
+                              const current = readDocumentFile(
+                                renewalDocuments[x.key]
+                              );
+                              return current ? (
+                                <p className="text-[0.65rem] text-slate-600">
+                                  Current:{" "}
+                                  <a
+                                    className="text-blue-700 underline"
+                                    href={current.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {current.fileName}
+                                  </a>
+                                </p>
+                              ) : (
+                                <p className="text-[0.65rem] text-amber-700">
+                                  No saved document
+                                </p>
+                              );
+                            })()}
                           <Input
                             type="file"
                             accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1103,24 +1500,31 @@ export default function LandlordDocumentsPage() {
                               {x.file.name}
                             </p>
                           )}
+                          {renewalForRequest && !x.file && (
+                            <p className="text-[0.65rem] text-muted-foreground">
+                              Leave empty to keep the current document.
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
 
                     <div className="rounded-md border border-slate-200 bg-white p-3">
-                      <label className="flex items-center gap-2 text-[0.7rem]">
-                        <input
-                          type="checkbox"
-                          className="h-3 w-3"
-                          checked={sanitaryApplicable}
-                          onChange={(e) => {
-                            const on = e.target.checked;
-                            setSanitaryApplicable(on);
-                            if (!on) setSanitaryPermitFile(null);
-                          }}
-                        />
-                        Sanitary Permit is applicable for my dorm
-                      </label>
+                      {!(renewalForRequest && hasExistingSanitaryPermit) && (
+                        <label className="flex items-center gap-2 text-[0.7rem]">
+                          <input
+                            type="checkbox"
+                            className="h-3 w-3"
+                            checked={sanitaryApplicable}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              setSanitaryApplicable(on);
+                              if (!on) setSanitaryPermitFile(null);
+                            }}
+                          />
+                          Sanitary Permit is applicable for my dorm
+                        </label>
+                      )}
                       <div className="mt-2 space-y-1">
                         <p className="text-[0.75rem] font-semibold text-slate-900">
                           Sanitary Permit{" "}
@@ -1128,7 +1532,26 @@ export default function LandlordDocumentsPage() {
                             (if applicable)
                           </span>
                         </p>
-                        <Input
+                          {renewalForRequest &&
+                            (() => {
+                              const current = readDocumentFile(
+                                renewalDocuments.sanitaryPermit
+                              );
+                              return current ? (
+                                <p className="text-[0.65rem] text-slate-600">
+                                  Current:{" "}
+                                  <a
+                                    className="text-blue-700 underline"
+                                    href={current.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    {current.fileName}
+                                  </a>
+                                </p>
+                              ) : null;
+                            })()}
+                          <Input
                           type="file"
                           accept="image/*,application/pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                           className="h-8 cursor-pointer text-xs"
@@ -1142,6 +1565,13 @@ export default function LandlordDocumentsPage() {
                             {sanitaryPermitFile.name}
                           </p>
                         )}
+                        {renewalForRequest &&
+                          sanitaryApplicable &&
+                          !sanitaryPermitFile && (
+                            <p className="text-[0.65rem] text-muted-foreground">
+                              Leave empty to keep the current document.
+                            </p>
+                          )}
                       </div>
                     </div>
 
@@ -1161,6 +1591,26 @@ export default function LandlordDocumentsPage() {
                           setSupportingDocFiles(Array.from(e.target.files ?? []))
                         }
                       />
+                      {renewalForRequest && existingSupportingUrls.length > 0 && (
+                        <ul className="list-disc pl-4 text-[0.65rem] text-slate-600">
+                          {existingSupportingUrls.map((url, index) => {
+                            const name = existingSupportingNames[index];
+                            return (
+                              <li key={`${url}-${index}`}>
+                                Current:{" "}
+                                <a
+                                  className="text-blue-700 underline"
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {typeof name === "string" ? name : "Uploaded document"}
+                                </a>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                       {supportingDocFiles.length > 0 && (
                         <ul className="mt-1 list-disc pl-4 text-[0.65rem] text-slate-700">
                           {supportingDocFiles.map((file) => (
@@ -1172,6 +1622,7 @@ export default function LandlordDocumentsPage() {
                   </div>
                 </div>
 
+                {!renewalForRequest && (
                 <div className="space-y-3">
                   <p className="text-[0.8rem] font-semibold text-slate-900">
                     D. Declaration
@@ -1229,10 +1680,9 @@ export default function LandlordDocumentsPage() {
                       <span>OSA reserves the right to inspect the premises.</span>
                     </label>
                   </div>
-                  <p className="text-[0.7rem] text-slate-500">
-                    The applicant name is taken from your account profile.
-                  </p>
-                  <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+                  </div>
+                  )}
+                    <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
                     <Button
                       type="button"
                       variant="outline"
@@ -1241,6 +1691,7 @@ export default function LandlordDocumentsPage() {
                       onClick={() => {
                         setShowWizard(false);
                         setRenewalForRequest(null);
+                        setRenewalFormData(null);
                       }}
                     >
                       Cancel
@@ -1251,7 +1702,50 @@ export default function LandlordDocumentsPage() {
                       className="h-8 px-3 text-xs"
                       disabled={submitting}
                       onClick={async () => {
-                          const errs = validateAllWizardSteps();
+                          const renewalUploads = [
+                            ...(businessPermitFile
+                              ? [{ key: "businessPermit", file: businessPermitFile }]
+                              : []),
+                            ...(barangayClearanceFile
+                              ? [{ key: "barangayClearance", file: barangayClearanceFile }]
+                              : []),
+                            ...(fireSafetyCertFile
+                              ? [{ key: "fireSafetyCertificate", file: fireSafetyCertFile }]
+                              : []),
+                            ...(occupancyPermitFile
+                              ? [{ key: "occupancyPermit", file: occupancyPermitFile }]
+                              : []),
+                            ...(sanitaryApplicable && sanitaryPermitFile
+                              ? [{ key: "sanitaryPermit", file: sanitaryPermitFile }]
+                              : []),
+                          ];
+                          const existingRenewalDocuments = asRecord(
+                            renewalFormData?.documents
+                          );
+                          const missingRequiredRenewalDocuments = [
+                            "businessPermit",
+                            "barangayClearance",
+                            "fireSafetyCertificate",
+                            "occupancyPermit",
+                          ].filter(
+                            (key) =>
+                              !readDocumentFile(existingRenewalDocuments[key]) &&
+                              !renewalUploads.some((upload) => upload.key === key)
+                          );
+                          const errs = renewalForRequest
+                            ? [
+                                ...(renewalUploads.length === 0 &&
+                                supportingDocFiles.length === 0
+                                  ? ["Upload at least one updated document."]
+                                  : []),
+                                ...missingRequiredRenewalDocuments.map(
+                                  (key) =>
+                                    `${ACCREDITATION_DOCUMENTS.find(
+                                      (document) => document.key === key
+                                    )?.label ?? key} is required; upload it to continue.`
+                                ),
+                              ]
+                            : validateAllWizardSteps();
                           if (errs.length > 0) {
                             setWizardErrors(errs);
                             return;
@@ -1262,113 +1756,177 @@ export default function LandlordDocumentsPage() {
                             .join(", ");
                           setSubmitting(true);
                           try {
-                            const [
-                              businessPermitUrl,
-                              barangayClearanceUrl,
-                              fireSafetyCertificateUrl,
-                              occupancyPermitUrl,
-                              sanitaryPermitUrl,
-                              supportingUrls,
-                            ] = await (async () => {
-                              const bp = await uploadDormConnectFile(
-                                businessPermitFile!
-                              );
-                              const bc = await uploadDormConnectFile(
-                                barangayClearanceFile!
-                              );
-                              const fs = await uploadDormConnectFile(
-                                fireSafetyCertFile!
-                              );
-                              const op = await uploadDormConnectFile(
-                                occupancyPermitFile!
-                              );
-                              const sp = sanitaryApplicable
-                                ? await uploadDormConnectFile(sanitaryPermitFile!)
-                                : undefined;
-                              const supporting =
-                                supportingDocFiles.length > 0
-                                  ? await uploadDormConnectFiles(supportingDocFiles)
-                                  : [];
-                              return [bp, bc, fs, op, sp, supporting] as const;
-                            })();
+                            let formData: Record<string, unknown>;
+                            if (renewalForRequest) {
+                              if (!renewalFormData || !renewalForRequest.propertyId) {
+                                throw new Error(
+                                  "The saved accreditation or its property could not be loaded."
+                                );
+                              }
+                              const uploadedUrls = await uploadDormConnectFiles([
+                                ...renewalUploads.map((item) => item.file),
+                                ...supportingDocFiles,
+                              ]);
+                              const documents = {
+                                ...asRecord(renewalFormData.documents),
+                              };
+                              renewalUploads.forEach((item, index) => {
+                                documents[item.key] = {
+                                  fileName: item.file.name,
+                                  mimeType: item.file.type,
+                                  url: uploadedUrls[index],
+                                };
+                              });
 
-                            const allAttachmentUrls = [
-                              businessPermitUrl,
-                              barangayClearanceUrl,
-                              fireSafetyCertificateUrl,
-                              occupancyPermitUrl,
-                              ...(sanitaryPermitUrl ? [sanitaryPermitUrl] : []),
-                              ...supportingUrls,
-                            ];
+                              const previousSupporting = asRecord(
+                                documents.supporting
+                              );
+                              const oldUrls = Array.isArray(previousSupporting.urls)
+                                ? previousSupporting.urls.filter(
+                                    (url): url is string =>
+                                      typeof url === "string"
+                                  )
+                                : [];
+                              const oldNames = Array.isArray(
+                                previousSupporting.fileNames
+                              )
+                                ? previousSupporting.fileNames.filter(
+                                    (name): name is string =>
+                                      typeof name === "string"
+                                  )
+                                : [];
+                              const newSupportingUrls = uploadedUrls.slice(
+                                renewalUploads.length
+                              );
+                              if (supportingDocFiles.length > 0) {
+                                documents.supporting = {
+                                  ...previousSupporting,
+                                  fileNames: [
+                                    ...oldNames,
+                                    ...supportingDocFiles.map((file) => file.name),
+                                  ],
+                                  urls: [...oldUrls, ...newSupportingUrls],
+                                };
+                              }
+                              formData = {
+                                ...renewalFormData,
+                                documents,
+                                attachmentUrls: null,
+                              };
+                              formData.attachmentUrls =
+                                collectFormAttachmentUrls(formData);
+                            } else {
+                              const [
+                                businessPermitUrl,
+                                barangayClearanceUrl,
+                                fireSafetyCertificateUrl,
+                                occupancyPermitUrl,
+                                sanitaryPermitUrl,
+                                supportingUrls,
+                              ] = await (async () => {
+                                const bp = await uploadDormConnectFile(
+                                  businessPermitFile!
+                                );
+                                const bc = await uploadDormConnectFile(
+                                  barangayClearanceFile!
+                                );
+                                const fs = await uploadDormConnectFile(
+                                  fireSafetyCertFile!
+                                );
+                                const op = await uploadDormConnectFile(
+                                  occupancyPermitFile!
+                                );
+                                const sp = sanitaryApplicable
+                                  ? await uploadDormConnectFile(sanitaryPermitFile!)
+                                  : undefined;
+                                const supporting =
+                                  supportingDocFiles.length > 0
+                                    ? await uploadDormConnectFiles(supportingDocFiles)
+                                    : [];
+                                return [bp, bc, fs, op, sp, supporting] as const;
+                              })();
+
+                              const allAttachmentUrls = [
+                                businessPermitUrl,
+                                barangayClearanceUrl,
+                                fireSafetyCertificateUrl,
+                                occupancyPermitUrl,
+                                ...(sanitaryPermitUrl ? [sanitaryPermitUrl] : []),
+                                ...supportingUrls,
+                              ];
+                              formData = {
+                                dorm: {
+                                  name: dormName,
+                                  address: dormAddress,
+                                  city: dormCity,
+                                  type: dormType,
+                                  rooms: dormRooms,
+                                  capacity: dormCapacity,
+                                },
+                                owner: {
+                                  name: ownerName,
+                                  businessName: ownerBusinessName,
+                                  contact: ownerContact,
+                                  email: ownerEmail,
+                                },
+                                documents: {
+                                  businessPermit: {
+                                    fileName: businessPermitFile?.name,
+                                    url: businessPermitUrl,
+                                  },
+                                  barangayClearance: {
+                                    fileName: barangayClearanceFile?.name,
+                                    url: barangayClearanceUrl,
+                                  },
+                                  fireSafetyCertificate: {
+                                    fileName: fireSafetyCertFile?.name,
+                                    url: fireSafetyCertificateUrl,
+                                  },
+                                  occupancyPermit: {
+                                    fileName: occupancyPermitFile?.name,
+                                    url: occupancyPermitUrl,
+                                  },
+                                  sanitaryPermit: sanitaryApplicable
+                                    ? {
+                                        fileName: sanitaryPermitFile?.name,
+                                        url: sanitaryPermitUrl,
+                                      }
+                                    : undefined,
+                                  supporting: {
+                                    fileNames: supportingDocFiles.map((f) => f.name),
+                                    urls: supportingUrls,
+                                  },
+                                },
+                                attachmentUrls: allAttachmentUrls,
+                                declaration: {
+                                  checklist: {
+                                    certify: declCertify,
+                                    understandSubmit: declUnderstandSubmit,
+                                    understandRevoke: declUnderstandRevoke,
+                                    understandInspect: declUnderstandInspect,
+                                  },
+                                },
+                              };
+                            }
 
                             const res = await fetch("/api/landlord/accreditation", {
                               method: "POST",
                               credentials: "include",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
-                                propertyId: selectedPropertyId,
+                                propertyId:
+                                  renewalForRequest?.propertyId ?? selectedPropertyId,
+                                renewalOfRequestId: renewalForRequest?.id,
                                 dormName: dormName.trim(),
-                                address,
-                                formData: {
-                                  dorm: {
-                                    name: dormName,
-                                    address: dormAddress,
-                                    city: dormCity,
-                                    type: dormType,
-                                    rooms: dormRooms,
-                                    capacity: dormCapacity,
-                                  },
-                                  owner: {
-                                    name: ownerName,
-                                    businessName: ownerBusinessName,
-                                    contact: ownerContact,
-                                    email: ownerEmail,
-                                  },
-                                  documents: {
-                                    businessPermit: {
-                                      fileName: businessPermitFile?.name,
-                                      url: businessPermitUrl,
-                                    },
-                                    barangayClearance: {
-                                      fileName: barangayClearanceFile?.name,
-                                      url: barangayClearanceUrl,
-                                    },
-                                    fireSafetyCertificate: {
-                                      fileName: fireSafetyCertFile?.name,
-                                      url: fireSafetyCertificateUrl,
-                                    },
-                                    occupancyPermit: {
-                                      fileName: occupancyPermitFile?.name,
-                                      url: occupancyPermitUrl,
-                                    },
-                                    sanitaryPermit: sanitaryApplicable
-                                      ? {
-                                          fileName: sanitaryPermitFile?.name,
-                                          url: sanitaryPermitUrl,
-                                        }
-                                      : undefined,
-                                    supporting: {
-                                      fileNames: supportingDocFiles.map((f) => f.name),
-                                      urls: supportingUrls,
-                                    },
-                                  },
-                                  // Back-compat convenience array for previews
-                                  attachmentUrls: allAttachmentUrls,
-                                  declaration: {
-                                    checklist: {
-                                      certify: declCertify,
-                                      understandSubmit: declUnderstandSubmit,
-                                      understandRevoke: declUnderstandRevoke,
-                                      understandInspect: declUnderstandInspect,
-                                    },
-                                  },
-                                },
+                                address: renewalForRequest?.address ?? address,
+                                formData,
                               }),
                             });
                             const j = (await res.json()) as { error?: string };
                             if (!res.ok) throw new Error(j.error ?? "Failed");
                             setShowWizard(false);
                             setRenewalForRequest(null);
+                            setRenewalFormData(null);
                             setBusinessPermitFile(null);
                             setBarangayClearanceFile(null);
                             setFireSafetyCertFile(null);
@@ -1388,10 +1946,15 @@ export default function LandlordDocumentsPage() {
                           }
                         }}
                       >
-                        {submitting ? "Submitting…" : "Submit"}
+                        {submitting
+                          ? renewalForRequest
+                            ? "Submitting renewal…"
+                            : "Submitting…"
+                          : renewalForRequest
+                            ? "Submit Renewal"
+                            : "Submit"}
                       </Button>
                   </div>
-                </div>
             </CardContent>
           </Card>
         </div>
@@ -1526,13 +2089,19 @@ export default function LandlordDocumentsPage() {
                 </p>
               </div>
 
-              {selectedRequest.status === "Hold" && !detailsLoading && (
+              {["Hold", "Rejected"].includes(selectedRequest.status) &&
+                !detailsLoading && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                   <p className="text-xs font-semibold text-amber-900">
-                    Message from OSA
+                    {selectedRequest.status === "Rejected"
+                      ? "Reason for rejection"
+                      : "Message from OSA"}
                   </p>
                   <p className="mt-1 whitespace-pre-wrap text-xs text-amber-900">
-                    {osaHoldMessage ?? "OSA placed this request on hold without an additional message."}
+                    {osaHoldMessage ??
+                      (selectedRequest.status === "Rejected"
+                        ? "No rejection reason was provided."
+                        : "OSA placed this request on hold without an additional message.")}
                   </p>
                 </div>
               )}
@@ -1540,142 +2109,237 @@ export default function LandlordDocumentsPage() {
               <div className="space-y-2">
                 <p className="text-[0.75rem] font-semibold text-slate-900">
                   Uploaded files
-                  {selectedRequest.status === "Hold" && (
+                  {canEditAccreditationDocuments(
+                    selectedRequest.status,
+                    detailsFormData
+                  ) && (
                     <span className="ml-1 text-[0.65rem] font-normal text-muted-foreground">
-                      (add missing/updated proof)
+                      (add or replace proof)
                     </span>
                   )}
                 </p>
-                                                {/* Show uploaded documents first, then upload area for Hold */}
-                                                                {detailsFormData
-                                                                  ? (() => {
-                                                                      const docs = (detailsFormData as unknown as { documents: Array<{ fileUrl?: string; url?: string }> }).documents;
-                                                                      if (!Array.isArray(docs)) return null;
-                                                                      return docs.map((doc: any, i: number) => {
-                                                                        const d = doc as { fileUrl?: string; url?: string };
-                                                                        const url = d.fileUrl || d.url;
-                                                                        if (!url) return null;
-                                                                        return (
-                                                                          <div
-                                                                            key={url || i}
-                                                                            className="rounded-md border border-slate-200 bg-slate-50 p-2"
-                                                                          >
-                                                                            <ProofMedia
-                                                                              url={url}
-                                                                              className="max-h-40 w-full rounded object-contain"
-                                                                            />
-                                                                          </div>
-                                                                        );
-                                                                      });
-                                                                    })()
-                                                                  : null}
-                {selectedRequest.status === "Hold" ? (
-                  <div className="mt-3 space-y-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
-                    <Input
-                      type="file"
-                      multiple
-                      accept=".pdf,.jpg,.jpeg,.png,.webp"
-                      className="h-8 cursor-pointer text-xs"
-                      onChange={async (e) => {
-                        const files = Array.from(e.target.files ?? []);
-                        if (files.length === 0) return;
-                        try {
-                          const urls = await uploadDormConnectFiles(files);
-                          const documents = files.map((file, index) => ({
-                            mimeType: file.type,
-                            fileName: file.name,
-                            fileUrl: urls[index],
-                          }));
-                          const res = await fetch(
-                            `/api/landlord/accreditation/${selectedRequest.id}`,
-                            {
-                              method: "PATCH",
-                              credentials: "include",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ documents }),
-                            }
+              {detailsLoading ? (
+                <p className="text-xs text-muted-foreground">Loading uploaded files…</p>
+              ) : (
+                (() => {
+                  const formData =
+                    detailsFormData && typeof detailsFormData === "object"
+                      ? (detailsFormData as Record<string, unknown>)
+                      : {};
+                  const savedDocuments =
+                    formData.documents && typeof formData.documents === "object"
+                      ? (formData.documents as Record<string, unknown>)
+                      : {};
+                  const additionalDocuments = Array.isArray(
+                    formData.additional_documents
+                  )
+                    ? formData.additional_documents
+                    : [];
+                  const knownUrls = new Set([
+                    ...ACCREDITATION_DOCUMENTS.flatMap((document) => {
+                      const saved = readDocumentFile(
+                        savedDocuments[document.key]
+                      );
+                      return saved ? [saved.url] : [];
+                    }),
+                    ...additionalDocuments.flatMap((document) => {
+                      const saved = readDocumentFile(document);
+                      return saved ? [saved.url] : [];
+                    }),
+                  ]);
+                  const otherUrls = collectFormAttachmentUrls(detailsFormData)
+                    .filter((url) => !knownUrls.has(url));
+                  const isOnHold = selectedRequest.status === "Hold";
+                  const canEditDocuments = canEditAccreditationDocuments(
+                    selectedRequest.status,
+                    detailsFormData
+                  );
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {ACCREDITATION_DOCUMENTS.map((document) => {
+                          const saved = readDocumentFile(
+                            savedDocuments[document.key]
                           );
-                          const j = (await res.json()) as {
-                            error?: string;
-                            documentsCount?: number;
-                          };
-                          if (!res.ok) {
-                            alert(j.error ?? "Failed to add documents.");
-                          } else {
-                            const documentsCount =
-                              j.documentsCount ??
-                              selectedRequest.documentsCount + documents.length;
-                            setDetailsFormData((prev: unknown) => {
-                              const current =
-                                prev && typeof prev === "object"
-                                  ? (prev as Record<string, unknown>)
-                                  : {};
-                              const previousUrls = Array.isArray(current.attachmentUrls)
-                                ? current.attachmentUrls.filter(
-                                    (url): url is string => typeof url === "string"
-                                  )
-                                : [];
-                              return {
-                                ...current,
-                                additional_documents: [
-                                  ...(Array.isArray(current.additional_documents)
-                                    ? current.additional_documents
-                                    : []),
-                                  ...documents,
-                                ],
-                                attachmentUrls: [...previousUrls, ...urls],
-                              };
-                            });
-                            setSelectedRequest((current) =>
-                              current
-                                ? { ...current, status: "Pending", documentsCount }
-                                : current
-                            );
-                            setRequests((current) =>
-                              current.map((request) =>
-                                request.id === selectedRequest.id
-                                  ? { ...request, status: "Pending", documentsCount }
-                                  : request
-                              )
-                            );
-                            setLoadError(null);
-                          }
-                        } catch (err) {
-                          setLoadError(
-                            err instanceof Error ? err.message : "Upload failed"
+                          const selectedFile =
+                            holdDocumentFiles[document.key];
+                          return (
+                            <div
+                              key={document.key}
+                              className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2"
+                            >
+                              <p className="font-medium text-slate-800">
+                                {document.label}
+                              </p>
+                              {saved ? (
+                                <>
+                                  <p className="break-all text-[0.65rem] text-muted-foreground">
+                                    {saved.fileName}
+                                  </p>
+                                  <ProofMedia
+                                    url={saved.url}
+                                    className="max-h-40 w-full rounded object-contain"
+                                  />
+                                </>
+                              ) : (
+                                <p className="text-[0.65rem] text-muted-foreground">
+                                  No file uploaded.
+                                </p>
+                              )}
+                              {canEditDocuments && (
+                                <Input
+                                  type="file"
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                  className="h-8 cursor-pointer text-xs"
+                                  disabled={savingHoldDocuments}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) {
+                                      setHoldDocumentFiles((current) => ({
+                                        ...current,
+                                        [document.key]: file,
+                                      }));
+                                      setHoldDocumentsError(null);
+                                    }
+                                  }}
+                                />
+                              )}
+                              {selectedFile && (
+                                <p className="text-[0.65rem] text-sky-800">
+                                  Replacement selected: {selectedFile.name}
+                                </p>
+                              )}
+                            </div>
                           );
-                        }
-                        e.target.value = "";
-                      }}
-                    />
-                    <p className="text-[0.65rem] text-muted-foreground">
-                      Upload additional proof (e.g., updated floor plan, new photos,
-                      or permits). The request returns to Pending for OSA review.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {collectFormAttachmentUrls(detailsFormData).map((url) => (
-                      <div
-                        key={url}
-                        className="rounded-md border border-slate-200 bg-slate-50 p-2"
-                      >
-                        <ProofMedia
-                          url={url}
-                          className="max-h-40 w-full rounded object-contain"
-                        />
+                        })}
+                        {additionalDocuments.map((value, index) => {
+                          const saved = readDocumentFile(value);
+                          if (!saved) return null;
+                          const key = `additional:${index}`;
+                          const selectedFile = holdDocumentFiles[key];
+                          return (
+                            <div
+                              key={`${key}-${saved.url}`}
+                              className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2"
+                            >
+                              <p className="font-medium text-slate-800">
+                                Supplemental document {index + 1}
+                              </p>
+                              <p className="break-all text-[0.65rem] text-muted-foreground">
+                                {saved.fileName}
+                              </p>
+                              <ProofMedia
+                                url={saved.url}
+                                className="max-h-40 w-full rounded object-contain"
+                              />
+                              {canEditDocuments && (
+                                <Input
+                                  type="file"
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                  className="h-8 cursor-pointer text-xs"
+                                  disabled={savingHoldDocuments}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) {
+                                      setHoldDocumentFiles((current) => ({
+                                        ...current,
+                                        [key]: file,
+                                      }));
+                                      setHoldDocumentsError(null);
+                                    }
+                                  }}
+                                />
+                              )}
+                              {selectedFile && (
+                                <p className="text-[0.65rem] text-sky-800">
+                                  Replacement selected: {selectedFile.name}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {otherUrls.map((url) => (
+                          <div
+                            key={url}
+                            className="rounded-md border border-slate-200 bg-slate-50 p-2"
+                          >
+                            <ProofMedia
+                              url={url}
+                              className="max-h-40 w-full rounded object-contain"
+                            />
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-                {selectedRequest.status === "Hold" && (
-                  <p className="text-[0.65rem] text-muted-foreground">
-                    Resubmitted files appear below with a reissue marker.
-                  </p>
-                )}
+                      {canEditDocuments && (
+                        <div className="space-y-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="font-medium text-slate-800">
+                            Add supplemental documents
+                          </p>
+                          <Input
+                            type="file"
+                            multiple
+                            accept=".pdf,.jpg,.jpeg,.png,.webp"
+                            className="h-8 cursor-pointer text-xs"
+                            disabled={savingHoldDocuments}
+                            onChange={(event) => {
+                              setHoldAdditionalFiles(
+                                Array.from(event.target.files ?? [])
+                              );
+                              setHoldDocumentsError(null);
+                            }}
+                          />
+                          {holdAdditionalFiles.length > 0 && (
+                            <p className="text-[0.65rem] text-sky-800">
+                              {holdAdditionalFiles.length} new file(s) selected.
+                            </p>
+                          )}
+                          {holdDocumentsError && (
+                            <p className="text-[0.7rem] text-red-700">
+                              {holdDocumentsError}
+                            </p>
+                          )}
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={
+                                savingHoldDocuments ||
+                                (Object.keys(holdDocumentFiles).length === 0 &&
+                                  holdAdditionalFiles.length === 0)
+                              }
+                              onClick={() => void saveHoldDocuments()}
+                            >
+                              {savingHoldDocuments ? (
+                                <>
+                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  Saving…
+                                </>
+                              ) : (
+                                isOnHold
+                                  ? "Save documents and send to OSA"
+                                  : "Save changes and notify OSA"
+                              )}
+                            </Button>
+                          </div>
+                          <p className="text-[0.65rem] text-muted-foreground">
+                            Select replacements for existing files and any new
+                            proof, then save them together. The request returns
+                            to Pending for OSA review.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
               </div>
 
-              {selectedRequest.status !== "Hold" && (
+              {!canEditAccreditationDocuments(
+                selectedRequest.status,
+                detailsFormData
+              ) && (
                 <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[0.7rem] text-slate-700">
                   <p>
                     OSA staff can review the same attachments from their
@@ -1702,4 +2366,3 @@ export default function LandlordDocumentsPage() {
     </div>
   );
 }
-

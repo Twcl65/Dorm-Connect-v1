@@ -18,7 +18,7 @@ export function AppHeader({ showBack, onBack }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const isLandlord = user?.role === "Landlord";
+  const role = user?.role ?? "Student";
   const { items, loading, unread, load, markRead, markAllRead } =
     useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -97,7 +97,7 @@ export function AppHeader({ showBack, onBack }: Props) {
         onOpen={(item) => {
           if (!item.read) void markRead(item.id);
           setNotifOpen(false);
-          router.push(hrefForNotification(item.category, isLandlord));
+          router.push(hrefForNotification(item.category, role));
         }}
       />
     </>

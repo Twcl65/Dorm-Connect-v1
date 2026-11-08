@@ -12,7 +12,7 @@ export async function OPTIONS(req: Request) {
   });
 }
 
-/** Mobile sign-in: unified app — Student and Landlord roles (optional role filter). */
+/** Mobile sign-in: unified app — Student, Landlord, and Staff roles (optional role filter). */
 export async function POST(req: Request) {
   const cors = getCorsHeaders();
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const mobileRoles = ["Student", "Landlord"];
+    const mobileRoles = ["Student", "Landlord", "Staff"];
     const expectedRole = (body.role ?? "").trim();
 
     if (expectedRole) {

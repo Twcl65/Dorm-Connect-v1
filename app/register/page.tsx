@@ -22,6 +22,9 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [studentId, setStudentId] = useState("");
   const [course, setCourse] = useState("");
+  const [fatherName, setFatherName] = useState("");
+  const [motherName, setMotherName] = useState("");
+  const [location, setLocation] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [profileFile, setProfileFile] = useState<File | null>(null);
@@ -43,6 +46,9 @@ export default function RegisterPage() {
       form.set("password", password);
       form.set("studentId", studentId);
       form.set("course", course);
+      form.set("fatherName", fatherName);
+      form.set("motherName", motherName);
+      form.set("location", location);
       form.set("emergencyContactName", emergencyName);
       form.set("emergencyContactPhone", emergencyPhone);
       form.set("profileImage", profileFile);
@@ -148,6 +154,37 @@ export default function RegisterPage() {
                   onChange={(e) => setCourse(e.target.value)}
                   required
                   disabled={loading}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="fatherName">Father name</Label>
+                <Input
+                  id="fatherName"
+                  value={fatherName}
+                  onChange={(e) => setFatherName(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="motherName">Mother name</Label>
+                <Input
+                  id="motherName"
+                  value={motherName}
+                  onChange={(e) => setMotherName(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="City or municipality"
                 />
               </div>
               <div className="space-y-1">

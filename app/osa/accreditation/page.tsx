@@ -135,7 +135,9 @@ type OsaRequestRow = {
   owner: string;
   ownerEmail?: string;
   address?: string;
+  propertyId?: string | null;
   propertyName?: string | null;
+  isRenewal?: boolean;
   dateSubmitted: string;
   status: string;
   documentsCount?: number;
@@ -189,6 +191,8 @@ function RequestStatusBadge({ status }: { status: string }) {
   const colorClasses =
     status === "Pending"
       ? "bg-amber-100 text-amber-800"
+      : status === "Renewing"
+        ? "bg-orange-100 text-orange-800"
       : status === "Scheduled for Inspection"
         ? "bg-sky-100 text-sky-800"
         : status === "Recommended for Approval"
@@ -215,7 +219,9 @@ function RequestStatusBadge({ status }: { status: string }) {
 
 function DormStatusBadge({ status }: { status: string }) {
   const colorClasses =
-    status === "Active"
+    status === "Renewed"
+      ? "bg-emerald-100 text-emerald-800"
+      : status === "Active"
       ? "bg-emerald-100 text-emerald-800"
       : status === "Expiring"
         ? "bg-amber-100 text-amber-800"
@@ -321,6 +327,55 @@ export default function OsaAccreditationPage() {
   const [editCampusDirectorName, setEditCampusDirectorName] = useState("Campus Director");
 
   const [showTermsDialog, setShowTermsDialog] = useState(false);
+  const [reopenRequestAfterTerms, setReopenRequestAfterTerms] = useState(false);
+  const [termsLoading, setTermsLoading] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
+  const [terms, setTerms] = useState<{
+    title: string;
+    content: {
+      overview?: string;
+      paymentAndRemoval?: string;
+      consequences?: string;
+      examples?: string;
+    };
+  } | null>(null);
+
+  const openTermsFromRequest = () => {
+    setReopenRequestAfterTerms(true);
+    setShowRequestDialog(false);
+    setShowTermsDialog(true);
+    setTerms(null);
+    setTermsError(null);
+    setTermsLoading(true);
+    void (async () => {
+      try {
+        const query = selectedRequest?.propertyId
+          ? `?propertyId=${encodeURIComponent(selectedRequest.propertyId)}`
+          : "";
+        const res = await fetch(`/api/terms${query}`, {
+          credentials: "include",
+        });
+        const json = (await res.json()) as {
+          terms?: typeof terms;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(json.error ?? "Failed to load terms");
+        setTerms(json.terms ?? null);
+      } catch (e) {
+        setTermsError(e instanceof Error ? e.message : "Failed to load terms");
+      } finally {
+        setTermsLoading(false);
+      }
+    })();
+  };
+
+  const closeTermsDialog = () => {
+    setShowTermsDialog(false);
+    if (reopenRequestAfterTerms) {
+      setReopenRequestAfterTerms(false);
+      setShowRequestDialog(true);
+    }
+  };
 
   const requestAttachmentUrls = useMemo(
     () => collectFormAttachmentUrls(requestDetailFormData),
@@ -503,6 +558,41 @@ export default function OsaAccreditationPage() {
         y += 1.5;
       };
 
+      const writeChecklistItem = (label: string, checked: boolean) => {
+        const indent = 2;
+        const markerWidth = 5;
+        const fontSize = 10;
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(fontSize);
+        const status = checked ? "Checked" : "Not checked";
+        const lines = pdf.splitTextToSize(
+          `${label} - ${status}`,
+          contentWidth - indent - markerWidth
+        ) as string[];
+        const lineHeight = fontSize * 0.36 + 1.1;
+
+        for (const [index, line] of lines.entries()) {
+          ensureSpace(lineHeight + 1);
+          if (index === 0) {
+            const boxX = margin + indent;
+            const boxY = y - 3.1;
+            pdf.setDrawColor(checked ? 5 : 100, checked ? 150 : 116, checked ? 105 : 139);
+            pdf.setLineWidth(0.45);
+            pdf.rect(boxX, boxY, 3.2, 3.2);
+            if (checked) {
+              pdf.line(boxX + 0.6, boxY + 1.6, boxX + 1.35, boxY + 2.35);
+              pdf.line(boxX + 1.35, boxY + 2.35, boxX + 2.7, boxY + 0.7);
+            }
+          }
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(fontSize);
+          pdf.setTextColor(35, 45, 55);
+          pdf.text(line, margin + indent + markerWidth, y);
+          y += lineHeight;
+        }
+        y += 1.5;
+      };
+
       const writeSection = (title: string) => {
         ensureSpace(12);
         pdf.setFillColor(235, 242, 247);
@@ -540,7 +630,7 @@ export default function OsaAccreditationPage() {
       writeSection("Completed checklist");
       for (const item of OSA_INSPECTION_CHECKLIST) {
         const checked = savedInspectionChecklist[item.key] === true;
-        writeText(`[${checked ? "X" : " "}] ${item.label} - ${checked ? "Checked" : "Not checked"}`, { indent: 2 });
+        writeChecklistItem(item.label, checked);
       }
 
       writeSection("Documents submitted by the dormitory");
@@ -910,6 +1000,7 @@ export default function OsaAccreditationPage() {
               >
                 <option value="all">All statuses</option>
                 <option value="Pending">Pending</option>
+                <option value="Renewing">Renewing</option>
                 <option value="Scheduled for Inspection">
                   Scheduled for Inspection
                 </option>
@@ -1071,6 +1162,7 @@ export default function OsaAccreditationPage() {
               >
                 <option value="all">All statuses</option>
                 <option value="Active">Active</option>
+                <option value="Renewed">Renewed</option>
                 <option value="Expiring">Expiring</option>
                 <option value="Not Operating">Not Operating</option>
               </select>
@@ -1228,6 +1320,15 @@ export default function OsaAccreditationPage() {
             </CardHeader>
             <CardContent className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-4 text-xs text-slate-800">
               <div className="space-y-2">
+                {selectedRequest.isRenewal && (
+                  <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-[0.7rem] text-orange-900">
+                    <p className="font-semibold">Accreditation renewal</p>
+                    <p>
+                      Review the saved application information and updated
+                      documents before approving or rejecting this renewal.
+                    </p>
+                  </div>
+                )}
                 <div className="grid gap-2 md:grid-cols-[130px,1fr] items-center">
                   <span className="text-[0.7rem]">Dorm Name:</span>
                   <Input value={selectedRequest.dormName} readOnly className="h-8 text-xs" />
@@ -1273,7 +1374,7 @@ export default function OsaAccreditationPage() {
                       type="button"
                       size="sm"
                       className="h-7 text-[0.7rem] text-black bg-white"
-                      onClick={() => setShowTermsDialog(true)}
+                      onClick={openTermsFromRequest}
                     >
                       View Terms and Conditions
                     </Button>
@@ -1414,7 +1515,7 @@ export default function OsaAccreditationPage() {
                     setShowRejectDialog(true);
                   }}
                 >
-                  Reject application
+                  {selectedRequest.isRenewal ? "Decline renewal" : "Reject application"}
                 </Button>
                 <Button
                   type="button"
@@ -1425,7 +1526,7 @@ export default function OsaAccreditationPage() {
                     setShowApproveConfirm(true);
                   }}
                 >
-                  Approve
+                  {selectedRequest.isRenewal ? "Approve renewal" : "Approve"}
                 </Button>
               </div>
             </CardContent>
@@ -1550,7 +1651,7 @@ export default function OsaAccreditationPage() {
             <CardHeader className="pb-2 border-b bg-muted/40">
               <div className="flex items-center justify-between gap-3">
                 <CardTitle id="accreditation-terms-title" className="text-base font-semibold text-slate-900">
-                  Terms and Conditions
+                {terms?.title ?? "Terms and Conditions"}
                 </CardTitle>
                 <Button
                   type="button"
@@ -1558,29 +1659,56 @@ export default function OsaAccreditationPage() {
                   size="icon"
                   className="h-8 w-8"
                   aria-label="Close terms and conditions"
-                  onClick={() => setShowTermsDialog(false)}
+                  onClick={closeTermsDialog}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-4 pt-4 text-sm text-slate-700">
-              <p>
-                By submitting this accreditation application, the landlord
-                certifies that the information provided is true, complete, and
-                accurate to the best of their knowledge.
-              </p>
-              <p className="font-medium text-slate-900">The applicant acknowledges that:</p>
-              <ol className="list-decimal space-y-2 pl-5">
-                <li>Submission does not guarantee accreditation approval.</li>
-                <li>Accreditation may be revoked if compliance requirements are violated.</li>
-                <li>OSA reserves the right to inspect the premises.</li>
-              </ol>
+              {termsLoading ? (
+                <p className="text-xs text-muted-foreground">
+                  Loading terms and conditions…
+                </p>
+              ) : termsError ? (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                  {termsError}
+                </p>
+              ) : terms ? (
+                <>
+                  {[
+                    ["Overview", terms.content.overview],
+                    ["Payment and Removal", terms.content.paymentAndRemoval],
+                    ["Consequences", terms.content.consequences],
+                    ["Examples", terms.content.examples],
+                  ].map(([label, content]) =>
+                    content?.trim() ? (
+                      <section key={label} className="space-y-1">
+                        <h3 className="text-xs font-semibold text-slate-900">
+                          {label}
+                        </h3>
+                        <p className="whitespace-pre-wrap text-xs">{content}</p>
+                      </section>
+                    ) : null
+                  )}
+                  {!Object.values(terms.content).some((content) =>
+                    content?.trim()
+                  ) && (
+                    <p className="text-xs text-muted-foreground">
+                      No terms and conditions have been set for this property.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No terms and conditions are available for this property.
+                </p>
+              )}
               <div className="flex justify-end border-t pt-3">
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => setShowTermsDialog(false)}
+                  onClick={closeTermsDialog}
                 >
                   Close
                 </Button>
@@ -1988,10 +2116,11 @@ export default function OsaAccreditationPage() {
             </CardHeader>
             <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
               <p>
-                Mark{" "}
+                {selectedRequest.isRenewal ? "Approve the renewal for" : "Mark"}{" "}
                 <span className="font-semibold">{selectedRequest.dormName}</span>{" "}
-                as approved in the system. The landlord will see this status on
-                their accreditation page.
+                {selectedRequest.isRenewal
+                  ? "and renew its accreditation for another validity period."
+                  : "as approved in the system. The landlord will see this status on their accreditation page."}
               </p>
               <div className="flex justify-end gap-2 pt-2">
                 <Button
@@ -2037,7 +2166,11 @@ export default function OsaAccreditationPage() {
                     }
                   }}
                 >
-                  {actionSaving ? "Saving…" : "Confirm approve"}
+                  {actionSaving
+                    ? "Saving…"
+                    : selectedRequest.isRenewal
+                      ? "Confirm renewal"
+                      : "Confirm approve"}
                 </Button>
               </div>
             </CardContent>
@@ -2051,20 +2184,26 @@ export default function OsaAccreditationPage() {
           <Card className="w-full max-w-md border border-gray-300 bg-white">
             <CardHeader className="pb-2 border-b bg-muted/40">
               <CardTitle className="text-base font-semibold text-slate-900">
-                Reject accreditation application
+                {selectedRequest.isRenewal
+                  ? "Decline accreditation renewal"
+                  : "Reject accreditation application"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-3 text-xs text-slate-800">
               <p>
-                This permanently rejects the application for{" "}
+                This rejects the {selectedRequest.isRenewal ? "renewal" : "application"} for{" "}
                 <span className="font-semibold">{selectedRequest.dormName}</span>
-                . The landlord may submit a new application later.
+                . The landlord will see the reason and may submit updated documents again.
               </p>
               <textarea
                 className="w-full min-h-[90px] rounded-md border border-slate-300 px-2 py-1 text-xs"
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Reason for rejection (required)…"
+                placeholder={
+                  selectedRequest.isRenewal
+                    ? "Reason for declining renewal (required)…"
+                    : "Reason for rejection (required)…"
+                }
               />
               <div className="flex justify-end gap-2 pt-2">
                 <Button
@@ -2114,7 +2253,11 @@ export default function OsaAccreditationPage() {
                     }
                   }}
                 >
-                  {actionSaving ? "Saving…" : "Confirm rejection"}
+                  {actionSaving
+                    ? "Saving…"
+                    : selectedRequest.isRenewal
+                      ? "Confirm decline"
+                      : "Confirm rejection"}
                 </Button>
               </div>
             </CardContent>
@@ -2285,4 +2428,3 @@ export default function OsaAccreditationPage() {
     </div>
   );
 }
-

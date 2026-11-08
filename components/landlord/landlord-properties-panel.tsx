@@ -24,8 +24,10 @@ import {
 } from "@/components/ui/table";
 import { uploadDormConnectFile, uploadDormConnectFiles } from "@/lib/upload-file-client";
 import {
+  PROPERTY_TYPES,
   normalizeLandlordPropertyForm,
   validateLandlordPropertyForm,
+  type PropertyType,
 } from "@/lib/landlord-property-validation";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { TermsDialog } from "./terms-dialog";
@@ -66,7 +68,7 @@ type Property = {
 
 const emptyForm = () => ({
   name: "",
-  propertyType: "Dormitory" as "Dormitory" | "Boarding House",
+  propertyType: "Dormitory" as PropertyType,
   description: "",
   address: "",
   city: "",
@@ -134,7 +136,7 @@ export function LandlordPropertiesPanel({
     setEditingId(p.id);
     setForm({
       name: p.name,
-      propertyType: p.propertyType as "Dormitory" | "Boarding House",
+      propertyType: p.propertyType as PropertyType,
       description: p.description ?? "",
       address: p.address ?? "",
       city: p.city ?? "",
@@ -440,13 +442,16 @@ export function LandlordPropertiesPanel({
                       }))
                     }
                   >
-                    <option value="Dormitory">Dormitory</option>
-                    <option value="Boarding House">Boarding House</option>
+                    {PROPERTY_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
                   </select>
-                  {form.propertyType === "Boarding House" ? (
+                  {form.propertyType !== "Dormitory" ? (
                     <p className="text-[0.65rem] text-amber-800">
-                      Boarding houses require address, city, contact phone, description,
-                      total rooms, max occupancy, and a map pin.
+                      Rental property types require address, city, contact phone,
+                      description, room and capacity details, and a map pin.
                     </p>
                   ) : null}
                 </div>

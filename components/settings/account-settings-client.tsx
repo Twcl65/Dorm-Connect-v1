@@ -30,6 +30,9 @@ type ProfilePayload = {
   email: string;
   role: string;
   studentId: string | null;
+  fatherName: string | null;
+  motherName: string | null;
+  location: string | null;
   profileImageUrl: string | null;
   latestAccreditation: LatestAccreditation | null;
 };
@@ -234,6 +237,9 @@ export function AccountSettingsClient() {
 
   const [fullName, setFullName] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [fatherName, setFatherName] = useState("");
+  const [motherName, setMotherName] = useState("");
+  const [location, setLocation] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
@@ -259,6 +265,9 @@ export function AccountSettingsClient() {
       setProfile(p);
       setFullName(p.fullName);
       setStudentId(p.studentId ?? "");
+      setFatherName(p.fatherName ?? "");
+      setMotherName(p.motherName ?? "");
+      setLocation(p.location ?? "");
       setProfileImageUrl(p.profileImageUrl);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load");
@@ -281,6 +290,9 @@ export function AccountSettingsClient() {
       };
       if (profile?.role === "Student") {
         body.studentId = studentId.trim() || null;
+        body.fatherName = fatherName.trim() || null;
+        body.motherName = motherName.trim() || null;
+        body.location = location.trim() || null;
       }
       const res = await fetch("/api/account/profile", {
         method: "PATCH",
@@ -453,15 +465,45 @@ export function AccountSettingsClient() {
                 </p>
               </div>
               {profile.role === "Student" && (
-                <div className="space-y-2">
-                  <Label htmlFor="studentId">School ID</Label>
-                  <Input
-                    id="studentId"
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                    placeholder="e.g. 2024-12345"
-                  />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="studentId">School ID</Label>
+                    <Input
+                      id="studentId"
+                      value={studentId}
+                      onChange={(e) => setStudentId(e.target.value)}
+                      placeholder="e.g. 2024-12345"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fatherName">Father name</Label>
+                    <Input
+                      id="fatherName"
+                      value={fatherName}
+                      onChange={(e) => setFatherName(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="motherName">Mother name</Label>
+                    <Input
+                      id="motherName"
+                      value={motherName}
+                      onChange={(e) => setMotherName(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="location">Location</Label>
+                    <Input
+                      id="location"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="City or municipality"
+                      autoComplete="address-level2"
+                    />
+                  </div>
+                </>
               )}
               {profileMsg && (
                 <p

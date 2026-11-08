@@ -83,6 +83,8 @@ export function NotificationsModal({
                     if (!item.read) onMarkRead(item.id);
                     onOpen?.(item);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open notification: ${item.title}`}
                 >
                   <Card
                     style={

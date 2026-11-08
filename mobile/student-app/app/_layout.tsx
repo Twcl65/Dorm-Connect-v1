@@ -32,6 +32,7 @@ function RootNavigator() {
       <Stack.Screen name="register" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(landlord-tabs)" />
+      <Stack.Screen name="(staff-tabs)" />
       <Stack.Screen name="landlord" options={{ headerShown: false }} />
       <Stack.Screen
         name="landlord-profile/[id]"

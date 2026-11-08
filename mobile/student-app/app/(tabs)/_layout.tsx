@@ -1,4 +1,4 @@
-import { Tabs, Redirect } from "expo-router";
+import { Tabs, Redirect, type Href } from "expo-router";
 import { View } from "react-native";
 import { AppHeader } from "@/components/app-header";
 import { TabBarIcon } from "@/components/tab-bar-icon";
@@ -25,6 +25,8 @@ export default function TabsLayout() {
   }
   if (!user) return <Redirect href="/login" />;
   if (user.role === "Landlord") return <Redirect href="/(landlord-tabs)" />;
+  if (user.role === "Staff")
+    return <Redirect href={"/(staff-tabs)" as Href} />;
 
   return (
     <Tabs
@@ -93,6 +95,7 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="announcements" options={{ href: null }} />
     </Tabs>
   );
 }

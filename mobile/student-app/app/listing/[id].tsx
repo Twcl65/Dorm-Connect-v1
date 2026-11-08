@@ -32,7 +32,6 @@ import { useAuth } from "@/context/AuthContext";
 import { InfoGrid } from "@/components/info-grid";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  RESERVATION_TERMS,
   formatLeaseSummary,
   listingImageUrls,
   showRoomDetailsAside,
@@ -49,6 +48,28 @@ function Stars({ rating }: { rating: number }) {
   );
 }
 
+type TermsData = {
+  title: string;
+  content: {
+    overview: string;
+    paymentAndRemoval: string;
+    consequences: string;
+    examples: string;
+  };
+};
+
+type RentalType = "Bedspace" | "Whole room";
+
+const emptyTerms: TermsData = {
+  title: "Terms & Conditions",
+  content: {
+    overview: "",
+    paymentAndRemoval: "",
+    consequences: "",
+    examples: "",
+  },
+};
+
 export default function ListingDetailScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -62,7 +83,11 @@ export default function ListingDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [showTerms, setShowTerms] = useState(false);
+  const [reservationTerms, setReservationTerms] = useState<TermsData | null>(null);
+  const [termsLoading, setTermsLoading] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
   const [bookingStep, setBookingStep] = useState<0 | 2 | 3>(0);
+  const [rentalType, setRentalType] = useState<RentalType>("Bedspace");
   const [moveInDate, setMoveInDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -71,6 +96,18 @@ export default function ListingDetailScreen() {
   const ictStatus = user?.ictVerificationStatus ?? null;
   const canBook = ictStatus === "Verified";
   const hasReservation = Boolean(listing?.myReservationStatus);
+  const selectedMonthlyRent = listing
+    ? rentalType === "Whole room"
+      ? listing.price
+      : Math.round(
+          (listing.price / Math.max(1, Number(listing.capacity) || 1)) * 100
+        ) / 100
+    : 0;
+  const selectedRentalTypeAvailable =
+    !!listing &&
+    (rentalType === "Bedspace"
+      ? (listing.availableSlots ?? 0) > 0
+      : (listing.occupied ?? 0) === 0);
 
   const load = useCallback(async () => {
     if (!token || !id) return;
@@ -107,6 +144,7 @@ export default function ListingDetailScreen() {
   }, [load]);
 
   const startBooking = () => {
+    if (!listing || !token) return;
     if (!canBook) {
       Alert.alert(
         "Cannot book yet",
@@ -118,6 +156,7 @@ export default function ListingDetailScreen() {
     }
     if (hasReservation) return;
     setSubmitError(null);
+    setRentalType("Bedspace");
     const today = new Date().toISOString().slice(0, 10);
     setMoveInDate(today);
     const defaultEnd = new Date(`${today}T12:00:00`);
@@ -125,6 +164,22 @@ export default function ListingDetailScreen() {
     defaultEnd.setDate(defaultEnd.getDate() - 1);
     setLeaseEndDate(defaultEnd.toISOString().slice(0, 10));
     setShowTerms(true);
+    setTermsLoading(true);
+    setTermsError(null);
+    setReservationTerms(null);
+    void apiRequest<{ terms?: TermsData }>(
+      `/api/terms?propertyId=${encodeURIComponent(listing.propertyId)}`,
+      { token }
+    )
+      .then((response) => {
+        setReservationTerms(response.terms ?? emptyTerms);
+      })
+      .catch((e) => {
+        setTermsError(formatSignInError(e));
+      })
+      .finally(() => {
+        setTermsLoading(false);
+      });
   };
 
   const leasePreview =
@@ -158,6 +213,7 @@ export default function ListingDetailScreen() {
           leaseStart: moveInDate.trim(),
           leaseEnd: leaseEndDate.trim(),
           guestName: user?.name,
+          rentalType,
         },
       });
       setBookingStep(0);
@@ -208,7 +264,7 @@ export default function ListingDetailScreen() {
 
         <Title>{listing.name}</Title>
         <Subtitle>
-          {listing.location} · {listing.distance}
+          {`${listing.location} · ${listing.distance}`}
         </Subtitle>
         <Text style={styles.price}>
           ₱{listing.price.toLocaleString()}{" "}
@@ -347,18 +403,80 @@ export default function ListingDetailScreen() {
         )}
       </View>
 
-      {/* Terms — same as website */}
-      <Modal visible={showTerms} animationType="slide" transparent>
+      {/* Terms are loaded for this listing's property, matching landlord settings. */}
+      <Modal
+        visible={showTerms}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTerms(false)}
+      >
         <View style={[styles.modalOverlay, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Terms & conditions</Text>
-            <Text style={styles.muted}>Please read before booking {listing.name}.</Text>
-            <ScrollView style={styles.termsScroll}>
-              {RESERVATION_TERMS.map((t) => (
-                <Text key={t} style={styles.termItem}>
-                  • {t}
-                </Text>
-              ))}
+            <Text style={styles.modalTitle}>
+              {reservationTerms?.title || "Terms & conditions"}
+            </Text>
+            <Text style={styles.muted}>
+              Please read before booking {listing.name}.
+            </Text>
+            <ScrollView
+              style={styles.termsScroll}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
+              {termsLoading ? (
+                <Text style={styles.muted}>Loading landlord terms…</Text>
+              ) : termsError ? (
+                <View>
+                  <Text style={styles.error}>{termsError}</Text>
+                  <Button
+                    label="Retry loading terms"
+                    variant="outline"
+                    onPress={() => {
+                      if (!listing || !token) return;
+                      setTermsLoading(true);
+                      setTermsError(null);
+                      void apiRequest<{ terms?: TermsData }>(
+                        `/api/terms?propertyId=${encodeURIComponent(listing.propertyId)}`,
+                        { token }
+                      )
+                        .then((response) => {
+                          setReservationTerms(response.terms ?? emptyTerms);
+                        })
+                        .catch((e) => setTermsError(formatSignInError(e)))
+                        .finally(() => setTermsLoading(false));
+                    }}
+                  />
+                </View>
+              ) : reservationTerms ? (
+                <>
+                  {(
+                    [
+                      ["Overview", reservationTerms.content?.overview],
+                      [
+                        "Payment & Removal",
+                        reservationTerms.content?.paymentAndRemoval,
+                      ],
+                      ["Consequences", reservationTerms.content?.consequences],
+                      ["Examples", reservationTerms.content?.examples],
+                    ] as const
+                  ).map(([heading, body]) =>
+                    body?.trim() ? (
+                      <View key={heading} style={styles.termsSection}>
+                        <Text style={styles.termsSectionHeading}>{heading}</Text>
+                        <Text style={styles.termItem}>{body}</Text>
+                      </View>
+                    ) : null
+                  )}
+                  {!Object.values(reservationTerms.content ?? {}).some((body) =>
+                    body?.trim()
+                  ) ? (
+                    <Text style={styles.muted}>
+                      The landlord has not added custom terms for this property.
+                    </Text>
+                  ) : null}
+                </>
+              ) : null}
             </ScrollView>
             <View style={styles.modalActions}>
               <View style={styles.modalBtn}>
@@ -375,6 +493,7 @@ export default function ListingDetailScreen() {
                     setShowTerms(false);
                     setBookingStep(2);
                   }}
+                  disabled={termsLoading || !!termsError || !reservationTerms}
                 />
               </View>
             </View>
@@ -388,17 +507,55 @@ export default function ListingDetailScreen() {
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>Rental terms summary</Text>
             <Text style={styles.muted}>Review before continuing.</Text>
+            <Text style={styles.bodyStrong}>Choose rental option</Text>
+            <Pressable
+              accessibilityRole="radio"
+              accessibilityState={{ selected: rentalType === "Bedspace", disabled: (listing.availableSlots ?? 0) < 1 }}
+              style={[
+                styles.rentalOption,
+                rentalType === "Bedspace" && styles.rentalOptionSelected,
+                (listing.availableSlots ?? 0) < 1 && styles.rentalOptionDisabled,
+              ]}
+              disabled={(listing.availableSlots ?? 0) < 1}
+              onPress={() => setRentalType("Bedspace")}
+            >
+              <Text style={styles.bodyStrong}>Bedspace (shared room)</Text>
+              <Text style={styles.muted}>
+                One bed · {listing.availableSlots ?? 0} of {listing.capacity} available
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="radio"
+              accessibilityState={{ selected: rentalType === "Whole room", disabled: (listing.occupied ?? 0) > 0 }}
+              style={[
+                styles.rentalOption,
+                rentalType === "Whole room" && styles.rentalOptionSelected,
+                (listing.occupied ?? 0) > 0 && styles.rentalOptionDisabled,
+              ]}
+              disabled={(listing.occupied ?? 0) > 0}
+              onPress={() => setRentalType("Whole room")}
+            >
+              <Text style={styles.bodyStrong}>Whole room (private)</Text>
+              <Text style={styles.muted}>
+                Reserve all {listing.capacity} beds
+                {(listing.occupied ?? 0) > 0
+                  ? " · unavailable while any bed is occupied"
+                  : ""}
+              </Text>
+            </Pressable>
             <Text style={styles.body}>
-              <Text style={styles.bodyStrong}>Monthly rent: </Text>₱
-              {listing.price.toLocaleString()}
+              <Text style={styles.bodyStrong}>
+                Monthly rent ({rentalType === "Bedspace" ? "per bed" : "whole room"}):{" "}
+              </Text>
+              ₱{selectedMonthlyRent.toLocaleString()}
             </Text>
             <Text style={styles.body}>
               <Text style={styles.bodyStrong}>Advance (1 month): </Text>₱
-              {listing.price.toLocaleString()}
+              {selectedMonthlyRent.toLocaleString()}
             </Text>
             <Text style={styles.body}>
               <Text style={styles.bodyStrong}>Security deposit (1 month): </Text>₱
-              {listing.price.toLocaleString()}
+              {selectedMonthlyRent.toLocaleString()}
             </Text>
             <Text style={styles.termItem}>
               Advance is applied to your first month&apos;s rent.
@@ -421,7 +578,11 @@ export default function ListingDetailScreen() {
                 />
               </View>
               <View style={styles.modalBtn}>
-                <Button label="Next" onPress={() => setBookingStep(3)} />
+                <Button
+                  label="Next"
+                  onPress={() => setBookingStep(3)}
+                  disabled={!selectedRentalTypeAvailable}
+                />
               </View>
             </View>
           </Card>
@@ -487,7 +648,10 @@ export default function ListingDetailScreen() {
                 onPress={() => void submitReservation()}
                 loading={submitting}
                 disabled={
-                  !moveInDate.trim() || !leaseEndDate.trim() || submitting
+                  !moveInDate.trim() ||
+                  !leaseEndDate.trim() ||
+                  submitting ||
+                  !selectedRentalTypeAvailable
                 }
               />
             </View>
@@ -569,7 +733,31 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   modalTitle: { fontSize: 17, fontWeight: "700", color: colors.navy },
-  termsScroll: { maxHeight: 280, marginVertical: 12 },
+  termsScroll: {
+    maxHeight: 280,
+    flexGrow: 0,
+    flexShrink: 1,
+    marginVertical: 12,
+  },
+  termsSection: { marginBottom: 10 },
+  rentalOption: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
+  rentalOptionSelected: {
+    borderColor: colors.brand,
+    backgroundColor: colors.brandMuted,
+  },
+  rentalOptionDisabled: { opacity: 0.5 },
+  termsSectionHeading: {
+    color: colors.navy,
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
   termItem: { fontSize: 13, color: "#334155", lineHeight: 20, marginBottom: 8 },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 12 },
   modalBtn: { flex: 1 },

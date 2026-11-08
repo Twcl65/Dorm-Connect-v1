@@ -58,6 +58,8 @@ export async function GET() {
       id: string;
       property_name: string;
       room_no: string;
+      rental_type: string;
+      beds_reserved: number;
       lease_start: string;
       lease_end: string;
       status: string;
@@ -79,6 +81,7 @@ export async function GET() {
       listing_background_url: string | null;
       room_image_urls: unknown;
       payment_sent: boolean;
+      payment_confirmed: boolean;
       rent_payment_status: string;
       lease_extension_status: string | null;
       lease_extension_requested_end: string | null;
@@ -87,7 +90,7 @@ export async function GET() {
     }>(
       `SELECT s.id, p.name AS property_name, r.room_no,
               s.lease_start::text, s.lease_end::text, s.status,
-              s.monthly_rent::text,
+              s.monthly_rent::text, s.rental_type, s.beds_reserved,
               r.listing_location, p.address AS property_address, p.city AS property_city,
               u.full_name AS landlord_name,
               u.gcash_account_name, u.gcash_phone, u.gcash_qr_code_url,
@@ -103,7 +106,8 @@ export async function GET() {
               EXISTS (
                 SELECT 1 FROM public.student_payment_records pr
                 WHERE pr.reservation_id = s.id
-              ) AS payment_sent
+              ) AS payment_sent,
+              s.rent_payment_status = 'Paid' AS payment_confirmed
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
@@ -164,6 +168,8 @@ export async function GET() {
         leaseEndDate: x.lease_end.slice(0, 10),
         leaseMonths: months,
         monthlyRent: Number(x.monthly_rent),
+        rentalType: x.rental_type,
+        bedsReserved: x.beds_reserved,
         location,
         landlord: x.landlord_name,
         gcashAccountName: x.gcash_account_name?.trim() || null,
@@ -179,6 +185,7 @@ export async function GET() {
         images,
         leasePeriod: formatLeasePeriod(ls, le),
         paymentSent: x.payment_sent,
+        paymentConfirmed: x.payment_confirmed,
         stayLabel: studentStayLabel(lifecycle),
         rentLabel,
         leaseExtension: mapLeaseExtension(
@@ -219,13 +226,20 @@ export async function POST(req: Request) {
       course?: string;
       studentIdProofUrl?: string;
       reservationFee?: number;
+      rentalType?: "Bedspace" | "Whole room";
     };
     const roomId = (body.roomId ?? "").trim();
+    const rentalType = body.rentalType ?? "Bedspace";
     const leaseStart = body.leaseStart;
     const leaseEnd = body.leaseEnd;
-    if (!roomId || !leaseStart || !leaseEnd) {
+    if (
+      !roomId ||
+      !leaseStart ||
+      !leaseEnd ||
+      !["Bedspace", "Whole room"].includes(rentalType)
+    ) {
       return NextResponse.json(
-        { error: "roomId, leaseStart, and leaseEnd are required." },
+        { error: "A room, lease dates, and a valid rental type are required." },
         { status: 400 }
       );
     }
@@ -271,7 +285,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: gate.reason }, { status: 403 });
     }
 
-    const { rows: rm } = await pool.query<{
+    const client = await pool.connect();
+    let transactionOpen = false;
+    let room: {
       id: string;
       monthly_rate: string;
       status: string;
@@ -282,92 +298,130 @@ export async function POST(req: Request) {
       owner_user_id: string;
       property_name: string;
       room_no: string;
-    }>(
-      `SELECT r.id, r.room_no, r.monthly_rate::text, r.status, r.capacity,
-              r.is_listed, p.operational_status, p.name AS property_name,
-              r.owner_user_id,
-              EXISTS (
-                SELECT 1 FROM public.landlord_accreditation_requests acc
-                WHERE acc.property_id = r.property_id AND acc.status = 'Approved'
-              ) AS accredited
-       FROM public.landlord_rooms r
-       JOIN public.landlord_properties p ON p.id = r.property_id
-       WHERE r.id = $1::uuid`,
-      [roomId]
-    );
-    const room = rm[0];
-    if (
-      !room ||
-      !room.is_listed ||
-      room.status === "Maintenance" ||
-      !room.accredited ||
-      room.operational_status === "Not Operating"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "That room is not available. Only listed rooms in accredited, operating dormitories can be reserved.",
-        },
-        { status: 400 }
+    } | undefined;
+    let reservationId: string | undefined;
+    let bedsReserved = 1;
+    let monthly = 0;
+    try {
+      await client.query("BEGIN");
+      transactionOpen = true;
+      const { rows: rm } = await client.query<NonNullable<typeof room>>(
+        `SELECT r.id, r.room_no, r.monthly_rate::text, r.status, r.capacity,
+                r.is_listed, p.operational_status, p.name AS property_name,
+                r.owner_user_id,
+                EXISTS (
+                  SELECT 1 FROM public.landlord_accreditation_requests acc
+                  WHERE acc.property_id = r.property_id AND acc.status = 'Approved'
+                ) AS accredited
+         FROM public.landlord_rooms r
+         JOIN public.landlord_properties p ON p.id = r.property_id
+         WHERE r.id = $1::uuid
+         FOR UPDATE OF r`,
+        [roomId]
       );
+      room = rm[0];
+      if (
+        !room ||
+        !room.is_listed ||
+        room.status === "Maintenance" ||
+        !room.accredited ||
+        room.operational_status === "Not Operating"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "That room is not available. Only listed rooms in accredited, operating dormitories can be reserved.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const { rows: occupancyRows } = await client.query<{ c: string }>(
+        `SELECT COALESCE(SUM(occupancy.beds), 0)::text AS c
+         FROM (
+           SELECT COALESCE(sr.beds_reserved, 1) AS beds
+           FROM public.landlord_tenant_leases l
+           LEFT JOIN public.student_dorm_reservations sr
+             ON sr.id = l.student_reservation_id
+           WHERE l.room_id = $1::uuid
+             AND l.payment_status <> 'Completed'
+           UNION ALL
+           SELECT COALESCE(s.beds_reserved, 1) AS beds
+           FROM public.student_dorm_reservations s
+           WHERE s.room_id = $1::uuid
+             AND s.status IN ('Pending', 'Confirmed')
+             AND NOT EXISTS (
+               SELECT 1 FROM public.landlord_tenant_leases l
+               WHERE l.student_reservation_id = s.id
+             )
+           UNION ALL
+           SELECT 1 AS beds FROM public.landlord_reservations
+           WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
+         ) occupancy`,
+        [roomId]
+      );
+      const currentOccupancy = Number(occupancyRows[0]?.c ?? 0);
+      bedsReserved = rentalType === "Whole room" ? room.capacity : 1;
+      if (currentOccupancy + bedsReserved > room.capacity) {
+        return NextResponse.json(
+          {
+            error:
+              rentalType === "Whole room"
+                ? "The whole room can only be reserved when all beds are available."
+                : "That room is fully booked. No more bedspaces are available.",
+          },
+          { status: 400 }
+        );
+      }
+
+      monthly = Number(
+        rentalType === "Whole room"
+          ? room.monthly_rate
+          : (Number(room.monthly_rate) / room.capacity).toFixed(2)
+      );
+      const balance = Math.max(0, monthly - reservationFee);
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO public.student_dorm_reservations
+          (student_user_id, room_id, guest_name, lease_start, lease_end, monthly_rent,
+           status, notes, balance_remaining, contact_phone, emergency_contact_name,
+           emergency_contact_phone, course, student_id_proof_url, reservation_fee,
+           rental_type, beds_reserved)
+         VALUES ($1::uuid, $2::uuid, $3, $4::date, $5::date, $6, 'Pending', $7, $8,
+           $9, $10, $11, $12, $13, $14, $15, $16)
+         RETURNING id`,
+        [
+          studentId,
+          roomId,
+          guestName,
+          leaseStart.slice(0, 10),
+          leaseEnd.slice(0, 10),
+          monthly,
+          (body.notes ?? "").trim() || null,
+          balance,
+          contactPhone || null,
+          emergencyName || null,
+          emergencyPhone || null,
+          course || null,
+          proof || null,
+          reservationFee,
+          rentalType,
+          bedsReserved,
+        ]
+      );
+      reservationId = rows[0]?.id;
+      await client.query("COMMIT");
+      transactionOpen = false;
+    } finally {
+      try {
+        if (transactionOpen) await client.query("ROLLBACK");
+      } finally {
+        client.release();
+      }
     }
 
-    const { rows: occupancyRows } = await pool.query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c
-       FROM (
-         SELECT id FROM public.landlord_tenant_leases WHERE room_id = $1::uuid
-         UNION ALL
-         SELECT s.id FROM public.student_dorm_reservations s
-         WHERE s.room_id = $1::uuid
-           AND s.status IN ('Pending', 'Confirmed')
-           AND NOT EXISTS (
-             SELECT 1 FROM public.landlord_tenant_leases l
-             WHERE l.student_reservation_id = s.id
-           )
-         UNION ALL
-         SELECT id FROM public.landlord_reservations
-         WHERE room_id = $1::uuid AND status IN ('Pending', 'Confirmed')
-       ) AS occupancy`,
-      [roomId]
-    );
-    const currentOccupancy = Number(occupancyRows[0]?.c ?? 0);
-    if (currentOccupancy >= room.capacity) {
-      return NextResponse.json(
-        {
-          error:
-            "That room is fully booked. No more students can reserve this room.",
-        },
-        { status: 400 }
-      );
+    if (!room || !reservationId) {
+      return NextResponse.json({ error: "Failed to create reservation." }, { status: 500 });
     }
-
-    const monthly = Number(room.monthly_rate);
-    const balance = Math.max(0, monthly - reservationFee);
-    const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO public.student_dorm_reservations
-        (student_user_id, room_id, guest_name, lease_start, lease_end, monthly_rent,
-         status, notes, balance_remaining, contact_phone, emergency_contact_name,
-         emergency_contact_phone, course, student_id_proof_url, reservation_fee)
-       VALUES ($1::uuid, $2::uuid, $3, $4::date, $5::date, $6, 'Pending', $7, $8,
-         $9, $10, $11, $12, $13, $14)
-       RETURNING id`,
-      [
-        studentId,
-        roomId,
-        guestName,
-        leaseStart.slice(0, 10),
-        leaseEnd.slice(0, 10),
-        monthly,
-        (body.notes ?? "").trim() || null,
-        balance,
-        contactPhone || null,
-        emergencyName || null,
-        emergencyPhone || null,
-        course || null,
-        proof || null,
-        reservationFee,
-      ]
-    );
 
     await refreshRoomFromStudentReservations(pool, roomId);
 
@@ -376,7 +430,7 @@ export async function POST(req: Request) {
         pool,
         room.owner_user_id,
         "New reservation request",
-        `${session.name} requested Room ${room.room_no} at ${room.property_name}.`,
+        `${session.name} requested a ${rentalType === "Bedspace" ? "bedspace" : "whole room"} in Room ${room.room_no} at ${room.property_name}.`,
         "reservation"
       );
     } catch {
@@ -385,7 +439,10 @@ export async function POST(req: Request) {
 
     invalidateStudentUser(studentId);
     invalidateLandlordUser(room.owner_user_id);
-    return NextResponse.json({ id: rows[0]?.id }, { status: 201 });
+    return NextResponse.json(
+      { id: reservationId, monthlyRent: monthly, rentalType, bedsReserved },
+      { status: 201 }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to create reservation";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -40,6 +40,7 @@ export async function GET() {
          (SELECT COUNT(*)::text FROM public.landlord_accreditation_requests
           WHERE status IN (
             'Pending',
+            'Renewing',
             'Scheduled for Inspection',
             'Recommended for Approval',
             'Hold'

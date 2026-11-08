@@ -26,6 +26,8 @@ type Props = {
   onChange: (value: string) => void;
   disabled?: boolean;
   emptyMessage?: string;
+  hideLabel?: boolean;
+  compact?: boolean;
 };
 
 export function SelectField({
@@ -36,6 +38,8 @@ export function SelectField({
   onChange,
   disabled,
   emptyMessage,
+  hideLabel = false,
+  compact = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -48,8 +52,8 @@ export function SelectField({
   const canOpen = !disabled && options.length > 0;
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
+      {!hideLabel ? <Text style={styles.label}>{label}</Text> : null}
       <Pressable
         style={[
           styles.field,
@@ -140,6 +144,7 @@ export function SelectField({
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: 4 },
+  wrapCompact: { marginBottom: 0 },
   label: {
     fontSize: 12,
     fontWeight: "600",

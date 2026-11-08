@@ -47,8 +47,13 @@ export function ReservationDetailModal({
 
   const bottomPad = bottomNavPad(insets.bottom, 20);
   const canCancel = reservation.status === "Pending";
+  const stayLabel =
+    reservation.status === "Pending"
+      ? "Wait for landlord confirmation"
+      : reservation.stayLabel ?? reservation.status;
   const canPay =
-    reservation.status !== "Cancelled" && !reservation.paymentSent;
+    (reservation.status === "Approved" || reservation.status === "Active") &&
+    !reservation.paymentSent;
   const canManageLease =
     (reservation.status === "Approved" || reservation.status === "Active") &&
     Boolean(reservation.paymentSent);
@@ -242,22 +247,37 @@ export function ReservationDetailModal({
                               : "None",
                       },
                     ],
-                    [
-                      {
-                        label: "Stay",
-                        value: reservation.stayLabel ?? reservation.status,
-                      },
-                      {
-                        label: "Rent",
-                        value: reservation.rentLabel ?? "—",
-                      },
-                    ],
+                    reservation.status === "Pending"
+                      ? [{ label: "Status", value: "Pending" }]
+                      : [
+                          {
+                            label: "Stay",
+                            value: stayLabel,
+                          },
+                          {
+                            label: "Rent",
+                            value: reservation.rentLabel ?? "—",
+                          },
+                        ],
                     [
                       {
                         label: "Monthly rent",
                         value: `₱${reservation.monthlyRent.toLocaleString()}`,
                       },
                       { label: "Landlord", value: reservation.landlord },
+                    ],
+                    [
+                      {
+                        label: "Rental option",
+                        value:
+                          reservation.rentalType === "Whole room"
+                            ? `Whole room (${reservation.bedsReserved ?? 1} beds)`
+                            : "Bedspace (1 bed)",
+                      },
+                      {
+                        label: "Initial total",
+                        value: `₱${(reservation.monthlyRent * 3).toLocaleString()}`,
+                      },
                     ],
                   ]}
                 />
@@ -306,10 +326,13 @@ export function ReservationDetailModal({
                 onPress={() => setPayOpen(true)}
               />
             ) : null}
-            {reservation.paymentSent && !canManageLease ? (
-              <Badge
-                label="Payment submitted — waiting for approval"
-                tone="success"
+            {reservation.status === "Pending" ? (
+              <Button
+                label="Wait for landlord confirmation"
+                variant="brand"
+                fullWidth
+                disabled
+                onPress={() => {}}
               />
             ) : null}
             {canExtend ? (

@@ -3,14 +3,18 @@ import {
   Alert,
   FlatList,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import {
   apiRequest,
   formatSignInError,
+  type LandlordOnsiteRoom,
+  type LandlordPayment,
   type LandlordReservation,
 } from "@/lib/api";
 import {
@@ -18,12 +22,14 @@ import {
   Button,
   Card,
   CenteredLoader,
+  Input,
   Screen,
   Subtitle,
   Title,
   colors,
 } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
+import { SelectField } from "@/components/select-field";
 
 type TabView = "reservations" | "history";
 
@@ -67,14 +73,25 @@ export default function LandlordReservationsScreen() {
   const [historyItems, setHistoryItems] = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [editingPayments, setEditingPayments] = useState<LandlordReservation | null>(null);
-  const [paymentForm, setPaymentForm] = useState({
-    rentPaymentStatus: "",
-    depositAmount: "",
-    advanceAmount: "",
-    balanceRemaining: "",
-    nextPaymentDueDate: "",
-  });
+  const [viewingPayments, setViewingPayments] = useState<LandlordReservation | null>(null);
+  const [paymentTotal, setPaymentTotal] = useState<number | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [balanceAction, setBalanceAction] = useState<{
+    type: "advance" | "deposit";
+    action: "withdraw" | "use";
+  } | null>(null);
+  const [balanceEditType, setBalanceEditType] = useState<
+    "advance" | "deposit" | null
+  >(null);
+  const [balanceAmount, setBalanceAmount] = useState("");
+  const [balanceActionError, setBalanceActionError] = useState<string | null>(null);
+  const [balanceActionSaving, setBalanceActionSaving] = useState(false);
+  const [balanceActionLoading, setBalanceActionLoading] = useState(false);
+  const [onsiteRoom, setOnsiteRoom] = useState<LandlordOnsiteRoom | null>(null);
+  const [selectedMonthNumber, setSelectedMonthNumber] = useState("");
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectRemarks, setRejectRemarks] = useState("");
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -103,74 +120,214 @@ export default function LandlordReservationsScreen() {
     }
   }, [token]);
 
-  const resetPaymentForm = (item: LandlordReservation) => {
-    const raw = (item as unknown as Record<string, unknown>);
-    setPaymentForm({
-      rentPaymentStatus:
-        (typeof raw.rent_payment_status === "string"
-          ? raw.rent_payment_status
-          : item.rentPaymentStatus) || "",
-      depositAmount:
-        (typeof raw.deposit_amount === "string"
-          ? raw.deposit_amount
-          : item.depositAmount != null
-            ? String(item.depositAmount)
-            : "") || "",
-      advanceAmount:
-        (typeof raw.advance_amount === "string"
-          ? raw.advance_amount
-          : item.advanceAmount != null
-            ? String(item.advanceAmount)
-            : "") || "",
-      balanceRemaining:
-        (typeof raw.balance_remaining === "string"
-          ? raw.balance_remaining
-          : item.balanceRemaining != null
-            ? String(item.balanceRemaining)
-            : "") || "",
-      nextPaymentDueDate:
-        (typeof raw.next_payment_due_date === "string"
-          ? raw.next_payment_due_date
-          : "") || "",
-    });
-    setEditingPayments(item);
+  const openPaymentDetails = async (item: LandlordReservation) => {
+    setViewingPayments(item);
+    setPaymentTotal(null);
+    setDetailsError(null);
+    setBalanceAction(null);
+    setDetailsLoading(true);
+    try {
+      const res = await apiRequest<{ payments: LandlordPayment[] }>(
+        "/api/landlord/payments",
+        { token }
+      );
+      const total = (res.payments ?? [])
+        .filter(
+          (payment) =>
+            payment.reservationId === item.id &&
+            payment.status === "Paid" &&
+            payment.source !== "advance" &&
+            payment.source !== "deposit"
+        )
+        .reduce((sum, payment) => sum + Number(payment.amountValue ?? 0), 0);
+      setPaymentTotal(total);
+    } catch (e) {
+      setDetailsError(formatSignInError(e));
+    } finally {
+      setDetailsLoading(false);
+    }
   };
 
-  const savePayments = async () => {
-    if (!token || !editingPayments) return;
-    setSavingId(editingPayments.id);
+  const startBalanceAction = async (
+    type: "advance" | "deposit",
+    action: "withdraw" | "use"
+  ) => {
+    setBalanceEditType(null);
+    setBalanceAction({ type, action });
+    setBalanceAmount("");
+    setBalanceActionError(null);
+    setOnsiteRoom(null);
+    setSelectedMonthNumber("");
+    if (action !== "use" || !token || !viewingPayments) return;
+
+    setBalanceActionLoading(true);
     try {
-      await apiRequest(
-        `/api/landlord/student-reservations/${editingPayments.id}`,
-        {
-          method: "PATCH",
+      const res = await apiRequest<{ rooms: LandlordOnsiteRoom[] }>(
+        "/api/landlord/payments/onsite-hints",
+        { token }
+      );
+      const room = (res.rooms ?? []).find(
+        (candidate) => candidate.studentReservationId === viewingPayments.id
+      );
+      if (!room) {
+        setBalanceActionError("Could not find this tenant's payment schedule.");
+        return;
+      }
+      setOnsiteRoom(room);
+      setSelectedMonthNumber(
+        room.unpaidMonths[0] ? String(room.unpaidMonths[0].monthNumber) : ""
+      );
+    } catch (e) {
+      setBalanceActionError(formatSignInError(e));
+    } finally {
+      setBalanceActionLoading(false);
+    }
+  };
+
+  const submitBalanceAction = async () => {
+    if (!token || !viewingPayments || !balanceAction) return;
+    const amount = Number(balanceAmount);
+    const available =
+      balanceAction.type === "advance"
+        ? Number(viewingPayments.advanceAmount ?? 0)
+        : Number(viewingPayments.depositAmount ?? 0);
+    if (
+      balanceAction.action === "withdraw" &&
+      (!Number.isFinite(amount) || amount <= 0)
+    ) {
+      setBalanceActionError("Enter an amount greater than zero.");
+      return;
+    }
+    if (balanceAction.action === "withdraw" && amount > available) {
+      setBalanceActionError(
+        `Amount exceeds the available ${balanceAction.type === "advance" ? "advance" : "security deposit"} balance of ${formatCurrency(available)}.`
+      );
+      return;
+    }
+    if (balanceAction.action === "use" && (!onsiteRoom || !selectedMonthNumber)) {
+      setBalanceActionError("Select an unpaid rent month.");
+      return;
+    }
+
+    setBalanceActionSaving(true);
+    setBalanceActionError(null);
+    try {
+      let appliedAmount = amount;
+      if (balanceAction.action === "withdraw") {
+        await apiRequest(
+          `/api/landlord/student-reservations/${viewingPayments.id}/balance-actions`,
+          {
+            method: "POST",
+            token,
+            body: { type: balanceAction.type, amount },
+          }
+        );
+      } else {
+        const result = await apiRequest<{
+          advanceRemaining: number;
+          depositRemaining: number;
+        }>("/api/landlord/lease-payment-monitoring/apply-credit", {
+          method: "POST",
           token,
           body: {
-            rentPaymentStatus: paymentForm.rentPaymentStatus || undefined,
-            depositAmount:
-              paymentForm.depositAmount.trim() !== ""
-                ? Number(paymentForm.depositAmount)
-                : undefined,
-            advanceAmount:
-              paymentForm.advanceAmount.trim() !== ""
-                ? Number(paymentForm.advanceAmount)
-                : undefined,
-            balanceRemaining:
-              paymentForm.balanceRemaining.trim() !== ""
-                ? Number(paymentForm.balanceRemaining)
-                : undefined,
-            nextPaymentDueDate:
-              paymentForm.nextPaymentDueDate.trim() !== ""
-                ? paymentForm.nextPaymentDueDate.trim()
-                : null,
+            reservationId: viewingPayments.id,
+            fundSource: balanceAction.type,
+            monthNumber: Number(selectedMonthNumber),
+            paidOn: new Date().toISOString().slice(0, 10),
           },
-        }
+        });
+        const remaining =
+          balanceAction.type === "advance"
+            ? Number(result.advanceRemaining)
+            : Number(result.depositRemaining);
+        appliedAmount = Math.max(0, available - remaining);
+      }
+      const actionLabel =
+        balanceAction.action === "withdraw" ? "withdrawn" : "applied to rent";
+      setViewingPayments(null);
+      setBalanceAction(null);
+      try {
+        await load();
+      } catch (e) {
+        setError(formatSignInError(e));
+      }
+      Alert.alert(
+        "Balance updated",
+        `${formatCurrency(appliedAmount)} ${actionLabel}.`
       );
-      setEditingPayments(null);
+    } catch (e) {
+      setBalanceActionError(formatSignInError(e));
+    } finally {
+      setBalanceActionSaving(false);
+    }
+  };
+
+  const decideExtension = async (
+    item: LandlordReservation,
+    decision: "Approved" | "Rejected"
+  ) => {
+    if (!token) return;
+    setSavingId(item.id);
+    try {
+      await apiRequest(`/api/landlord/student-reservations/${item.id}`, {
+        method: "PATCH",
+        token,
+        body: { leaseExtension: decision },
+      });
       await load();
     } catch (e) {
       Alert.alert(
-        "Could not update payments",
+        "Could not update extension",
+        e instanceof Error ? e.message : "Request failed."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const confirmReservation = async (item: LandlordReservation) => {
+    if (!token) return;
+    setSavingId(item.id);
+    try {
+      const path =
+        item.source === "student"
+          ? `/api/landlord/student-reservations/${item.id}`
+          : `/api/landlord/reservations/${item.id}`;
+      await apiRequest(path, {
+        method: "PATCH",
+        token,
+        body: { status: "Confirmed" },
+      });
+      await load();
+    } catch (e) {
+      Alert.alert(
+        "Could not confirm reservation",
+        e instanceof Error ? e.message : "Request failed."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const rejectReservation = async (item: LandlordReservation) => {
+    if (!token || !rejectRemarks.trim()) return;
+    setSavingId(item.id);
+    try {
+      const path =
+        item.source === "student"
+          ? `/api/landlord/student-reservations/${item.id}`
+          : `/api/landlord/reservations/${item.id}`;
+      await apiRequest(path, {
+        method: "PATCH",
+        token,
+        body: { status: "Cancelled", notes: rejectRemarks.trim() },
+      });
+      setRejectingId(null);
+      setRejectRemarks("");
+      await load();
+    } catch (e) {
+      Alert.alert(
+        "Could not decline reservation",
         e instanceof Error ? e.message : "Request failed."
       );
     } finally {
@@ -253,13 +410,11 @@ export default function LandlordReservationsScreen() {
         <Button
           label="Reservations"
           variant={activeTab === "reservations" ? "sky" : "outline"}
-          size="sm"
           onPress={() => setActiveTab("reservations")}
         />
         <Button
           label="History"
           variant={activeTab === "history" ? "sky" : "outline"}
-          size="sm"
           onPress={() => setActiveTab("history")}
         />
       </View>
@@ -295,7 +450,8 @@ export default function LandlordReservationsScreen() {
               <Text style={styles.empty}>No reservations yet.</Text>
             </Card>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            return (
             <Card>
               <View style={styles.top}>
                 <Text style={styles.name}>{item.name}</Text>
@@ -314,8 +470,61 @@ export default function LandlordReservationsScreen() {
                 {item.dormName} · Room {item.roomNo}
               </Text>
               <Text style={styles.meta}>{item.leasePeriod}</Text>
+              {item.reservationStatus === "Pending" ? (
+                <Text style={styles.meta}>
+                  Awaiting your confirmation; this is not an active stay.
+                </Text>
+              ) : null}
               {item.rentPaymentStatus ? (
                 <Text style={styles.meta}>Rent: {item.rentPaymentStatus}</Text>
+              ) : null}
+              {item.reservationStatus === "Pending" ? (
+                <View style={styles.actions}>
+                  <Button
+                    label="Confirm reservation"
+                    variant="brand"
+                    onPress={() => void confirmReservation(item)}
+                    disabled={savingId === item.id}
+                    loading={savingId === item.id}
+                  />
+                  <Button
+                    label="Reject reservation"
+                    variant="danger"
+                    onPress={() => {
+                      setRejectingId(item.id);
+                      setRejectRemarks("");
+                    }}
+                    disabled={savingId === item.id}
+                  />
+                </View>
+              ) : null}
+              {rejectingId === item.id ? (
+                <View style={styles.rejectBox}>
+                  <Text style={styles.label}>Reason for rejection (required)</Text>
+                  <TextInput
+                    value={rejectRemarks}
+                    onChangeText={setRejectRemarks}
+                    placeholder="Room already reserved, no longer available, or another reason"
+                    multiline
+                    textAlignVertical="top"
+                    style={styles.rejectInput}
+                  />
+                  <View style={styles.actions}>
+                    <Button
+                      label="Back"
+                      variant="outline"
+                      onPress={() => setRejectingId(null)}
+                      disabled={savingId === item.id}
+                    />
+                    <Button
+                      label="Send rejection"
+                      variant="danger"
+                      onPress={() => void rejectReservation(item)}
+                      disabled={!rejectRemarks.trim() || savingId === item.id}
+                      loading={savingId === item.id}
+                    />
+                  </View>
+                </View>
               ) : null}
               {item.leaseExtension?.status === "Pending" ? (
                 <>
@@ -327,16 +536,6 @@ export default function LandlordReservationsScreen() {
                   </Text>
                   <View style={styles.actions}>
                     <Button
-                      label="Approve extension"
-                      variant="sky"
-                      onPress={() =>
-                        decideExtension(item, "Approved")
-                      }
-                      disabled={savingId === item.id}
-                      loading={savingId === item.id}
-                    />
-                    <View style={{ height: 8 }} />
-                    <Button
                       label="Decline extension"
                       variant="danger"
                       onPress={() =>
@@ -347,23 +546,37 @@ export default function LandlordReservationsScreen() {
                   </View>
                 </>
               ) : null}
-              <View style={styles.actions}>
-                <Button
-                  label="Edit payments"
-                  variant="outline"
-                  onPress={() => resetPaymentForm(item)}
-                />
-                <View style={{ height: 8 }} />
-                <Button
-                  label="Approve move-out"
-                  variant="danger"
-                  onPress={() => approveMoveOut(item)}
-                  disabled={savingId === item.id}
-                  loading={savingId === item.id}
-                />
-              </View>
+              {item.source === "student" &&
+              item.reservationStatus === "Confirmed" ? (
+                <View style={styles.actions}>
+                  {item.leaseExtension?.status === "Pending" ? (
+                    <Button
+                      label="Approve extend lease"
+                      variant="sky"
+                      onPress={() => decideExtension(item, "Approved")}
+                      disabled={savingId === item.id}
+                      loading={savingId === item.id}
+                    />
+                  ) : (
+                    <Button
+                      label="View Balance & Payment Details"
+                      variant="outline"
+                      onPress={() => void openPaymentDetails(item)}
+                    />
+                  )}
+                  <View style={{ height: 8 }} />
+                  <Button
+                    label="Approve move-out"
+                    variant="danger"
+                    onPress={() => approveMoveOut(item)}
+                    disabled={savingId === item.id}
+                    loading={savingId === item.id}
+                  />
+                </View>
+              ) : null}
             </Card>
-          )}
+            );
+          }}
         />
       ) : (
         <FlatList
@@ -438,91 +651,184 @@ export default function LandlordReservationsScreen() {
         />
       )}
 
-      {editingPayments ? (
+      {viewingPayments ? (
         <View style={styles.modalOverlay}>
           <Card style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit payments</Text>
-            <Text style={styles.modalSubtitle}>
-              {editingPayments.dormName} · Room {editingPayments.roomNo}
-            </Text>
-            <View style={styles.field}>
-              <Text style={styles.label}>Rent payment status</Text>
-              <View style={styles.pillRow}>
-                {["Paid", "Pending", "Overdue"].map((option) => (
-                  <Button
-                    key={option}
-                    label={option}
-                    variant={
-                      paymentForm.rentPaymentStatus === option
-                        ? "sky"
-                        : "outline"
-                    }
-                    size="sm"
-                    onPress={() =>
-                      setPaymentForm((prev) => ({
-                        ...prev,
-                        rentPaymentStatus: option,
-                      }))
-                    }
-                  />
-                ))}
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalTitle}>Balance & Payment Details</Text>
+              <Text style={styles.modalSubtitle}>
+                {viewingPayments.name} · {viewingPayments.dormName} · Room{" "}
+                {viewingPayments.roomNo}
+              </Text>
+              {detailsLoading ? (
+                <Text style={styles.meta}>Loading payment details…</Text>
+              ) : null}
+              {detailsError ? (
+                <Text style={styles.error}>{detailsError}</Text>
+              ) : null}
+
+              <View style={styles.field}>
+                <Text style={styles.label}>Total Balance</Text>
+                <Text style={styles.balanceValue}>
+                  {formatCurrency(viewingPayments.balanceRemaining ?? 0)}
+                </Text>
               </View>
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Deposit amount</Text>
-              <Button
-                label={paymentForm.depositAmount || "Set deposit"}
-                variant="outline"
-                size="sm"
-                onPress={() =>
-                  setPaymentForm((prev) => ({
-                    ...prev,
-                    depositAmount: prev.depositAmount ? "" : "0",
-                  }))
-                }
-              />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Advance amount</Text>
-              <Button
-                label={paymentForm.advanceAmount || "Set advance"}
-                variant="outline"
-                size="sm"
-                onPress={() =>
-                  setPaymentForm((prev) => ({
-                    ...prev,
-                    advanceAmount: prev.advanceAmount ? "" : "0",
-                  }))
-                }
-              />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.label}>Balance remaining</Text>
-              <Button
-                label={paymentForm.balanceRemaining || "Set balance"}
-                variant="outline"
-                size="sm"
-                onPress={() =>
-                  setPaymentForm((prev) => ({
-                    ...prev,
-                    balanceRemaining: prev.balanceRemaining ? "" : "0",
-                  }))
-                }
-              />
-            </View>
-            <View style={styles.actions}>
-              <Button
-                label="Cancel"
-                variant="outline"
-                onPress={() => setEditingPayments(null)}
-              />
-              <Button
-                label="Save"
-                variant="sky"
-                onPress={savePayments}
-                loading={savingId === editingPayments.id}
-              />
-            </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>Total Payments Made</Text>
+                <Text style={styles.balanceValue}>
+                  {paymentTotal === null
+                    ? detailsLoading
+                      ? "Loading…"
+                      : "Unavailable"
+                    : formatCurrency(paymentTotal)}
+                </Text>
+              </View>
+
+              {([
+                {
+                  type: "deposit" as const,
+                  label: "Security Deposit Amount",
+                  amount: viewingPayments.depositAmount ?? 0,
+                },
+                {
+                  type: "advance" as const,
+                  label: "Advance Payment Amount",
+                  amount: viewingPayments.advanceAmount ?? 0,
+                },
+              ]).map((balance) => (
+                <View key={balance.type} style={styles.balanceSection}>
+                  <View style={styles.balanceRow}>
+                    <View style={styles.balanceInfo}>
+                      <Text style={styles.label}>{balance.label}</Text>
+                      <Text style={styles.balanceValue}>
+                        {formatCurrency(balance.amount)}
+                      </Text>
+                    </View>
+                    <Button
+                      label={
+                        balanceEditType === balance.type ? "Done" : "Edit"
+                      }
+                      variant="outline"
+                      onPress={() =>
+                        setBalanceEditType((current) =>
+                          current === balance.type ? null : balance.type
+                        )
+                      }
+                      disabled={balanceActionSaving}
+                    />
+                  </View>
+                  {balanceEditType === balance.type ? (
+                    <View style={styles.balanceActions}>
+                      <Button
+                        label="Withdraw"
+                        variant="outline"
+                        onPress={() =>
+                          void startBalanceAction(balance.type, "withdraw")
+                        }
+                        disabled={balance.amount <= 0 || balanceActionSaving}
+                      />
+                      <Button
+                        label="Use for rent"
+                        variant="sky"
+                        onPress={() =>
+                          void startBalanceAction(balance.type, "use")
+                        }
+                        disabled={balance.amount <= 0 || balanceActionSaving}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ))}
+
+              {balanceAction ? (
+                <View style={styles.actionPanel}>
+                  <Text style={styles.label}>
+                    {balanceAction.action === "withdraw"
+                      ? "Withdraw amount"
+                      : "Apply to rent"}
+                    {" · "}
+                    {balanceAction.type === "advance"
+                      ? "Advance payment"
+                      : "Security deposit"}
+                  </Text>
+                  <Text style={styles.meta}>
+                    Available:{" "}
+                    {formatCurrency(
+                      balanceAction.type === "advance"
+                        ? viewingPayments.advanceAmount ?? 0
+                        : viewingPayments.depositAmount ?? 0
+                    )}
+                  </Text>
+                  {balanceActionLoading ? (
+                    <Text style={styles.meta}>Loading unpaid rent months…</Text>
+                  ) : null}
+                  {balanceAction.action === "use" && onsiteRoom ? (
+                    <SelectField
+                      label="Rent month due"
+                      placeholder="Select an unpaid month"
+                      value={selectedMonthNumber}
+                      options={onsiteRoom.unpaidMonths.map((month) => ({
+                        value: String(month.monthNumber),
+                        label: month.monthLabel,
+                      }))}
+                      onChange={setSelectedMonthNumber}
+                      emptyMessage="There are no unpaid rent months."
+                    />
+                  ) : null}
+                  {balanceAction.action === "withdraw" ? (
+                    <Input
+                      value={balanceAmount}
+                      onChangeText={setBalanceAmount}
+                      keyboardType="decimal-pad"
+                      placeholder="Amount (₱)"
+                    />
+                  ) : (
+                    <Text style={styles.meta}>
+                      The full amount due for the selected month will be deducted
+                      from this balance.
+                    </Text>
+                  )}
+                  {balanceActionError ? (
+                    <Text style={styles.error}>{balanceActionError}</Text>
+                  ) : null}
+                  <View style={styles.actions}>
+                    <Button
+                      label="Cancel"
+                      variant="outline"
+                      onPress={() => {
+                        setBalanceAction(null);
+                        setBalanceEditType(null);
+                      }}
+                      disabled={balanceActionSaving}
+                    />
+                    <Button
+                      label={
+                        balanceAction.action === "withdraw"
+                          ? "Confirm withdrawal"
+                          : "Apply to selected month"
+                      }
+                      variant="sky"
+                      onPress={() => void submitBalanceAction()}
+                      loading={balanceActionSaving}
+                      disabled={
+                        balanceActionLoading ||
+                        (balanceAction.action === "use" &&
+                          (!onsiteRoom || onsiteRoom.unpaidMonths.length === 0))
+                      }
+                    />
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.actions}>
+                <Button
+                  label="Close"
+                  variant="outline"
+                  onPress={() => setViewingPayments(null)}
+                  disabled={balanceActionSaving}
+                />
+              </View>
+            </ScrollView>
           </Card>
         </View>
       ) : null}
@@ -582,6 +888,39 @@ const styles = StyleSheet.create({
   field: {
     marginTop: 12,
   },
+  balanceSection: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  balanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  balanceInfo: {
+    flex: 1,
+  },
+  balanceActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+  balanceValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  actionPanel: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   label: {
     fontSize: 13,
     fontWeight: "500",
@@ -592,5 +931,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  rejectBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "#fff7ed",
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+  },
+  rejectInput: {
+    minHeight: 76,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 13,
+    color: colors.text,
+    backgroundColor: colors.white,
   },
 });

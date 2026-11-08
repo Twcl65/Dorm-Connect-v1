@@ -423,11 +423,31 @@ export async function GET() {
       gcashPhone: string | null;
       gcashQrCodeUrl: string | null;
       landlordName: string | null;
+      paymentPending: boolean;
     })[] = [];
     for (const active of activeRes) {
       const schedule = await fetchMonthlySchedule(pool, {
         reservationId: active.id,
       });
+      const { rows: submittedPayments } = await pool.query<{
+        schedule_month_number: number;
+        status: string;
+      }>(
+        `SELECT DISTINCT ON (schedule_month_number)
+                schedule_month_number, status
+         FROM public.student_payment_records
+         WHERE reservation_id = $1::uuid
+           AND student_user_id = $2::uuid
+           AND schedule_month_number IS NOT NULL
+         ORDER BY schedule_month_number, created_at DESC`,
+        [active.id, studentId]
+      );
+      const paymentStatusByMonth = new Map(
+        submittedPayments.map((payment) => [
+          payment.schedule_month_number,
+          payment.status,
+        ])
+      );
       const dormName = resolveDormDisplayName(
         active.property_name,
         active.acc_dorm_name,
@@ -444,6 +464,7 @@ export async function GET() {
           dormName,
           roomNo: active.room_no,
           reservationId: active.id,
+          paymentPending: paymentStatusByMonth.get(m.monthNumber) === "Pending",
           gcashAccountName:
             gcash?.gcashAccountName ||
             active.gcash_account_name?.trim() ||
@@ -511,13 +532,19 @@ export async function POST(req: Request) {
 
     const pool = await getPool();
     if (reservationId) {
-      const { rows } = await pool.query<{ id: string }>(
-        `SELECT id FROM public.student_dorm_reservations
+      const { rows } = await pool.query<{ id: string; status: string }>(
+        `SELECT id, status FROM public.student_dorm_reservations
          WHERE id = $1::uuid AND student_user_id = $2::uuid`,
         [reservationId, studentId]
       );
       if (!rows[0]) {
         return NextResponse.json({ error: "Reservation not found." }, { status: 404 });
+      }
+      if (rows[0].status !== "Confirmed") {
+        return NextResponse.json(
+          { error: "Wait for landlord confirmation before submitting payment." },
+          { status: 409 }
+        );
       }
     }
 

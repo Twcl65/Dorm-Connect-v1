@@ -125,7 +125,18 @@ export default function IncidentDetailScreen() {
         <ScrollView keyboardShouldPersistTaps="handled">
           <View style={styles.top}>
             <Text style={styles.title}>{report.title}</Text>
-            <Badge label={report.status} tone="warning" />
+            <Badge
+              label={report.status}
+              tone={
+                report.status === "Resolved"
+                  ? "success"
+                  : report.status === "Acknowledged"
+                    ? "warning"
+                    : report.status === "Open"
+                      ? "danger"
+                      : "default"
+              }
+            />
           </View>
           <Text style={styles.meta}>
             {new Date(report.createdAt).toLocaleString()}
@@ -177,26 +188,30 @@ export default function IncidentDetailScreen() {
 
           {report.status !== "Resolved" ? (
             <Card>
-              <Text style={styles.label}>
-                {report.landlordReply ? "Update reply" : "Reply to student"}
-              </Text>
-              <Input
-                placeholder="Write your response to the student…"
-                value={reply}
-                onChangeText={setReply}
-                multiline
-                numberOfLines={4}
-                style={styles.textArea}
-                editable={!updating}
-              />
+              {!report.landlordReply ? (
+                <>
+                  <Text style={styles.label}>Reply to student</Text>
+                  <Input
+                    placeholder="Write your response to the student…"
+                    value={reply}
+                    onChangeText={setReply}
+                    multiline
+                    numberOfLines={4}
+                    style={styles.textArea}
+                    editable={!updating}
+                  />
+                </>
+              ) : null}
               <View style={styles.actions}>
-                <Button
-                  label={report.landlordReply ? "Update reply" : "Send reply"}
-                  variant="brand"
-                  loading={updating}
-                  onPress={() => void submitReply()}
-                  disabled={!reply.trim()}
-                />
+                {!report.landlordReply ? (
+                  <Button
+                    label="Send reply"
+                    variant="brand"
+                    loading={updating}
+                    onPress={() => void submitReply()}
+                    disabled={!reply.trim()}
+                  />
+                ) : null}
                 <Button
                   label="Mark as resolved"
                   variant="outline"

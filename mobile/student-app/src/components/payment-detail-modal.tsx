@@ -151,20 +151,32 @@ export function PaymentDetailModal({ visible, payment, onClose }: Props) {
           </ScrollView>
 
           <View style={[styles.footer, { paddingBottom: bottomNavPad(insets.bottom, 20) }]}>
-            <Button
-              label="View Receipt"
-              variant="brand"
-              fullWidth
-              onPress={openOfficialReceipt}
-            />
-            <Button
-              label="Download Receipt"
-              variant="outline"
-              fullWidth
-              onPress={() => {
-                void downloadReceipt();
-              }}
-            />
+            {payment.source === "student_app" && payment.status === "Pending" ? (
+              <Button
+                label="Waiting for landlord to confirm the payment"
+                variant="brand"
+                fullWidth
+                disabled
+                onPress={() => {}}
+              />
+            ) : (
+              <>
+                <Button
+                  label="View Receipt"
+                  variant="brand"
+                  fullWidth
+                  onPress={openOfficialReceipt}
+                />
+                <Button
+                  label="Download Receipt"
+                  variant="outline"
+                  fullWidth
+                  onPress={() => {
+                    void downloadReceipt();
+                  }}
+                />
+              </>
+            )}
           </View>
         </View>
       </View>

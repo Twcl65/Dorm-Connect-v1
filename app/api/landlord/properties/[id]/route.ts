@@ -5,6 +5,7 @@ import {
 } from "@/lib/api-cache";
 import {
   normalizeLandlordPropertyPayload,
+  PROPERTY_TYPES,
   validateLandlordPropertyPayload,
   type PropertyType,
 } from "@/lib/landlord-property-validation";
@@ -80,9 +81,7 @@ export async function PATCH(req: Request, context: Ctx) {
     const merged = normalizeLandlordPropertyPayload({
       name: body.name !== undefined ? String(body.name) : current.name,
       propertyType: (body.propertyType !== undefined
-        ? body.propertyType === "Boarding House"
-          ? "Boarding House"
-          : "Dormitory"
+        ? PROPERTY_TYPES.find((type) => type === body.propertyType) ?? "Dormitory"
         : current.property_type) as PropertyType,
       description:
         body.description !== undefined
