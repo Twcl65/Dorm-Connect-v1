@@ -24,7 +24,10 @@ export default function RegisterPage() {
   const [course, setCourse] = useState("");
   const [fatherName, setFatherName] = useState("");
   const [motherName, setMotherName] = useState("");
-  const [location, setLocation] = useState("");
+  const [street, setStreet] = useState("");
+  const [province, setProvince] = useState("");
+  const [city, setCity] = useState("");
+  const [zipCode, setZipCode] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [profileFile, setProfileFile] = useState<File | null>(null);
@@ -48,7 +51,10 @@ export default function RegisterPage() {
       form.set("course", course);
       form.set("fatherName", fatherName);
       form.set("motherName", motherName);
-      form.set("location", location);
+      form.set("street", street.trim());
+      form.set("province", province.trim());
+      form.set("city", city.trim());
+      form.set("zipCode", zipCode.trim());
       form.set("emergencyContactName", emergencyName);
       form.set("emergencyContactPhone", emergencyPhone);
       form.set("profileImage", profileFile);
@@ -177,14 +183,58 @@ export default function RegisterPage() {
                 />
               </div>
               <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor="location">Location</Label>
+                <p className="text-sm font-medium">Home address</p>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="street">Street</Label>
                 <Input
-                  id="location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
+                  id="street"
+                  value={street}
+                  onChange={(e) => setStreet(e.target.value)}
                   required
                   disabled={loading}
-                  placeholder="City or municipality"
+                  maxLength={120}
+                  autoComplete="address-line1"
+                  placeholder="House number and street"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="province">Province</Label>
+                <Input
+                  id="province"
+                  value={province}
+                  onChange={(e) => setProvince(e.target.value)}
+                  required
+                  disabled={loading}
+                  maxLength={80}
+                  autoComplete="address-level1"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="city">City</Label>
+                <Input
+                  id="city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  required
+                  disabled={loading}
+                  maxLength={80}
+                  autoComplete="address-level2"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="zipCode">ZIP Code</Label>
+                <Input
+                  id="zipCode"
+                  value={zipCode}
+                  onChange={(e) => setZipCode(e.target.value)}
+                  required
+                  disabled={loading}
+                  maxLength={4}
+                  inputMode="numeric"
+                  pattern="[0-9]{4}"
+                  autoComplete="postal-code"
+                  placeholder="e.g. 9000"
                 />
               </div>
               <div className="space-y-1">

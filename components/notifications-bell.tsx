@@ -45,12 +45,18 @@ function hrefForNotification(pathname: string, category: string): string {
   return "/student";
 }
 
-export function NotificationsBell() {
+export function NotificationsBell({
+  layout,
+}: {
+  layout: "desktop" | "mobile";
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false);
+  const [layoutReady, setLayoutReady] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,10 +72,25 @@ export function NotificationsBell() {
   }, []);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const updateLayout = () => {
+      setIsDesktopLayout(mediaQuery.matches);
+      setLayoutReady(true);
+    };
+    updateLayout();
+    mediaQuery.addEventListener("change", updateLayout);
+    return () => mediaQuery.removeEventListener("change", updateLayout);
+  }, []);
+
+  const isActiveLayout =
+    layoutReady && isDesktopLayout === (layout === "desktop");
+
+  useEffect(() => {
+    if (!isActiveLayout) return;
     void load();
-    const t = setInterval(() => void load(), 900_000); // 15 minutes
+    const t = setInterval(() => void load(), 120_000); // 2 minutes
     return () => clearInterval(t);
-  }, [load]);
+  }, [isActiveLayout, load]);
 
   const unread = items.filter((n) => !n.read).length;
 

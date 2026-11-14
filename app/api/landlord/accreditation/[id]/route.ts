@@ -132,8 +132,9 @@ export async function PATCH(req: Request, context: Ctx) {
       const { rows } = await pool.query<{
         status: string;
         form_data: unknown;
+        dorm_name: string;
       }>(
-        `SELECT status, form_data
+        `SELECT status, form_data, dorm_name
          FROM public.landlord_accreditation_requests
          WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
         [id, ownerId]
@@ -212,6 +213,30 @@ export async function PATCH(req: Request, context: Ctx) {
            VALUES ($1::uuid, $2::date)`,
           [id, confirmedDate]
         );
+      }
+
+      if (body.inspectionScheduleAction === "change") {
+        try {
+          const landlordName = session.name?.trim() || "The landlord";
+          const { rows: osaAdmins } = await pool.query<{ id: string }>(
+            `SELECT id FROM public.boarding_house_app_users
+             WHERE status = 'Active' AND role = 'OSA/SAS Admin'`
+          );
+          for (const admin of osaAdmins) {
+            await insertNotification(
+              pool,
+              admin.id,
+              "Landlord proposed an inspection date",
+              `${landlordName} selected ${confirmedDate} for the on-site inspection of "${request.dorm_name ?? "the dorm"}". Review the updated request.`,
+              "accreditation"
+            );
+          }
+        } catch (notifyErr) {
+          console.error(
+            "[landlord-accreditation] Failed to notify OSA about the landlord's inspection date:",
+            notifyErr
+          );
+        }
       }
 
       return NextResponse.json({ ok: true, inspectionScheduledFor: confirmedDate });

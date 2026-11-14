@@ -145,6 +145,8 @@ type OsaRequestRow = {
   inspectionScheduleProposal?: {
     proposedDate: string;
     status: string;
+    confirmedDate?: string | null;
+    response?: string | null;
   } | null;
 };
 
@@ -1441,8 +1443,18 @@ export default function OsaAccreditationPage() {
               </div>
 
               <div className="flex flex-wrap justify-end gap-2 pt-2">
-                {selectedRequest.inspectionScheduleProposal?.proposedDate ||
-                selectedRequest.inspectionScheduledFor ? (
+                {selectedRequest.inspectionScheduleProposal?.response === "change" &&
+                (selectedRequest.inspectionScheduleProposal.confirmedDate ||
+                  selectedRequest.inspectionScheduledFor) ? (
+                  <span className="self-center text-xs font-medium text-emerald-700">
+                    Proposed Date by the Landlord:{" "}
+                    {new Date(
+                      `${selectedRequest.inspectionScheduleProposal.confirmedDate ??
+                        selectedRequest.inspectionScheduledFor}T00:00:00`
+                    ).toLocaleDateString()}
+                  </span>
+                ) : selectedRequest.inspectionScheduleProposal?.proposedDate ||
+                  selectedRequest.inspectionScheduledFor ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-medium text-emerald-700">
                       Proposed Date Done

@@ -21,6 +21,10 @@ export async function POST(req: Request) {
     let fatherName = "";
     let motherName = "";
     let location = "";
+    let street = "";
+    let province = "";
+    let city = "";
+    let zipCode = "";
     let emergencyName = "";
     let emergencyPhone = "";
     let profileBuf: Buffer | null = null;
@@ -37,6 +41,10 @@ export async function POST(req: Request) {
       fatherName = getFormString(form, "fatherName").trim();
       motherName = getFormString(form, "motherName").trim();
       location = getFormString(form, "location").trim();
+      street = getFormString(form, "street").trim();
+      province = getFormString(form, "province").trim();
+      city = getFormString(form, "city").trim();
+      zipCode = getFormString(form, "zipCode").trim();
       emergencyName = getFormString(form, "emergencyContactName").trim();
       emergencyPhone = getFormString(form, "emergencyContactPhone").trim();
       const file = getFormField(form, "profileImage");
@@ -56,6 +64,10 @@ export async function POST(req: Request) {
         fatherName?: string;
         motherName?: string;
         location?: string;
+        street?: string;
+        province?: string;
+        city?: string;
+        zipCode?: string;
         emergencyContactName?: string;
         emergencyContactPhone?: string;
       };
@@ -68,12 +80,33 @@ export async function POST(req: Request) {
       fatherName = (body.fatherName ?? "").trim();
       motherName = (body.motherName ?? "").trim();
       location = (body.location ?? "").trim();
+      street = (body.street ?? "").trim();
+      province = (body.province ?? "").trim();
+      city = (body.city ?? "").trim();
+      zipCode = (body.zipCode ?? "").trim();
       emergencyName = (body.emergencyContactName ?? "").trim();
       emergencyPhone = (body.emergencyContactPhone ?? "").trim();
     }
 
     if (!["Student", "Landlord"].includes(role)) {
       return NextResponse.json({ error: "Choose a valid account type." }, { status: 400 });
+    }
+
+    const addressParts = [street, province, city, zipCode];
+    if (role === "Student" && addressParts.some(Boolean)) {
+      if (addressParts.some((part) => !part)) {
+        return NextResponse.json(
+          { error: "Street, province, city, and ZIP code are required." },
+          { status: 400 }
+        );
+      }
+      if (!/^\d{4}$/.test(zipCode)) {
+        return NextResponse.json(
+          { error: "ZIP code must contain exactly 4 digits." },
+          { status: 400 }
+        );
+      }
+      location = `${street}, ${city}, ${province} ${zipCode}`;
     }
 
     if (
@@ -94,7 +127,7 @@ export async function POST(req: Request) {
         {
           error:
             role === "Student"
-              ? "Name, email, password (8+ chars), student ID, course, father name, mother name, location, and emergency contact name/phone are required."
+              ? "Name, email, password (8+ chars), student ID, course, father name, mother name, home address (street, province, city, and 4-digit ZIP code), and emergency contact name/phone are required."
               : "Name, email, and password (8+ chars) are required.",
         },
         { status: 400 }

@@ -32,6 +32,7 @@ export function KeyboardAwareModal({
 
   const content = scrollable ? (
     <ScrollView
+      style={styles.modalScroll}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       bounces={false}
@@ -54,17 +55,19 @@ export function KeyboardAwareModal({
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <Pressable
+        <View
           style={[styles.overlay, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}
-          onPress={onRequestClose}
         >
           <Pressable
-            style={[styles.sheet, sheetStyle]}
-            onPress={(e) => e.stopPropagation()}
+            accessibilityRole="button"
+            accessibilityLabel="Close dialog"
+            style={StyleSheet.absoluteFill}
+            onPress={onRequestClose}
           >
-            {content}
+            <View style={styles.backdrop} />
           </Pressable>
-        </Pressable>
+          <View style={[styles.sheet, sheetStyle]}>{content}</View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -108,6 +111,8 @@ export function KeyboardAwareSheet({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  modalScroll: { flex: 1 },
+  backdrop: { flex: 1 },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",

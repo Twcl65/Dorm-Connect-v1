@@ -208,7 +208,7 @@ export function RoleShell({
             </div>
 
             <div className="relative flex items-center gap-2">
-              <NotificationsBell />
+              <NotificationsBell layout="desktop" />
               <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground text-[0.65rem] font-semibold ring-2 ring-white/10">
                 {me?.profileImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -291,7 +291,7 @@ export function RoleShell({
             </div>
 
             <div className="flex items-center gap-1">
-              <NotificationsBell />
+              <NotificationsBell layout="mobile" />
               <button
                 type="button"
                 onClick={() => setIsProfileOpen((open) => !open)}

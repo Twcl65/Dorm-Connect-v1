@@ -80,6 +80,14 @@ export async function GET() {
               ? {
                   proposedDate: proposal.proposedDate,
                   status: proposal.status,
+                  confirmedDate:
+                    typeof proposal.confirmedDate === "string"
+                      ? proposal.confirmedDate
+                      : null,
+                  response:
+                    typeof proposal.response === "string"
+                      ? proposal.response
+                      : null,
                 }
               : null,
           isRenewal: typeof formData.renewal_of_request_id === "string",

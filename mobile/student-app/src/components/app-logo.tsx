@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   mark: {
     backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: "rgba(255, 151, 24, 0.25)",
+    borderColor: "rgba(15, 23, 42, 0.25)",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",

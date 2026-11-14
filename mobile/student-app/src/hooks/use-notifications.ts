@@ -58,8 +58,8 @@ export function useNotifications() {
   const { token } = useAuth();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
-  const [isInitialized, setIsInitialized] = useState(false);
+  const seenIds = useRef<Set<string>>(new Set());
+  const isInitialized = useRef(false);
   const pushTokenRegistered = useRef(false);
 
   // Register push token with server when auth token is available
@@ -93,11 +93,11 @@ export function useNotifications() {
       const newItems = res.notifications ?? [];
       setItems(newItems);
 
-      if (isInitialized) {
+      if (isInitialized.current) {
         const Notifications = await loadNotifications();
         if (Notifications) {
           for (const item of newItems) {
-            if (!item.read && !seenIds.has(item.id)) {
+            if (!item.read && !seenIds.current.has(item.id)) {
               try {
                 void Notifications.scheduleNotificationAsync({
                   content: {
@@ -122,18 +122,18 @@ export function useNotifications() {
       for (const item of newItems) {
         nextSeen.add(item.id);
       }
-      setSeenIds(nextSeen);
-      setIsInitialized(true);
+      seenIds.current = nextSeen;
+      isInitialized.current = true;
     } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [token, isInitialized, seenIds]);
+  }, [token]);
 
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 900_000); // 15 minutes
+    const t = setInterval(() => void load(), 120_000); // 2 minutes
     return () => clearInterval(t);
   }, [load]);
 

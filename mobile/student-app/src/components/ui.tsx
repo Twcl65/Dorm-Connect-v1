@@ -12,11 +12,11 @@ import {
   type ViewStyle,
 } from "react-native";
 
-/** Orange brand — header & tab bar only (matches web primary #FF9718). */
+/** Shared navy-blue brand colors for the mobile app UI. */
 export const colors = {
-  brand: "#FF9718",
-  brandDark: "#e08614",
-  brandMuted: "rgba(255, 151, 24, 0.12)",
+  brand: "#0f172a",
+  brandDark: "#020617",
+  brandMuted: "rgba(15, 23, 42, 0.12)",
   navy: "#0f172a",
   navyLight: "#1e293b",
   sky: "#0ea5e9",
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   input: {
     borderWidth: 1,
@@ -245,10 +245,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: "center",
+    marginHorizontal: 4,
+    marginVertical: 4,
   },
   buttonFullWidth: {
     alignSelf: "stretch",
     width: "100%",
+    marginHorizontal: 0,
   },
   buttonBrand: {
     backgroundColor: colors.brand,

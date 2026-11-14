@@ -2,6 +2,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -201,31 +203,38 @@ export default function AddPropertyScreen() {
 
   return (
     <Screen>
-      <Subtitle>{editing ? "Edit property" : "Add property"}</Subtitle>
-      <Text style={styles.hint}>
-        Same as the website — set address and map coordinates so rooms appear
-        correctly for students.
-      </Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loadingProperty ? (
-        <Text style={styles.meta}>Loading property information…</Text>
-      ) : null}
-
-      {requiresFullPropertyInfo(propertyType) ? (
-        <View style={styles.requirementsBox}>
-          <Text style={styles.requirementsTitle}>Property requirements</Text>
-          <Text style={styles.requirementsText}>
-            Address, city, contact phone, description, current rooms, current capacity,
-            and map coordinates are required. Use coordinates from the website map
-            pin or GPS (e.g. 8.4542, 124.6319 near USTP).
-          </Text>
-        </View>
-      ) : null}
-
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        pointerEvents={loadingProperty ? "none" : "auto"}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <ScrollView
+          style={styles.formScroll}
+          contentContainerStyle={styles.formContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          pointerEvents={loadingProperty ? "none" : "auto"}
+        >
+          <Subtitle>{editing ? "Edit property" : "Add property"}</Subtitle>
+          <Text style={styles.hint}>
+            Same as the website — set address and map coordinates so rooms appear
+            correctly for students.
+          </Text>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {loadingProperty ? (
+            <Text style={styles.meta}>Loading property information…</Text>
+          ) : null}
+
+          {requiresFullPropertyInfo(propertyType) ? (
+            <View style={styles.requirementsBox}>
+              <Text style={styles.requirementsTitle}>Property requirements</Text>
+              <Text style={styles.requirementsText}>
+                Address, city, contact phone, description, current rooms, current capacity,
+                and map coordinates are required. Use coordinates from the website map
+                pin or GPS (e.g. 8.4542, 124.6319 near USTP).
+              </Text>
+            </View>
+          ) : null}
+
         <Text style={styles.label}>Property name *</Text>
         <Input value={name} onChangeText={setName} placeholder="e.g. Sunrise Dorm" />
 
@@ -369,12 +378,16 @@ export default function AddPropertyScreen() {
             }}
           />
         </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  formScroll: { flex: 1 },
+  formContent: { flexGrow: 1, paddingBottom: 24 },
   hint: { fontSize: 12, color: colors.muted, marginBottom: 12 },
   error: { color: colors.red, fontSize: 13, marginBottom: 8, lineHeight: 18 },
   requirementsBox: {

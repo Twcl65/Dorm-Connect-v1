@@ -35,7 +35,10 @@ export default function RegisterScreen() {
   const [course, setCourse] = useState("");
   const [fatherName, setFatherName] = useState("");
   const [motherName, setMotherName] = useState("");
-  const [location, setLocation] = useState("");
+  const [street, setStreet] = useState("");
+  const [province, setProvince] = useState("");
+  const [city, setCity] = useState("");
+  const [zipCode, setZipCode] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [profilePhoto, setProfilePhoto] = useState<ProfilePhoto | null>(null);
@@ -58,11 +61,18 @@ export default function RegisterScreen() {
           !course.trim() ||
           !fatherName.trim() ||
           !motherName.trim() ||
-          !location.trim() ||
+          !street.trim() ||
+          !province.trim() ||
+          !city.trim() ||
+          !zipCode.trim() ||
           !emergencyName.trim() ||
           !emergencyPhone.trim()))
     ) {
       setError("Please fill in all required fields.");
+      return;
+    }
+    if (role === "Student" && !/^\d{4}$/.test(zipCode.trim())) {
+      setError("ZIP code must contain exactly 4 digits.");
       return;
     }
     if (password.length < 8) {
@@ -86,7 +96,10 @@ export default function RegisterScreen() {
         form.append("course", course.trim());
         form.append("fatherName", fatherName.trim());
         form.append("motherName", motherName.trim());
-        form.append("location", location.trim());
+        form.append("street", street.trim());
+        form.append("province", province.trim());
+        form.append("city", city.trim());
+        form.append("zipCode", zipCode.trim());
         form.append("emergencyContactName", emergencyName.trim());
         form.append("emergencyContactPhone", emergencyPhone.trim());
       }
@@ -240,13 +253,48 @@ export default function RegisterScreen() {
             </View>
           </View>
 
-          <Text style={styles.label}>Location</Text>
+          <Text style={styles.label}>Home address</Text>
           <Input
-            value={location}
-            onChangeText={setLocation}
+            value={street}
+            onChangeText={setStreet}
             editable={!loading}
-            placeholder="City or municipality"
+            placeholder="Street (house number and street)"
             autoCapitalize="words"
+            maxLength={120}
+            autoComplete="street-address"
+          />
+          <View style={styles.row}>
+            <View style={styles.half}>
+              <Text style={styles.label}>Province</Text>
+              <Input
+                value={province}
+                onChangeText={setProvince}
+                editable={!loading}
+                autoCapitalize="words"
+                maxLength={80}
+              />
+            </View>
+            <View style={styles.half}>
+              <Text style={styles.label}>City</Text>
+              <Input
+                value={city}
+                onChangeText={setCity}
+                editable={!loading}
+                autoCapitalize="words"
+                maxLength={80}
+              />
+            </View>
+          </View>
+          <Text style={styles.label}>ZIP Code</Text>
+          <Input
+            value={zipCode}
+            onChangeText={(value) =>
+              setZipCode(value.replace(/\D/g, "").slice(0, 4))
+            }
+            editable={!loading}
+            keyboardType="number-pad"
+            placeholder="4-digit ZIP code"
+            maxLength={4}
           />
 
           <View style={styles.row}>

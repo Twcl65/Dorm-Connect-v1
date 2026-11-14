@@ -637,6 +637,12 @@ export type LandlordAccreditationRow = {
   submittedDate: string;
   propertyId: string | null;
   expiresAt: string | null;
+  inspectionScheduledFor?: string | null;
+  inspectionScheduleProposal?: {
+    proposedDate: string;
+    status: string;
+  } | null;
+  renewalOfRequestId?: string | null;
 };
 
 export type ActivityLogRow = {
