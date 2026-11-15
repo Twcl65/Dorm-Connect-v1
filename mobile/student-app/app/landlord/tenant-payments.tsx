@@ -189,16 +189,18 @@ export default function TenantPaymentsScreen() {
                   <Text style={styles.confirmBtnText}>Confirm Payment</Text>
                 </Pressable>
               ) : null}
-              <Pressable
-                style={styles.receiptBtn}
-                onPress={() =>
-                  router.push(
-                    `/payment-receipt/${encodeURIComponent(item.id)}?source=${item.source}`
-                  )
-                }
-              >
-                <Text style={styles.receiptBtnText}>Receipt</Text>
-              </Pressable>
+              {item.source !== "deposit_release" ? (
+                <Pressable
+                  style={styles.receiptBtn}
+                  onPress={() =>
+                    router.push(
+                      `/payment-receipt/${encodeURIComponent(item.id)}?source=${item.source}`
+                    )
+                  }
+                >
+                  <Text style={styles.receiptBtnText}>Receipt</Text>
+                </Pressable>
+              ) : null}
             </View>
           </Card>
         )}

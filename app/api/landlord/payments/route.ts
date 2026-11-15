@@ -127,9 +127,10 @@ export async function GET() {
 
     function mapLandlordSource(
       entrySource: string | null
-    ): "landlord" | "advance" | "deposit" {
+    ): "landlord" | "advance" | "deposit" | "deposit_release" {
       if (entrySource === "advance") return "advance";
       if (entrySource === "deposit") return "deposit";
+      if (entrySource === "deposit_release") return "deposit_release";
       return "landlord";
     }
 
@@ -139,19 +140,31 @@ export async function GET() {
       roomNo: x.room_no ?? "—",
       propertyName: x.property_name ?? undefined,
       name: x.payer_name,
-      amount: formatPhp(Number(x.amount)),
-      amountValue: Number(x.amount),
+      amount:
+        x.entry_source === "deposit_release"
+          ? `-${formatPhp(Number(x.amount))}`
+          : formatPhp(Number(x.amount)),
+      amountValue:
+        x.entry_source === "deposit_release"
+          ? -Number(x.amount)
+          : Number(x.amount),
       method:
         x.entry_source === "advance"
           ? "Advance"
           : x.entry_source === "deposit"
             ? "Security deposit"
-            : x.method,
+            : x.entry_source === "deposit_release"
+              ? "Security deposit release"
+              : x.method,
       status: x.status as "Paid" | "Pending" | "Overdue",
       referenceNo: x.reference_no ?? undefined,
       proofOfPaymentUrl: x.proof_url ?? undefined,
       date: x.paid_on?.slice(0, 10),
-      periodLabel: getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ?? monthYearLabel(x.paid_on, x.created_at),
+      periodLabel:
+        x.entry_source === "deposit_release"
+          ? "Move-out deposit release"
+          : getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ??
+            monthYearLabel(x.paid_on, x.created_at),
       createdAt: x.created_at.toISOString(),
       tenantLeaseId: x.tenant_lease_id ?? undefined,
       reservationId: x.student_reservation_id ?? undefined,

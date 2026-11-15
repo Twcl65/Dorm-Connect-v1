@@ -362,7 +362,11 @@ export async function GET(req: Request) {
     }
 
     for (const row of landlordRows) {
-      if (row.entry_source === "advance" || row.entry_source === "deposit") {
+      if (
+        row.entry_source === "advance" ||
+        row.entry_source === "deposit" ||
+        row.entry_source === "deposit_release"
+      ) {
         continue;
       }
       const paymentMonth =

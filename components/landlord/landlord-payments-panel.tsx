@@ -26,16 +26,23 @@ type PaymentMethod =
   | "Cash"
   | "Bank Transfer"
   | "Advance"
-  | "Security deposit";
+  | "Security deposit"
+  | "Security deposit release";
 
 const ROWS_PER_PAGE = 5;
 
-type PaymentSource = "landlord" | "student" | "advance" | "deposit";
+type PaymentSource =
+  | "landlord"
+  | "student"
+  | "advance"
+  | "deposit"
+  | "deposit_release";
 
 function formatPaymentSourceLabel(source?: PaymentSource): string {
   if (source === "student") return "Student app";
   if (source === "advance") return "Advance payment";
   if (source === "deposit") return "Security deposit";
+  if (source === "deposit_release") return "Security deposit release";
   return "Manual";
 }
 
@@ -633,7 +640,8 @@ export function LandlordPaymentsPanel({
                   </TableCell>
                   <TableCell className="pr-4">
                     <div className="flex justify-center gap-2">
-                      {p.status === "Paid" && (
+                      {p.status === "Paid" &&
+                        p.source !== "deposit_release" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1099,22 +1107,28 @@ export function LandlordPaymentsPanel({
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="text-[0.75rem] font-semibold text-slate-900">
-                  Confirm Payment
-                </label>
-                <select
-                  className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
-                  value={editStatus}
-                  onChange={(e) =>
-                    setEditStatus(e.target.value as "Paid" | "Pending")
-                  }
-                  disabled={saving}
-                >
-                  <option value="Paid">Paid</option>
-                  <option value="Pending">Pending</option>
-                </select>
-              </div>
+              {selectedPayment.source === "deposit_release" ? (
+                <p className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                  This security deposit release is a final move-out transaction.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-[0.75rem] font-semibold text-slate-900">
+                    Confirm Payment
+                  </label>
+                  <select
+                    className="h-8 w-full rounded-md border border-gray-300 bg-white px-2 text-xs"
+                    value={editStatus}
+                    onChange={(e) =>
+                      setEditStatus(e.target.value as "Paid" | "Pending")
+                    }
+                    disabled={saving}
+                  >
+                    <option value="Paid">Paid</option>
+                    <option value="Pending">Pending</option>
+                  </select>
+                </div>
+              )}
 
               <div className="flex flex-wrap justify-end gap-2 pt-1">
                 <Button
@@ -1126,46 +1140,46 @@ export function LandlordPaymentsPanel({
                 >
                   Close
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  disabled={saving}
-                  onClick={async () => {
-                    if (!selectedPayment) return;
-                    setSaving(true);
-                    try {
-                      const res = await fetch(
-                        `/api/landlord/payments/${selectedPayment.id}`,
-                        {
-                          method: "PATCH",
-                          credentials: "include",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            status: editStatus,
-                            method: editMethod,
-                            amount: editAmount,
-                            paidOn: editDate || null,
-                          }),
-                        }
-                      );
-                      const j = (await res.json()) as { error?: string };
-                      if (!res.ok) throw new Error(j.error ?? "Failed");
-                      setSaving(false);
-                      setShowDetailsDialog(false);
-                      await loadData();
-                    } catch (e) {
-                      setSaving(false);
-                      setLoadError(
-                        e instanceof Error ? e.message : "Failed to save"
-                      );
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  {saving ? "Saving…" : "Save changes"}
-                </Button>
+                {selectedPayment.source !== "deposit_release" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    disabled={saving}
+                    onClick={async () => {
+                      if (!selectedPayment) return;
+                      setSaving(true);
+                      try {
+                        const res = await fetch(
+                          `/api/landlord/payments/${selectedPayment.id}`,
+                          {
+                            method: "PATCH",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              status: editStatus,
+                              method: editMethod,
+                              amount: editAmount,
+                              paidOn: editDate || null,
+                            }),
+                          }
+                        );
+                        const j = (await res.json()) as { error?: string };
+                        if (!res.ok) throw new Error(j.error ?? "Failed");
+                        setShowDetailsDialog(false);
+                        await loadData();
+                      } catch (e) {
+                        setLoadError(
+                          e instanceof Error ? e.message : "Failed to save"
+                        );
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    {saving ? "Saving…" : "Save changes"}
+                  </Button>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -1433,15 +1447,17 @@ export function LandlordPaymentsPanel({
                           </TableCell>
                           <TableCell className="pr-4">
                             <div className="flex justify-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
-                                onClick={() => void openReceipt(p)}
-                              >
-                                <FileText className="h-3 w-3" />
-                                View Receipt
-                              </Button>
+                              {p.source !== "deposit_release" ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-[0.7rem] flex items-center gap-1"
+                                  onClick={() => void openReceipt(p)}
+                                >
+                                  <FileText className="h-3 w-3" />
+                                  View Receipt
+                                </Button>
+                              ) : null}
                               <Button
                                 variant="outline"
                                 size="sm"

@@ -522,7 +522,12 @@ export type LandlordReservation = {
 
 export type LandlordPayment = {
   id: string;
-  source: "landlord" | "student" | "advance" | "deposit";
+  source:
+    | "landlord"
+    | "student"
+    | "advance"
+    | "deposit"
+    | "deposit_release";
   roomNo: string;
   propertyName?: string;
   name: string;

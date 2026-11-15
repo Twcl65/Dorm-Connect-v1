@@ -26,6 +26,7 @@ type Props = {
   item: LandlordAccreditationRow | null;
   hasRenewal: boolean;
   onClose: () => void;
+  onRenew: () => void;
   onUpdated: () => Promise<void>;
 };
 
@@ -184,6 +185,7 @@ export function LandlordAccreditationDetailsModal({
   item,
   hasRenewal,
   onClose,
+  onRenew,
   onUpdated,
 }: Props) {
   const { token } = useAuth();
@@ -398,43 +400,6 @@ export function LandlordAccreditationDetailsModal({
           : "Your requested inspection date was sent to OSA."
       );
       await refreshAfterAction();
-    } catch (e) {
-      setError(formatSignInError(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const renewAccreditation = async () => {
-    if (!token || !item) return;
-    setSaving(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const existing =
-        details ??
-        (await apiRequest<AccreditationDetails>(
-          `/api/landlord/accreditation/${item.id}`,
-          { token }
-        ));
-      if (!existing.propertyId || !existing.formData) {
-        throw new Error(
-          "The existing application is missing the information needed for renewal."
-        );
-      }
-      await apiRequest("/api/landlord/accreditation", {
-        token,
-        method: "POST",
-        body: {
-          propertyId: existing.propertyId,
-          renewalOfRequestId: item.id,
-          dormName: existing.dormName,
-          address: existing.address,
-          formData: existing.formData,
-        },
-      });
-      setNotice("Your accreditation renewal was sent to OSA.");
-      await onUpdated();
     } catch (e) {
       setError(formatSignInError(e));
     } finally {
@@ -750,8 +715,8 @@ export function LandlordAccreditationDetailsModal({
                 <Button
                   label="Renew accreditation"
                   variant="brand"
-                  loading={saving}
-                  onPress={() => void renewAccreditation()}
+                  disabled={saving}
+                  onPress={onRenew}
                 />
               ) : null}
             </>

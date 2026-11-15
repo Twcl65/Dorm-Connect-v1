@@ -5,6 +5,18 @@ import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 
+type ReportStatus = "Open" | "Acknowledged" | "In Review" | "Resolved";
+
+function canTransitionStatus(current: string, next: ReportStatus): boolean {
+  if (current === next) return true;
+  if (current === "Open") return next === "Acknowledged";
+  if (current === "Acknowledged") {
+    return next === "In Review" || next === "Resolved";
+  }
+  if (current === "In Review") return next === "Resolved";
+  return false;
+}
+
 async function ensureOsaTenantReportsTable() {
   const pool = await getPool();
   await pool.query(`
@@ -85,47 +97,137 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   try {
-    const body = (await req.json()) as { id?: string; status?: string; osaReply?: string };
+    const body = (await req.json()) as {
+      id?: string;
+      status?: string;
+      osaReply?: string;
+    };
     const id = body.id ?? "";
-    const status = body.status;
+    const statusValue = body.status;
+    const status = statusValue as ReportStatus | undefined;
     const osaReply = body.osaReply;
     
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
       return NextResponse.json({ error: "Invalid id." }, { status: 400 });
     }
-    if (status && status !== "Open" && status !== "In Review" && status !== "Resolved") {
+    if (
+      statusValue !== undefined &&
+      statusValue !== "Open" &&
+      statusValue !== "Acknowledged" &&
+      statusValue !== "In Review" &&
+      statusValue !== "Resolved"
+    ) {
       return NextResponse.json({ error: "Invalid status." }, { status: 400 });
     }
     const pool = await ensureOsaTenantReportsTable();
-    
-    let query = `UPDATE public.landlord_osa_tenant_reports SET updated_at = now()`;
-    const params: any[] = [];
-    let paramIdx = 1;
+    const client = await pool.connect();
+    let transactionStarted = false;
+    let report: {
+      owner_user_id: string;
+      tenant_name: string;
+      status: string;
+    };
+    let previousStatus: string;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      const { rows: currentRows } = await client.query<{
+        owner_user_id: string;
+        tenant_name: string;
+        status: string;
+      }>(
+        `SELECT owner_user_id, tenant_name, status
+         FROM public.landlord_osa_tenant_reports
+         WHERE id = $1::uuid
+         FOR UPDATE`,
+        [id]
+      );
+      if (!currentRows[0]) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return NextResponse.json({ error: "Not found." }, { status: 404 });
+      }
 
-    if (status) {
-      query += `, status = $${paramIdx++}`;
-      params.push(status);
+      previousStatus = currentRows[0].status;
+      if (
+        status &&
+        !canTransitionStatus(previousStatus, status)
+      ) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return NextResponse.json(
+          {
+            error:
+              previousStatus === "Open"
+                ? "Acknowledge this report before moving it to another status."
+                : "This report cannot move to the requested status.",
+          },
+          { status: 409 }
+        );
+      }
+      if (osaReply !== undefined && previousStatus === "Open" && status !== "Acknowledged") {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return NextResponse.json(
+          { error: "Acknowledge this report before replying." },
+          { status: 409 }
+        );
+      }
+
+      let query = `UPDATE public.landlord_osa_tenant_reports SET updated_at = now()`;
+      const params: unknown[] = [];
+      let paramIdx = 1;
+      if (status) {
+        query += `, status = $${paramIdx++}`;
+        params.push(status);
+      }
+      if (osaReply !== undefined) {
+        query += `, osa_reply = $${paramIdx++}, osa_replied_at = now()`;
+        params.push(osaReply);
+      }
+      query += ` WHERE id = $${paramIdx}::uuid
+        RETURNING owner_user_id, tenant_name, status`;
+      params.push(id);
+
+      const { rows } = await client.query<{
+        owner_user_id: string;
+        tenant_name: string;
+        status: string;
+      }>(query, params);
+      if (!rows[0]) {
+        await client.query("ROLLBACK");
+        transactionStarted = false;
+        return NextResponse.json({ error: "Not found." }, { status: 404 });
+      }
+      report = rows[0];
+      await client.query("COMMIT");
+      transactionStarted = false;
+    } catch (e) {
+      if (transactionStarted) await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
     }
-    if (osaReply !== undefined) {
-      query += `, osa_reply = $${paramIdx++}, osa_replied_at = now()`;
-      params.push(osaReply);
-    }
 
-    query += ` WHERE id = $${paramIdx}::uuid RETURNING owner_user_id, tenant_name`;
-    params.push(id);
-
-    const { rows } = await pool.query<{ owner_user_id: string; tenant_name: string }>(query, params);
-    if (!rows[0]) {
-      return NextResponse.json({ error: "Not found." }, { status: 404 });
-    }
-
-    if (osaReply) {
+    if (previousStatus === "Open" && report.status === "Acknowledged") {
       try {
         await insertNotification(
           pool,
-          rows[0].owner_user_id,
+          report.owner_user_id,
+          "Tenant report acknowledged",
+          `OSA acknowledged your report regarding tenant ${report.tenant_name}.`,
+          "tenant-report"
+        );
+      } catch {
+        /* non-fatal */
+      }
+    } else if (osaReply) {
+      try {
+        await insertNotification(
+          pool,
+          report.owner_user_id,
           "OSA Replied to Report",
-          `OSA has replied to your report regarding tenant ${rows[0].tenant_name}.`,
+          `OSA has replied to your report regarding tenant ${report.tenant_name}.`,
           "tenant-report"
         );
       } catch {

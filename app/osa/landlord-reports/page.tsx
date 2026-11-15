@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, ShieldAlert, MessageSquare } from "lucide-react";
 
-type ReportStatus = "Open" | "In Review" | "Resolved";
+type ReportStatus = "Open" | "Acknowledged" | "In Review" | "Resolved";
 
 type OSAReport = {
   id: string;
@@ -42,6 +42,7 @@ export default function LandlordReportsPage() {
   const [replyStatus, setReplyStatus] = useState<ReportStatus>("In Review");
   const [submitting, setSubmitting] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -97,10 +98,41 @@ export default function LandlordReportsPage() {
     }
   };
 
+  const acknowledgeReport = async (report: OSAReport) => {
+    setAcknowledgingId(report.id);
+    setError(null);
+    try {
+      const res = await fetch("/api/osa/tenant-reports", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: report.id,
+          status: "Acknowledged",
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to acknowledge report");
+      setReports((current) =>
+        current.map((item) =>
+          item.id === report.id
+            ? { ...item, status: "Acknowledged" }
+            : item
+        )
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to acknowledge report");
+    } finally {
+      setAcknowledgingId(null);
+    }
+  };
+
   const getStatusColor = (status: ReportStatus) => {
     switch (status) {
       case "Resolved":
         return "bg-emerald-100 text-emerald-800 border-emerald-200";
+      case "Acknowledged":
+        return "bg-indigo-100 text-indigo-800 border-indigo-200";
       case "In Review":
         return "bg-sky-100 text-sky-800 border-sky-200";
       default:
@@ -196,19 +228,41 @@ export default function LandlordReportsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2 text-[0.7rem]"
-                            onClick={() => {
-                              setSelectedReport(report);
-                              setReplyText(report.osaReply || "");
-                              setReplyStatus(report.status === "Open" ? "In Review" : report.status);
-                              setShowReplyDialog(true);
-                            }}
-                          >
-                            View & Reply
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            {report.status === "Open" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[0.7rem]"
+                                onClick={() => void acknowledgeReport(report)}
+                                disabled={acknowledgingId === report.id}
+                              >
+                                {acknowledgingId === report.id
+                                  ? "Acknowledging…"
+                                  : "Acknowledge"}
+                              </Button>
+                            ) : null}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-[0.7rem]"
+                              onClick={() => {
+                                setSelectedReport(report);
+                                setReplyText(report.osaReply || "");
+                                setReplyStatus(
+                                  report.status === "Open"
+                                    ? "Acknowledged"
+                                    : report.status === "Acknowledged"
+                                      ? "In Review"
+                                      : report.status
+                                );
+                                setReplyError(null);
+                                setShowReplyDialog(true);
+                              }}
+                            >
+                              View & Reply
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -289,9 +343,18 @@ export default function LandlordReportsPage() {
                     value={replyStatus}
                     onChange={(e) => setReplyStatus(e.target.value as ReportStatus)}
                   >
-                    <option value="Open">Open</option>
-                    <option value="In Review">In Review</option>
-                    <option value="Resolved">Resolved</option>
+                    {(selectedReport.status === "Open"
+                      ? ["Acknowledged"]
+                      : selectedReport.status === "Acknowledged"
+                        ? ["Acknowledged", "In Review", "Resolved"]
+                        : selectedReport.status === "In Review"
+                          ? ["In Review", "Resolved"]
+                          : ["Resolved"]
+                    ).map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -328,7 +391,12 @@ export default function LandlordReportsPage() {
                   disabled={submitting}
                 >
                   {submitting ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-                  Save Response
+                  {selectedReport.status === "Open" &&
+                  replyStatus === "Acknowledged"
+                    ? replyText.trim()
+                      ? "Acknowledge & Reply"
+                      : "Acknowledge Report"
+                    : "Save Response"}
                 </Button>
               </div>
             </CardContent>

@@ -9,19 +9,23 @@ matched_student_landlord_payments AS (
     ON s_lease.id = ltl.student_reservation_id
     AND s_lease.student_user_id = $1::uuid
     AND s_lease.status <> 'Cancelled'
-  WHERE s_lease.id IS NOT NULL
-     OR (
-       lp.room_id IS NOT NULL
-       AND EXISTS (
-         SELECT 1
-         FROM public.student_dorm_reservations sr
-         WHERE sr.student_user_id = $1::uuid
-           AND sr.status <> 'Cancelled'
-           AND sr.room_id = lp.room_id
-           AND (
-             lower(trim(lp.payer_name)) = lower(trim(stu.full_name))
-             OR lower(trim(lp.payer_name)) = lower(trim(sr.guest_name))
+  WHERE COALESCE(lp.entry_source, 'manual') <> 'deposit_release'
+    AND (
+      s_lease.id IS NOT NULL
+      OR (
+        lp.room_id IS NOT NULL
+        AND EXISTS (
+           SELECT 1
+           FROM public.student_dorm_reservations sr
+           WHERE sr.student_user_id = $1::uuid
+             AND sr.status <> 'Cancelled'
+             AND sr.room_id = lp.room_id
+             AND (
+               lower(trim(lp.payer_name)) = lower(trim(stu.full_name))
+               OR lower(trim(lp.payer_name)) = lower(trim(sr.guest_name))
+             )
            )
-       )
-     )
+        )
+      )
+    )
 )`;

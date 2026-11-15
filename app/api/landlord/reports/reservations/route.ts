@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireOwner } from "@/lib/require-owner";
 import { buildDocxReport } from "../_docx";
+import { buildPdfReport } from "../_pdf";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await requireOwner();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -105,7 +106,7 @@ export async function GET() {
       })),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    const buf = await buildDocxReport({
+    const report = {
       title: "Reservations Report",
       subtitle: "Manual and student reservations recorded for your dorm.",
       columns: [
@@ -122,14 +123,19 @@ export async function GET() {
         { key: "rentPaymentStatus", label: "Rent Status" },
       ],
       rows: data,
-    });
+    };
+    const asPdf = new URL(req.url).searchParams.get("format") === "pdf";
+    const buf = await (asPdf
+      ? buildPdfReport(report)
+      : buildDocxReport(report));
 
     return new Response(buf, {
       status: 200,
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="reservations-report.docx"`,
+        "Content-Type": asPdf
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="reservations-report.${asPdf ? "pdf" : "docx"}"`,
       },
     });
   } catch (e) {

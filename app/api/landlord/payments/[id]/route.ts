@@ -46,9 +46,10 @@ export async function PATCH(req: Request, context: Ctx) {
       paid_on: string | null;
       room_id: string | null;
       tenant_lease_id: string | null;
+      entry_source: string | null;
     }>(
       `SELECT payer_name, amount::text, method, status, reference_no, proof_url,
-              paid_on::text, room_id, tenant_lease_id
+              paid_on::text, room_id, tenant_lease_id, entry_source
        FROM public.landlord_payments
        WHERE owner_user_id = $1::uuid AND id = $2::uuid`,
       [ownerId, id]
@@ -57,6 +58,12 @@ export async function PATCH(req: Request, context: Ctx) {
     if (cur[0]) {
       // --- Landlord payment update ---
       const c = cur[0];
+      if (c.entry_source === "deposit_release") {
+        return NextResponse.json(
+          { error: "Security deposit release transactions cannot be edited." },
+          { status: 409 }
+        );
+      }
       let status = c.status;
       if (
         body.status === "Paid" ||

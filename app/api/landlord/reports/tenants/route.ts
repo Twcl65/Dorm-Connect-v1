@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireOwner } from "@/lib/require-owner";
 import { buildDocxReport } from "../_docx";
+import { buildPdfReport } from "../_pdf";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await requireOwner();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -65,7 +66,7 @@ export async function GET() {
       updatedAt: r.updated_at.toISOString(),
     }));
 
-    const buf = await buildDocxReport({
+    const report = {
       title: "Tenants Information Report",
       subtitle: "Student/tenant profile information (no lease/payment fields).",
       columns: [
@@ -79,14 +80,19 @@ export async function GET() {
         { key: "roomNo", label: "Room" },
       ],
       rows: data,
-    });
+    };
+    const asPdf = new URL(req.url).searchParams.get("format") === "pdf";
+    const buf = await (asPdf
+      ? buildPdfReport(report)
+      : buildDocxReport(report));
 
     return new Response(buf, {
       status: 200,
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="tenants-report.docx"`,
+        "Content-Type": asPdf
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="tenants-report.${asPdf ? "pdf" : "docx"}"`,
       },
     });
   } catch (e) {

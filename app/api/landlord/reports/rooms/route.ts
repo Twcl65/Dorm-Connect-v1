@@ -6,6 +6,7 @@ import {
 } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
 import { buildDocxReport } from "../_docx";
+import { buildPdfReport } from "../_pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ function formatPeriod(a: string, b: string) {
   return `${fmt(aa)} - ${fmt(bb)}`;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await requireOwner();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
@@ -103,7 +104,7 @@ export async function GET() {
       paymentStatus: r.payment_status ?? "",
     }));
 
-    const buf = await buildDocxReport({
+    const report = {
       title: "Room Information Report",
       subtitle:
         "Room status, tenant assignment (when available), and room/listing details.",
@@ -121,14 +122,19 @@ export async function GET() {
         { key: "roomDetails", label: "Room Details" },
       ],
       rows: data,
-    });
+    };
+    const asPdf = new URL(req.url).searchParams.get("format") === "pdf";
+    const buf = await (asPdf
+      ? buildPdfReport(report)
+      : buildDocxReport(report));
 
     return new Response(buf, {
       status: 200,
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="rooms-report.docx"`,
+        "Content-Type": asPdf
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="rooms-report.${asPdf ? "pdf" : "docx"}"`,
         "X-DormConnect-Property": propertyName,
       },
     });

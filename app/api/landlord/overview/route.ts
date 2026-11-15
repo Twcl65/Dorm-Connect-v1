@@ -59,13 +59,24 @@ export async function GET() {
              COUNT(*) FILTER (WHERE status = 'Confirmed')::text AS confirmed,
              COUNT(*) FILTER (WHERE status = 'Pending')::text AS pending,
              COUNT(*) FILTER (WHERE status = 'Cancelled')::text AS cancelled
-           FROM public.landlord_reservations WHERE owner_user_id = $1::uuid`,
+             FROM (
+               SELECT status
+               FROM public.landlord_reservations
+               WHERE owner_user_id = $1::uuid
+               UNION ALL
+               SELECT s.status
+               FROM public.student_dorm_reservations s
+               JOIN public.landlord_rooms r ON r.id = s.room_id
+               WHERE r.owner_user_id = $1::uuid
+                 AND s.status <> 'MoveOut'
+             ) reservations`,
           [ownerId]
         ),
         pool.query<{ s: string | null }>(
           `SELECT COALESCE(SUM(amount), 0)::text AS s
            FROM public.landlord_payments
            WHERE owner_user_id = $1::uuid AND status = 'Paid'
+             AND COALESCE(entry_source, 'manual') <> 'deposit_release'
              AND paid_on IS NOT NULL
              AND date_trunc('month', paid_on AT TIME ZONE 'UTC') = date_trunc('month', CURRENT_DATE AT TIME ZONE 'UTC')`,
           [ownerId]

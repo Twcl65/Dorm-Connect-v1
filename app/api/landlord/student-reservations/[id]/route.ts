@@ -46,6 +46,7 @@ export async function PATCH(req: Request, context: Ctx) {
       leaseExtension?: "Approved" | "Rejected";
       moveOut?: boolean;
       moveOutDate?: string;
+      releaseSecurityDeposit?: boolean;
     };
 
     const pool = await getPool();
@@ -85,75 +86,161 @@ export async function PATCH(req: Request, context: Ctx) {
     const row = cur[0];
 
     if (body.moveOut === true) {
-      const moveOutDate =
-        body.moveOutDate?.trim()?.slice(0, 10) ??
-        row.lease_end.slice(0, 10);
-      await pool.query(
-        `UPDATE public.student_dorm_reservations
-         SET status = 'MoveOut',
-             move_out_date = $1::date,
-             moved_out_at = now(),
-             updated_at = now()
-         WHERE id = $2::uuid`,
-        [moveOutDate, id]
-      );
+      const client = await pool.connect();
+      let transactionStarted = false;
+      let moveOutRow = row;
+      let releasedDeposit = 0;
+      try {
+        await client.query("BEGIN");
+        transactionStarted = true;
+        const { rows: lockedRows } = await client.query<typeof row>(
+          `SELECT s.room_id, s.student_user_id, s.status, s.rent_payment_status, s.guest_name,
+                  p.name AS property_name, p.id AS property_id, r.room_no,
+                  s.lease_extension_status, s.lease_extension_requested_end::text,
+                  s.lease_start::text, s.lease_end::text, s.monthly_rent::text,
+                  s.advance_amount::text, s.deposit_amount::text, s.balance_remaining::text
+           FROM public.student_dorm_reservations s
+           JOIN public.landlord_rooms r ON r.id = s.room_id
+           JOIN public.landlord_properties p ON p.id = r.property_id
+           WHERE s.id = $1::uuid AND r.owner_user_id = $2::uuid
+           FOR UPDATE OF s`,
+          [id, ownerId]
+        );
+        if (!lockedRows[0]) {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json({ error: "Not found." }, { status: 404 });
+        }
+        moveOutRow = lockedRows[0];
+        if (moveOutRow.status === "MoveOut") {
+          await client.query("ROLLBACK");
+          transactionStarted = false;
+          return NextResponse.json(
+            { error: "This reservation has already been moved out." },
+            { status: 409 }
+          );
+        }
 
-      await pool.query(
-        `INSERT INTO public.student_reservation_history
-          (reservation_id, student_user_id, property_id, room_id,
-           tenant_name, lease_start, lease_end, move_out_date,
-           status, rent_payment_status, advance_amount, deposit_amount,
-           balance_remaining, ended_by, ended_reason)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
-                 $5, $6::date, $7::date, $8::date,
-                 'MoveOut', $9, $10, $11, $12, 'landlord', $13)`,
-        [
-          id,
-          row.student_user_id,
-          row.property_id,
-          row.room_id,
-          row.guest_name,
-          row.lease_start,
-          row.lease_end,
-          moveOutDate,
-          row.rent_payment_status,
-          Number(row.advance_amount),
-          Number(row.deposit_amount),
-          Number(row.balance_remaining),
-          body.notes?.trim() || "Approved move-out",
-        ]
-      );
+        const depositBalance = Math.max(Number(moveOutRow.deposit_amount) || 0, 0);
+        const depositReleaseAmount =
+          body.releaseSecurityDeposit === true && depositBalance > 0
+            ? moveOutRow.deposit_amount
+            : null;
+        releasedDeposit = depositReleaseAmount
+          ? Number(depositReleaseAmount)
+          : 0;
+        const moveOutDate =
+          body.moveOutDate?.trim()?.slice(0, 10) ??
+          moveOutRow.lease_end.slice(0, 10);
 
-      await pool.query(
-        `UPDATE public.landlord_tenant_leases
-         SET lease_end = $1::date,
-             payment_status = 'Completed',
-             updated_at = now()
-         WHERE student_reservation_id = $2::uuid`,
-        [moveOutDate, id]
-      );
+        await client.query(
+          `UPDATE public.student_dorm_reservations
+           SET status = 'MoveOut',
+               move_out_date = $1::date,
+               moved_out_at = now(),
+               deposit_amount = CASE WHEN $2::boolean THEN 0 ELSE deposit_amount END,
+               updated_at = now()
+           WHERE id = $3::uuid`,
+          [moveOutDate, depositReleaseAmount !== null, id]
+        );
+
+        await client.query(
+          `INSERT INTO public.student_reservation_history
+            (reservation_id, student_user_id, property_id, room_id,
+             tenant_name, lease_start, lease_end, move_out_date,
+             status, rent_payment_status, advance_amount, deposit_amount,
+             balance_remaining, ended_by, ended_reason)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid,
+                   $5, $6::date, $7::date, $8::date,
+                   'MoveOut', $9, $10, $11, $12, 'landlord', $13)`,
+          [
+            id,
+            moveOutRow.student_user_id,
+            moveOutRow.property_id,
+            moveOutRow.room_id,
+            moveOutRow.guest_name,
+            moveOutRow.lease_start,
+            moveOutRow.lease_end,
+            moveOutDate,
+            moveOutRow.rent_payment_status,
+            Number(moveOutRow.advance_amount),
+            depositReleaseAmount !== null
+              ? 0
+              : Number(moveOutRow.deposit_amount),
+            Number(moveOutRow.balance_remaining),
+            body.notes?.trim() || "Approved move-out",
+          ]
+        );
+
+        await client.query(
+          `UPDATE public.landlord_tenant_leases
+           SET lease_end = $1::date,
+               payment_status = 'Completed',
+               updated_at = now()
+           WHERE student_reservation_id = $2::uuid`,
+          [moveOutDate, id]
+        );
+
+        if (depositReleaseAmount !== null) {
+          await client.query(
+            `INSERT INTO public.landlord_payments
+              (owner_user_id, room_id, tenant_lease_id, payer_name, amount,
+               method, status, reference_no, paid_on, entry_source)
+             VALUES (
+               $1::uuid,
+               $2::uuid,
+               (SELECT id FROM public.landlord_tenant_leases
+                WHERE student_reservation_id = $3::uuid),
+               $4,
+               $5::numeric,
+               'Security deposit release',
+               'Paid',
+               'Move-out security deposit release: ' || $3::text,
+               $6::date,
+               'deposit_release'
+             )`,
+            [
+              ownerId,
+              moveOutRow.room_id,
+              id,
+              moveOutRow.guest_name,
+              depositReleaseAmount,
+              moveOutDate,
+            ]
+          );
+        }
+
+        await client.query("COMMIT");
+        transactionStarted = false;
+      } catch (e) {
+        if (transactionStarted) await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
 
       await markAllPendingPaymentsAsPaidForMoveOut(pool, { reservationId: id });
 
-      await refreshRoomFromStudentReservations(pool, row.room_id);
+      await refreshRoomFromStudentReservations(pool, moveOutRow.room_id);
       await landlordLog(
         pool,
         ownerId,
-        `Approved move-out for ${row.guest_name} · Room ${row.room_no}`
+        `Approved move-out for ${moveOutRow.guest_name} · Room ${moveOutRow.room_no}${releasedDeposit > 0 ? ` and released ₱${releasedDeposit.toLocaleString("en-PH")}` : ""}`
       );
       try {
         await insertNotification(
           pool,
-          row.student_user_id,
+          moveOutRow.student_user_id,
           "Move-out approved",
-          `Your move-out request for ${row.property_name} · Room ${row.room_no} has been approved. Your lease has been marked as completed.`,
+          `Your move-out request for ${moveOutRow.property_name} · Room ${moveOutRow.room_no} has been approved. Your lease has been marked as completed.${releasedDeposit > 0 ? ` The security deposit of ₱${releasedDeposit.toLocaleString("en-PH")} has been released to you.` : ""}`,
           "reservation"
         );
       } catch {
         /* non-fatal */
       }
       invalidateLandlordUser(session.sub);
-      return NextResponse.json({ ok: true });
+      invalidateStudentUser(moveOutRow.student_user_id);
+      return NextResponse.json({ ok: true, releasedDeposit });
     }
 
     if (body.leaseExtension === "Approved" || body.leaseExtension === "Rejected") {

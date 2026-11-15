@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, ShieldAlert } from "lucide-react";
 
-type ReportStatus = "Open" | "In Review" | "Resolved";
+type ReportStatus = "Open" | "Acknowledged" | "In Review" | "Resolved";
 
 type OSAReport = {
   id: string;
@@ -125,6 +125,7 @@ export function TenantReportsPanel({ embedded = false }: TenantReportsPanelProps
   const getStatusColor = (status: ReportStatus) => {
     switch (status) {
       case "Resolved": return "bg-emerald-100 text-emerald-800 border-emerald-200";
+      case "Acknowledged": return "bg-indigo-100 text-indigo-800 border-indigo-200";
       case "In Review": return "bg-sky-100 text-sky-800 border-sky-200";
       default: return "bg-amber-100 text-amber-800 border-amber-200";
     }

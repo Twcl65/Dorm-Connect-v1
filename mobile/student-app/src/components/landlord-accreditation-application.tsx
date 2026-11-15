@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,13 +25,15 @@ import { useAuth } from "@/context/AuthContext";
 import {
   apiRequest,
   formatSignInError,
+  type LandlordAccreditationRow,
   type LandlordPropertyRow,
 } from "@/lib/api";
 import { uploadMobileFile } from "@/lib/upload";
 
 type Props = {
   onCancel: () => void;
-  onSubmitted: () => void;
+  onSubmitted: (isRenewal: boolean) => void;
+  renewalRequest?: LandlordAccreditationRow | null;
 };
 
 type PickedFile = {
@@ -40,12 +42,23 @@ type PickedFile = {
   mimeType?: string;
 };
 
+type SavedFile = {
+  url: string;
+  fileName: string;
+  mimeType: string;
+};
+
 const REQUIRED_DOCUMENTS = [
   { key: "businessPermit", label: "Business Permit" },
   { key: "barangayClearance", label: "Barangay Clearance" },
   { key: "fireSafetyCertificate", label: "Fire Safety Certificate" },
   { key: "occupancyPermit", label: "Occupancy Permit" },
 ] as const;
+
+type DocumentKey =
+  | (typeof REQUIRED_DOCUMENTS)[number]["key"]
+  | "sanitaryPermit";
+type SavedDocuments = Partial<Record<DocumentKey, SavedFile>>;
 
 const DOCUMENT_TYPES = [
   "application/pdf",
@@ -76,9 +89,73 @@ const DECLARATIONS = [
 
 type DeclarationKey = (typeof DECLARATIONS)[number]["key"];
 
+type AccreditationDetails = {
+  propertyId: string | null;
+  dormName: string;
+  address: string;
+  formData: unknown;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readSavedFile(value: unknown): SavedFile | null {
+  if (typeof value === "string" && value.trim()) {
+    return {
+      url: value,
+      fileName: value.split("/").pop()?.split("?")[0] ?? "Uploaded file",
+      mimeType: "",
+    };
+  }
+  const file = asRecord(value);
+  const url =
+    typeof file.url === "string"
+      ? file.url
+      : typeof file.fileUrl === "string"
+        ? file.fileUrl
+        : "";
+  if (!url.trim()) return null;
+  return {
+    url,
+    fileName:
+      typeof file.fileName === "string" && file.fileName.trim()
+        ? file.fileName
+        : url.split("/").pop()?.split("?")[0] ?? "Uploaded file",
+    mimeType: typeof file.mimeType === "string" ? file.mimeType : "",
+  };
+}
+
+function collectFormAttachmentUrls(formData: Record<string, unknown>): string[] {
+  const urls: string[] = [];
+  const owner = asRecord(formData.owner);
+  for (const key of ["ownerIdFrontUrl", "ownerIdBackUrl"]) {
+    if (typeof owner[key] === "string") urls.push(owner[key] as string);
+  }
+  const documents = asRecord(formData.documents);
+  const keys: DocumentKey[] = [
+    ...REQUIRED_DOCUMENTS.map((document) => document.key),
+    "sanitaryPermit",
+  ];
+  for (const key of keys) {
+    const file = readSavedFile(documents[key]);
+    if (file) urls.push(file.url);
+  }
+  const supporting = asRecord(documents.supporting);
+  if (Array.isArray(supporting.urls)) {
+    for (const url of supporting.urls) {
+      if (typeof url === "string") urls.push(url);
+    }
+  }
+  return Array.from(new Set(urls));
+}
+
 export function LandlordAccreditationApplication({
   onCancel,
   onSubmitted,
+  renewalRequest = null,
 }: Props) {
   const { token, user } = useAuth();
   const router = useRouter();
@@ -91,8 +168,12 @@ export function LandlordAccreditationApplication({
   const [ownerContact, setOwnerContact] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [documentFiles, setDocumentFiles] = useState<
-    Partial<Record<(typeof REQUIRED_DOCUMENTS)[number]["key"] | "sanitaryPermit", PickedFile>>
+    Partial<Record<DocumentKey, PickedFile>>
   >({});
+  const [savedDocuments, setSavedDocuments] = useState<SavedDocuments>({});
+  const [renewalFormData, setRenewalFormData] =
+    useState<Record<string, unknown> | null>(null);
+  const [renewalLoading, setRenewalLoading] = useState(false);
   const [sanitaryApplicable, setSanitaryApplicable] = useState(false);
   const [supportingFiles, setSupportingFiles] = useState<PickedFile[]>([]);
   const [checklist, setChecklist] = useState<Record<DeclarationKey, boolean>>({
@@ -127,14 +208,143 @@ export function LandlordAccreditationApplication({
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!token || !renewalRequest) return;
+    let active = true;
+    setRenewalLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const response = await apiRequest<AccreditationDetails>(
+          `/api/landlord/accreditation/${renewalRequest.id}`,
+          { token }
+        );
+        if (!active) return;
+        const formData = asRecord(response.formData);
+        if (Object.keys(formData).length === 0) {
+          throw new Error(
+            "The approved accreditation has no saved application data."
+          );
+        }
+
+        const dorm = asRecord(formData.dorm);
+        const owner = asRecord(formData.owner);
+        const documents = asRecord(formData.documents);
+        const savedFiles: SavedDocuments = {};
+        for (const document of REQUIRED_DOCUMENTS) {
+          const file = readSavedFile(documents[document.key]);
+          if (file) savedFiles[document.key] = file;
+        }
+        const sanitaryPermit = readSavedFile(documents.sanitaryPermit);
+        if (sanitaryPermit) savedFiles.sanitaryPermit = sanitaryPermit;
+
+        const checklist = asRecord(
+          asRecord(formData.declaration).checklist
+        );
+        setSelectedPropertyId(
+          response.propertyId ?? renewalRequest.propertyId ?? ""
+        );
+        setOwnerName(
+          typeof owner.name === "string" ? owner.name : user?.name ?? ""
+        );
+        setOwnerBusinessName(
+          typeof owner.businessName === "string"
+            ? owner.businessName
+            : response.dormName
+        );
+        setOwnerContact(typeof owner.contact === "string" ? owner.contact : "");
+        setOwnerEmail(
+          typeof owner.email === "string" ? owner.email : user?.email ?? ""
+        );
+        setSavedDocuments(savedFiles);
+        setDocumentFiles({});
+        setRenewalFormData(formData);
+        setSanitaryApplicable(Boolean(sanitaryPermit));
+        setChecklist({
+          certify:
+            typeof checklist.certify === "boolean" ? checklist.certify : true,
+          understandSubmit:
+            typeof checklist.understandSubmit === "boolean"
+              ? checklist.understandSubmit
+              : true,
+          understandRevoke:
+            typeof checklist.understandRevoke === "boolean"
+              ? checklist.understandRevoke
+              : true,
+          understandInspect:
+            typeof checklist.understandInspect === "boolean"
+              ? checklist.understandInspect
+              : true,
+        });
+      } catch (e) {
+        if (active) setError(formatSignInError(e));
+      } finally {
+        if (active) setRenewalLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [token, renewalRequest, user?.name, user?.email]);
+
   const selectedProperty = properties.find(
     (property) => property.id === selectedPropertyId
   );
+  const savedDorm = asRecord(renewalFormData?.dorm);
+  const dormAddress =
+    selectedProperty?.address ??
+    (typeof savedDorm.address === "string" ? savedDorm.address : "");
+  const dormCity =
+    selectedProperty?.city ??
+    (typeof savedDorm.city === "string" ? savedDorm.city : "");
   const propertyOptions = properties.map((property) => ({
     value: property.id,
     label: property.name,
     subtitle: [property.address, property.city].filter(Boolean).join(", "),
   }));
+  const savedSupporting = asRecord(
+    asRecord(renewalFormData?.documents).supporting
+  );
+  const savedSupportingNames = Array.isArray(savedSupporting.fileNames)
+    ? savedSupporting.fileNames.filter(
+        (name): name is string => typeof name === "string"
+      )
+    : [];
+  const progress = useMemo(() => {
+    const checks = [
+      Boolean(ownerName.trim()),
+      Boolean(ownerBusinessName.trim()),
+      Boolean(ownerContact.trim()),
+      Boolean(ownerEmail.trim()),
+      Boolean(selectedPropertyId.trim()),
+      Boolean(dormAddress.trim()),
+      Boolean(dormCity.trim()),
+      ...REQUIRED_DOCUMENTS.map((document) =>
+        Boolean(documentFiles[document.key] || savedDocuments[document.key])
+      ),
+      sanitaryApplicable
+        ? Boolean(
+            documentFiles.sanitaryPermit || savedDocuments.sanitaryPermit
+          )
+        : true,
+      ...DECLARATIONS.map((declaration) => checklist[declaration.key]),
+    ];
+    return Math.round(
+      (checks.filter(Boolean).length / checks.length) * 100
+    );
+  }, [
+    ownerName,
+    ownerBusinessName,
+    ownerContact,
+    ownerEmail,
+    selectedPropertyId,
+    dormAddress,
+    dormCity,
+    documentFiles,
+    savedDocuments,
+    sanitaryApplicable,
+    checklist,
+  ]);
 
   const selectProperty = (propertyId: string) => {
     setSelectedPropertyId(propertyId);
@@ -196,6 +406,10 @@ export function LandlordAccreditationApplication({
 
   const submit = async () => {
     if (!token) return;
+    if (renewalRequest && !renewalFormData) {
+      setError("Load the saved accreditation details before submitting a renewal.");
+      return;
+    }
     const errors: string[] = [];
     if (!ownerName.trim()) errors.push("Owner full name is required.");
     if (!ownerBusinessName.trim()) errors.push("Business name is required.");
@@ -204,22 +418,25 @@ export function LandlordAccreditationApplication({
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim())) {
       errors.push("Enter a valid owner email address.");
     }
-    if (!selectedProperty) {
+    if (!selectedProperty && !renewalRequest?.propertyId) {
       errors.push("Select a property eligible for accreditation.");
-    } else {
-      if (!selectedProperty.address?.trim()) {
-        errors.push("Add a property address before applying.");
-      }
-      if (!selectedProperty.city?.trim()) {
-        errors.push("Add a property city before applying.");
-      }
+    }
+    if (!dormAddress.trim()) {
+      errors.push("Add a property address before applying.");
+    }
+    if (!dormCity.trim()) {
+      errors.push("Add a property city before applying.");
     }
     for (const document of REQUIRED_DOCUMENTS) {
-      if (!documentFiles[document.key]) {
+      if (!documentFiles[document.key] && !savedDocuments[document.key]) {
         errors.push(`${document.label} is required.`);
       }
     }
-    if (sanitaryApplicable && !documentFiles.sanitaryPermit) {
+    if (
+      sanitaryApplicable &&
+      !documentFiles.sanitaryPermit &&
+      !savedDocuments.sanitaryPermit
+    ) {
       errors.push("Sanitary Permit is required when applicable.");
     }
     for (const declaration of DECLARATIONS) {
@@ -236,17 +453,21 @@ export function LandlordAccreditationApplication({
     setSaving(true);
     setError(null);
     try {
-      const documents: Record<string, unknown> = {};
-      const attachmentUrls: string[] = [];
-      const filesToUpload = [
-        ...REQUIRED_DOCUMENTS.map((document) => ({
-          key: document.key,
-          file: documentFiles[document.key]!,
-        })),
-        ...(sanitaryApplicable && documentFiles.sanitaryPermit
-          ? [{ key: "sanitaryPermit", file: documentFiles.sanitaryPermit }]
-          : []),
+      const documents: Record<string, unknown> = {
+        ...asRecord(renewalFormData?.documents),
+      };
+      for (const [key, file] of Object.entries(savedDocuments)) {
+        if (file) documents[key] = file;
+      }
+      if (!sanitaryApplicable) delete documents.sanitaryPermit;
+
+      const documentKeys: DocumentKey[] = [
+        ...REQUIRED_DOCUMENTS.map((document) => document.key),
+        ...(sanitaryApplicable ? ["sanitaryPermit" as const] : []),
       ];
+      const filesToUpload = documentKeys.flatMap((key) =>
+        documentFiles[key] ? [{ key, file: documentFiles[key]! }] : []
+      );
       const uploadedDocuments = await Promise.all(
         filesToUpload.map(async ({ key, file }) => {
           const url = await uploadMobileFile(
@@ -267,7 +488,6 @@ export function LandlordAccreditationApplication({
       );
       for (const document of uploadedDocuments) {
         documents[document.key] = document.value;
-        attachmentUrls.push(document.value.url);
       }
 
       const supportingUrls = await Promise.all(
@@ -280,46 +500,78 @@ export function LandlordAccreditationApplication({
           )
         )
       );
-      if (supportingFiles.length) {
+      const previousSupporting = asRecord(documents.supporting);
+      const oldSupportingUrls = Array.isArray(previousSupporting.urls)
+        ? previousSupporting.urls.filter(
+            (url): url is string => typeof url === "string"
+          )
+        : [];
+      const oldSupportingNames = Array.isArray(previousSupporting.fileNames)
+        ? previousSupporting.fileNames.filter(
+            (name): name is string => typeof name === "string"
+          )
+        : [];
+      if (supportingFiles.length > 0) {
         documents.supporting = {
-          fileNames: supportingFiles.map((file) => file.name),
-          urls: supportingUrls,
+          ...previousSupporting,
+          fileNames: [
+            ...oldSupportingNames,
+            ...supportingFiles.map((file) => file.name),
+          ],
+          urls: [...oldSupportingUrls, ...supportingUrls],
         };
-        attachmentUrls.push(...supportingUrls);
       }
 
-      const address = [selectedProperty!.address, selectedProperty!.city]
-        .filter(Boolean)
-        .join(", ");
+      const owner = {
+        ...asRecord(renewalFormData?.owner),
+        name: ownerName.trim(),
+        businessName: ownerBusinessName.trim(),
+        contact: ownerContact.trim(),
+        email: ownerEmail.trim(),
+      };
+      const dorm = renewalRequest
+        ? {
+            ...savedDorm,
+            name: selectedProperty?.name ?? renewalRequest.dormName,
+            address: dormAddress,
+            city: dormCity,
+          }
+        : {
+            name: selectedProperty?.name ?? "",
+            address: dormAddress,
+            city: dormCity,
+            type: selectedProperty?.propertyType ?? "Dormitory",
+            rooms: selectedProperty?.totalRooms ?? "",
+            capacity: selectedProperty?.maxOccupancyCapacity ?? "",
+          };
+      const formData: Record<string, unknown> = {
+        ...asRecord(renewalFormData),
+        dorm,
+        owner,
+        documents,
+        declaration: {
+          ...asRecord(renewalFormData?.declaration),
+          checklist,
+        },
+        attachmentUrls: null,
+      };
+      formData.attachmentUrls = collectFormAttachmentUrls(formData);
+      const address = renewalRequest
+        ? renewalRequest.address
+        : [dormAddress, dormCity].filter(Boolean).join(", ");
+      const propertyId = selectedProperty?.id ?? renewalRequest?.propertyId;
       await apiRequest("/api/landlord/accreditation", {
         token,
         method: "POST",
         body: {
-          propertyId: selectedProperty!.id,
-          dormName: selectedProperty!.name,
+          propertyId,
+          renewalOfRequestId: renewalRequest?.id,
+          dormName: selectedProperty?.name ?? renewalRequest?.dormName,
           address,
-          formData: {
-            dorm: {
-              name: selectedProperty!.name,
-              address: selectedProperty!.address,
-              city: selectedProperty!.city,
-              type: selectedProperty!.propertyType ?? "Dormitory",
-              rooms: selectedProperty!.totalRooms ?? "",
-              capacity: selectedProperty!.maxOccupancyCapacity ?? "",
-            },
-            owner: {
-              name: ownerName.trim(),
-              businessName: ownerBusinessName.trim(),
-              contact: ownerContact.trim(),
-              email: ownerEmail.trim(),
-            },
-            documents,
-            attachmentUrls,
-            declaration: { checklist },
-          },
+          formData,
         },
       });
-      onSubmitted();
+      onSubmitted(Boolean(renewalRequest));
     } catch (e) {
       setError(formatSignInError(e));
     } finally {
@@ -335,7 +587,25 @@ export function LandlordAccreditationApplication({
       >
         <View style={styles.header}>
           <Button label="Cancel" variant="outline" onPress={onCancel} />
-          <Subtitle>Apply for accreditation</Subtitle>
+          <Subtitle>
+            {renewalRequest ? "Renew accreditation" : "Apply for accreditation"}
+          </Subtitle>
+        </View>
+        <View style={styles.progress}>
+          <View style={styles.progressLabel}>
+            <Text style={styles.progressText}>Application progress</Text>
+            <Text style={styles.progressValue}>{progress}%</Text>
+          </View>
+          <View
+            style={styles.progressTrack}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Application progress"
+            accessibilityValue={{ min: 0, max: 100, now: progress }}
+          >
+            <View
+              style={[styles.progressFill, { width: `${progress}%` }]}
+            />
+          </View>
         </View>
         <ScrollView
           style={styles.scroll}
@@ -343,10 +613,16 @@ export function LandlordAccreditationApplication({
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.hint}>
-            Select an eligible property to fill in its details and available
-            owner contact information. Review the fields, upload the required
-            documents, and accept the declarations for OSA review.
+            {renewalRequest
+              ? "Review the saved application details. Existing documents and declarations are reused; replace any documents that need updating before submitting the renewal."
+              : "Select an eligible property to fill in its details and available owner contact information. Review the fields, upload the required documents, and accept the declarations for OSA review."}
           </Text>
+          {renewalLoading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={colors.brand} />
+              <Text style={styles.meta}>Loading saved application details…</Text>
+            </View>
+          ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Card>
@@ -355,28 +631,28 @@ export function LandlordAccreditationApplication({
             <Input
               value={ownerName}
               onChangeText={setOwnerName}
-              editable={!saving}
+              editable={!saving && !renewalLoading}
               autoCapitalize="words"
             />
             <Text style={styles.label}>Business name *</Text>
             <Input
               value={ownerBusinessName}
               onChangeText={setOwnerBusinessName}
-              editable={!saving}
+              editable={!saving && !renewalLoading}
               autoCapitalize="words"
             />
             <Text style={styles.label}>Contact number *</Text>
             <Input
               value={ownerContact}
               onChangeText={setOwnerContact}
-              editable={!saving}
+              editable={!saving && !renewalLoading}
               keyboardType="phone-pad"
             />
             <Text style={styles.label}>Email address *</Text>
             <Input
               value={ownerEmail}
               onChangeText={setOwnerEmail}
-              editable={!saving}
+              editable={!saving && !renewalLoading}
               autoCapitalize="none"
               keyboardType="email-address"
             />
@@ -388,7 +664,12 @@ export function LandlordAccreditationApplication({
               value={selectedPropertyId}
               options={propertyOptions}
               onChange={selectProperty}
-              disabled={propertiesLoading || saving}
+              disabled={
+                propertiesLoading ||
+                renewalLoading ||
+                saving ||
+                Boolean(renewalRequest)
+              }
               emptyMessage="No eligible properties. Add a property first or wait until its renewal window."
             />
             {propertiesLoading ? (
@@ -413,7 +694,7 @@ export function LandlordAccreditationApplication({
             {selectedProperty ? (
               <View style={styles.propertyDetails}>
                 <Text style={styles.meta}>
-                  Address: {selectedProperty.address}, {selectedProperty.city}
+                  Address: {dormAddress}, {dormCity}
                 </Text>
                 <Text style={styles.meta}>
                   Type: {selectedProperty.propertyType ?? "Dormitory"}
@@ -434,9 +715,13 @@ export function LandlordAccreditationApplication({
               <View key={document.key} style={styles.uploadRow}>
                 <Text style={styles.label}>{document.label} *</Text>
                 <Button
-                  label={documentFiles[document.key]?.name ?? "Choose file"}
+                  label={
+                    documentFiles[document.key]?.name ??
+                    savedDocuments[document.key]?.fileName ??
+                    "Choose file"
+                  }
                   variant="outline"
-                  disabled={saving}
+                  disabled={saving || renewalLoading}
                   onPress={() => void pickDocument(document.key)}
                 />
               </View>
@@ -468,9 +753,13 @@ export function LandlordAccreditationApplication({
               <View style={styles.uploadRow}>
                 <Text style={styles.label}>Sanitary Permit *</Text>
                 <Button
-                  label={documentFiles.sanitaryPermit?.name ?? "Choose file"}
+                  label={
+                    documentFiles.sanitaryPermit?.name ??
+                    savedDocuments.sanitaryPermit?.fileName ??
+                    "Choose file"
+                  }
                   variant="outline"
-                  disabled={saving}
+                  disabled={saving || renewalLoading}
                   onPress={() => void pickDocument("sanitaryPermit")}
                 />
               </View>
@@ -484,9 +773,14 @@ export function LandlordAccreditationApplication({
                     : "Choose files"
                 }
                 variant="outline"
-                disabled={saving}
+                disabled={saving || renewalLoading}
                 onPress={() => void pickSupportingFiles()}
               />
+              {savedSupportingNames.map((name, index) => (
+                <Text key={`saved-${name}-${index}`} style={styles.meta}>
+                  Existing: {name}
+                </Text>
+              ))}
               {supportingFiles.map((file, index) => (
                 <Text key={`${file.name}-${index}`} style={styles.meta}>
                   {file.name}
@@ -527,11 +821,18 @@ export function LandlordAccreditationApplication({
           </Card>
 
           <Button
-            label="Submit for OSA review"
+            label={
+              renewalRequest ? "Submit renewal for OSA review" : "Submit for OSA review"
+            }
             variant="brand"
             fullWidth
             loading={saving}
-            disabled={properties.length === 0 || propertiesLoading}
+            disabled={
+              propertiesLoading ||
+              renewalLoading ||
+              (Boolean(renewalRequest) && !renewalFormData) ||
+              (!selectedProperty && !renewalRequest?.propertyId)
+            }
             onPress={() => void submit()}
           />
         </ScrollView>
@@ -543,6 +844,25 @@ export function LandlordAccreditationApplication({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   header: { gap: 8, marginBottom: 8 },
+  progress: { gap: 4, marginBottom: 12 },
+  progressLabel: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  progressText: { fontSize: 12, color: colors.muted },
+  progressValue: { fontSize: 12, fontWeight: "600", color: colors.text },
+  progressTrack: {
+    height: 8,
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: colors.border,
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#10b981",
+  },
   scroll: { flex: 1 },
   content: { gap: 12, paddingBottom: 24 },
   hint: { fontSize: 12, color: colors.muted, lineHeight: 18 },
@@ -556,6 +876,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   meta: { fontSize: 12, color: colors.muted, lineHeight: 17 },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   loader: { marginVertical: 12 },
   emptyProperties: { gap: 8, marginTop: 10 },
   propertyDetails: {

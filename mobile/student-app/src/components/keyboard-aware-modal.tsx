@@ -111,7 +111,7 @@ export function KeyboardAwareSheet({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  modalScroll: { flex: 1 },
+  modalScroll: { flexGrow: 0, flexShrink: 1 },
   backdrop: { flex: 1 },
   overlay: {
     flex: 1,

@@ -17,11 +17,22 @@ import {
 import { Loader2 } from "lucide-react";
 
 type PaymentStatus = "Paid" | "Pending" | "Overdue";
-type PaymentMethod = "GCash" | "Cash" | "Bank Transfer";
+type PaymentMethod =
+  | "GCash"
+  | "Cash"
+  | "Bank Transfer"
+  | "Advance"
+  | "Security deposit"
+  | "Security deposit release";
 
 type Payment = {
   id: string;
-  source?: "landlord" | "student";
+  source?:
+    | "landlord"
+    | "student"
+    | "advance"
+    | "deposit"
+    | "deposit_release";
   roomNo: string;
   name: string;
   amount: string;
@@ -137,7 +148,16 @@ export function LandlordDormReportsPanel({
     const q = search.trim().toLowerCase();
     if (!q) return payments;
     return payments.filter((p) => {
-      const src = p.source === "student" ? "student app" : "manual";
+      const src =
+        p.source === "student"
+          ? "student app"
+          : p.source === "deposit_release"
+            ? "security deposit release"
+            : p.source === "deposit"
+              ? "security deposit"
+              : p.source === "advance"
+                ? "advance payment"
+                : "manual";
       return (
         p.id.toLowerCase().includes(q) ||
         p.roomNo.toLowerCase().includes(q) ||
@@ -363,7 +383,15 @@ export function LandlordDormReportsPanel({
                             {p.id.slice(0, 8)}…
                           </TableCell>
                           <TableCell className="text-xs text-slate-600">
-                            {p.source === "student" ? "Student app" : "Manual"}
+                            {p.source === "student"
+                              ? "Student app"
+                              : p.source === "deposit_release"
+                                ? "Security deposit release"
+                                : p.source === "deposit"
+                                  ? "Security deposit"
+                                  : p.source === "advance"
+                                    ? "Advance payment"
+                                    : "Manual"}
                           </TableCell>
                           <TableCell className="text-xs text-slate-700 whitespace-nowrap">
                             {p.periodLabel ?? "—"}

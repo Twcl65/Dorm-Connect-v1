@@ -41,7 +41,28 @@ export async function GET() {
               h.room_id, r.room_no, h.property_id, p.name AS property_name,
               h.lease_start::text, h.lease_end::text, h.move_out_date::text,
               h.status, h.rent_payment_status,
-              h.advance_amount::text, h.deposit_amount::text, h.balance_remaining::text,
+              h.advance_amount::text,
+              CASE WHEN EXISTS (
+                SELECT 1
+                FROM public.landlord_payments lp
+                LEFT JOIN public.landlord_tenant_leases l
+                  ON l.id = lp.tenant_lease_id
+                WHERE lp.owner_user_id = $1::uuid
+                  AND lp.entry_source = 'deposit_release'
+                  AND (
+                    l.student_reservation_id = h.reservation_id
+                    OR lp.reference_no =
+                      'Move-out security deposit release: ' || h.reservation_id::text
+                    OR (
+                      lp.tenant_lease_id IS NULL
+                      AND lp.room_id = h.room_id
+                      AND lower(trim(lp.payer_name)) =
+                        lower(trim(h.tenant_name))
+                      AND lp.paid_on = h.move_out_date
+                    )
+                  )
+              ) THEN 0 ELSE h.deposit_amount END::text AS deposit_amount,
+              h.balance_remaining::text,
               h.ended_by, h.ended_reason
        FROM public.student_reservation_history h
        JOIN public.landlord_rooms r ON r.id = h.room_id

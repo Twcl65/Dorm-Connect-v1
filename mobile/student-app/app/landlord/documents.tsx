@@ -56,6 +56,8 @@ export default function LandlordDocumentsScreen() {
   const [selectedRequest, setSelectedRequest] =
     useState<LandlordAccreditationRow | null>(null);
   const [showApplicationForm, setShowApplicationForm] = useState(false);
+  const [renewalRequest, setRenewalRequest] =
+    useState<LandlordAccreditationRow | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -102,13 +104,20 @@ export default function LandlordDocumentsScreen() {
   if (showApplicationForm) {
     return (
       <LandlordAccreditationApplication
-        onCancel={() => setShowApplicationForm(false)}
-        onSubmitted={() => {
+        renewalRequest={renewalRequest}
+        onCancel={() => {
           setShowApplicationForm(false);
+          setRenewalRequest(null);
+        }}
+        onSubmitted={(isRenewal) => {
+          setShowApplicationForm(false);
+          setRenewalRequest(null);
           void load();
           Alert.alert(
-            "Application submitted",
-            "Your accreditation request was sent to OSA for review."
+            isRenewal ? "Renewal submitted" : "Application submitted",
+            isRenewal
+              ? "Your accreditation renewal was sent to OSA for review."
+              : "Your accreditation request was sent to OSA for review."
           );
         }}
       />
@@ -126,7 +135,10 @@ export default function LandlordDocumentsScreen() {
         label="Apply for accreditation"
         variant="brand"
         fullWidth
-        onPress={() => setShowApplicationForm(true)}
+        onPress={() => {
+          setRenewalRequest(null);
+          setShowApplicationForm(true);
+        }}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
@@ -176,6 +188,12 @@ export default function LandlordDocumentsScreen() {
         item={selectedRequest}
         hasRenewal={selectedRequest ? hasActiveRenewal(items, selectedRequest.id) : false}
         onClose={() => setSelectedRequest(null)}
+        onRenew={() => {
+          if (!selectedRequest) return;
+          setRenewalRequest(selectedRequest);
+          setSelectedRequest(null);
+          setShowApplicationForm(true);
+        }}
         onUpdated={load}
       />
     </Screen>

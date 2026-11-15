@@ -26,13 +26,15 @@ import { useAuth } from "@/context/AuthContext";
 
 type OSAReport = {
   id: string;
-  tenant_name: string;
-  room_no?: string;
-  property_name?: string;
+  tenantName: string;
+  roomNo?: string;
+  propertyName?: string;
   reason: string;
   details: string;
-  status: "Open" | "In Review" | "Resolved";
-  created_at: string;
+  status: "Open" | "Acknowledged" | "In Review" | "Resolved";
+  createdAt: string;
+  osaReply?: string | null;
+  osaRepliedAt?: string | null;
 };
 
 export default function LandlordTenantReportsScreen() {
@@ -79,8 +81,16 @@ export default function LandlordTenantReportsScreen() {
 
   const getStatusTone = (status: string) => {
     if (status === "Resolved") return "success";
+    if (status === "Acknowledged") return "warning";
     if (status === "In Review") return "warning";
     return "danger";
+  };
+
+  const formatReportDate = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? "Date unavailable"
+      : date.toLocaleDateString();
   };
 
   const submitReport = async () => {
@@ -164,15 +174,35 @@ export default function LandlordTenantReportsScreen() {
         }
         renderItem={({ item }) => (
           <Card>
-            <View style={styles.top}>
-              <Text style={styles.title}>{item.tenant_name}</Text>
+            <View style={styles.reportHeader}>
+              <View style={styles.reportTenant}>
+                <Text style={styles.title}>{item.tenantName}</Text>
+                <Text style={styles.property}>
+                  {[item.propertyName, item.roomNo ? `Room ${item.roomNo}` : null]
+                    .filter(Boolean)
+                    .join(" · ") || "Property details unavailable"}
+                </Text>
+              </View>
               <Badge label={item.status} tone={getStatusTone(item.status)} />
             </View>
             <Text style={styles.meta}>
-              {new Date(item.created_at).toLocaleDateString()} · {item.property_name} (Room {item.room_no})
+              Submitted {formatReportDate(item.createdAt)}
             </Text>
+            <Text style={styles.sectionLabel}>Reason</Text>
             <Text style={styles.reasonLabel}>{item.reason}</Text>
+            <Text style={styles.sectionLabel}>Details</Text>
             <Text style={styles.details}>{item.details}</Text>
+            {item.osaReply ? (
+              <View style={styles.reply}>
+                <Text style={styles.sectionLabel}>OSA Response</Text>
+                <Text style={styles.details}>{item.osaReply}</Text>
+                {item.osaRepliedAt ? (
+                  <Text style={styles.replyDate}>
+                    Replied {formatReportDate(item.osaRepliedAt)}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </Card>
         )}
       />
@@ -283,16 +313,33 @@ export default function LandlordTenantReportsScreen() {
 const styles = StyleSheet.create({
   error: { color: colors.red, fontSize: 13, marginBottom: 8 },
   empty: { fontSize: 13, color: colors.muted },
-  top: {
+  reportHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 8,
   },
-  title: { flex: 1, fontSize: 16, fontWeight: "600", color: colors.text },
-  meta: { fontSize: 12, color: colors.muted, marginTop: 4, marginBottom: 8 },
-  reasonLabel: { fontSize: 14, fontWeight: "600", color: colors.text, marginBottom: 4 },
+  reportTenant: { flex: 1 },
+  title: { fontSize: 16, fontWeight: "600", color: colors.text },
+  property: { fontSize: 12, color: colors.muted, marginTop: 3 },
+  meta: { fontSize: 12, color: colors.muted, marginTop: 10 },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.muted,
+    textTransform: "uppercase",
+    marginTop: 12,
+    marginBottom: 3,
+  },
+  reasonLabel: { fontSize: 14, fontWeight: "600", color: colors.text },
   details: { fontSize: 13, color: colors.text, lineHeight: 18 },
+  reply: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  replyDate: { fontSize: 11, color: colors.muted, marginTop: 6 },
   
   modalContent: {
     flex: 1,

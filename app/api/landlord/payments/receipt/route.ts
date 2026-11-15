@@ -176,6 +176,8 @@ export async function GET(req: Request) {
           ? "Advance"
           : x.entry_source === "deposit"
             ? "Security deposit"
+            : x.entry_source === "deposit_release"
+              ? "Security deposit release"
             : x.method;
       payment = {
         id: x.id,

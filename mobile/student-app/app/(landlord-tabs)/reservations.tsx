@@ -73,6 +73,16 @@ export default function LandlordReservationsScreen() {
   const [historyItems, setHistoryItems] = useState<HistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyTransactionsFor, setHistoryTransactionsFor] =
+    useState<HistoryRow | null>(null);
+  const [historyTransactions, setHistoryTransactions] = useState<
+    LandlordPayment[]
+  >([]);
+  const [historyTransactionsLoading, setHistoryTransactionsLoading] =
+    useState(false);
+  const [historyTransactionsError, setHistoryTransactionsError] = useState<
+    string | null
+  >(null);
   const [viewingPayments, setViewingPayments] = useState<LandlordReservation | null>(null);
   const [paymentTotal, setPaymentTotal] = useState<number | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
@@ -145,6 +155,38 @@ export default function LandlordReservationsScreen() {
       setDetailsError(formatSignInError(e));
     } finally {
       setDetailsLoading(false);
+    }
+  };
+
+  const openHistoryTransactions = async (item: HistoryRow) => {
+    if (!token) return;
+    setHistoryTransactionsFor(item);
+    setHistoryTransactions([]);
+    setHistoryTransactionsError(null);
+    setHistoryTransactionsLoading(true);
+    try {
+      const res = await apiRequest<{ payments: LandlordPayment[] }>(
+        "/api/landlord/payments",
+        { token }
+      );
+      const payments = res.payments ?? [];
+      const reservationPayments = payments.filter(
+        (payment) => payment.reservationId === item.reservationId
+      );
+      setHistoryTransactions(
+        reservationPayments.length > 0
+          ? reservationPayments
+          : payments.filter(
+              (payment) =>
+                payment.name.trim().toLowerCase() ===
+                  item.tenantName.trim().toLowerCase() &&
+                payment.roomNo === item.roomNo
+            )
+      );
+    } catch (e) {
+      setHistoryTransactionsError(formatSignInError(e));
+    } finally {
+      setHistoryTransactionsLoading(false);
     }
   };
 
@@ -335,40 +377,65 @@ export default function LandlordReservationsScreen() {
     }
   };
 
+  const submitMoveOut = async (
+    item: LandlordReservation,
+    releaseSecurityDeposit: boolean
+  ) => {
+    if (!token) return;
+    setSavingId(item.id);
+    try {
+      await apiRequest(`/api/landlord/student-reservations/${item.id}`, {
+        method: "PATCH",
+        token,
+        body: {
+          moveOut: true,
+          moveOutDate: item.leaseEndDate || undefined,
+          notes: "Approved by landlord",
+          releaseSecurityDeposit,
+        },
+      });
+      await load();
+    } catch (e) {
+      Alert.alert(
+        "Could not approve move-out",
+        e instanceof Error ? e.message : "Request failed."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const approveMoveOut = (item: LandlordReservation) => {
+    const depositAmount = Math.max(Number(item.depositAmount) || 0, 0);
     Alert.alert(
       "Approve move-out?",
-      `Mark ${item.name} as moved out from ${item.dormName} · Room ${item.roomNo}?`,
+      `Mark ${item.name} as moved out from ${item.dormName} · Room ${item.roomNo}?\n\nSecurity deposit balance: ${formatCurrency(depositAmount)}`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Approve",
+          text: "Continue",
           style: "default",
-          onPress: async () => {
-            if (!token) return;
-            setSavingId(item.id);
-            try {
-              await apiRequest(
-                `/api/landlord/student-reservations/${item.id}`,
-                {
-                  method: "PATCH",
-                  token,
-                  body: {
-                    moveOut: true,
-                    moveOutDate: item.leaseEndDate || undefined,
-                    notes: "Approved by landlord",
-                  },
-                }
-              );
-              await load();
-            } catch (e) {
-              Alert.alert(
-                "Could not approve move-out",
-                e instanceof Error ? e.message : "Request failed."
-              );
-            } finally {
-              setSavingId(null);
+          onPress: () => {
+            if (depositAmount <= 0) {
+              void submitMoveOut(item, false);
+              return;
             }
+
+            Alert.alert(
+              "Release security deposit?",
+              `Release the remaining security deposit of ${formatCurrency(depositAmount)} to ${item.name}?`,
+              [
+                {
+                  text: "No",
+                  style: "cancel",
+                  onPress: () => void submitMoveOut(item, false),
+                },
+                {
+                  text: "Yes",
+                  onPress: () => void submitMoveOut(item, true),
+                },
+              ]
+            );
           },
         },
       ]
@@ -646,10 +713,98 @@ export default function LandlordReservationsScreen() {
                   ? new Date(item.endedAt).toLocaleString()
                   : "—"}
               </Text>
+              <View style={styles.actions}>
+                <Button
+                  label="Transactions"
+                  variant="outline"
+                  onPress={() => void openHistoryTransactions(item)}
+                />
+              </View>
             </Card>
           )}
         />
       )}
+
+      {historyTransactionsFor ? (
+        <View style={styles.modalOverlay}>
+          <Card style={{ ...styles.modalCard, ...styles.transactionsModalCard }}>
+            <ScrollView
+              style={styles.transactionsScroll}
+              contentContainerStyle={styles.transactionsContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.modalTitle}>Payment Transactions</Text>
+              <Text style={styles.modalSubtitle}>
+                {historyTransactionsFor.tenantName} ·{" "}
+                {historyTransactionsFor.propertyName} · Room{" "}
+                {historyTransactionsFor.roomNo}
+              </Text>
+              {historyTransactionsLoading ? (
+                <Text style={styles.meta}>Loading transactions…</Text>
+              ) : null}
+              {historyTransactionsError ? (
+                <Text style={styles.error}>{historyTransactionsError}</Text>
+              ) : null}
+              {!historyTransactionsLoading &&
+              !historyTransactionsError &&
+              historyTransactions.length === 0 ? (
+                <Text style={styles.empty}>
+                  No payment transactions recorded for this tenant.
+                </Text>
+              ) : null}
+              {historyTransactions.map((payment) => (
+                <View
+                  key={`${payment.source}-${payment.id}`}
+                  style={styles.transactionItem}
+                >
+                  <View style={styles.transactionInfo}>
+                    <Text style={styles.transactionTitle}>
+                      {payment.method}
+                    </Text>
+                    <Text style={styles.meta}>
+                      {payment.periodLabel ?? payment.date ?? "—"}
+                    </Text>
+                    <Text style={styles.meta}>
+                      {payment.propertyName
+                        ? `${payment.propertyName} · `
+                        : ""}
+                      Room {payment.roomNo}
+                    </Text>
+                  </View>
+                  <View style={styles.transactionSummary}>
+                    <Text
+                      style={[
+                        styles.transactionAmount,
+                        payment.source === "deposit_release" &&
+                          styles.transactionReleaseAmount,
+                      ]}
+                    >
+                      {payment.amount}
+                    </Text>
+                    <Badge
+                      label={payment.status}
+                      tone={
+                        payment.status === "Paid"
+                          ? "success"
+                          : payment.status === "Overdue"
+                            ? "danger"
+                            : "warning"
+                      }
+                    />
+                  </View>
+                </View>
+              ))}
+              <View style={styles.actions}>
+                <Button
+                  label="Close"
+                  variant="outline"
+                  onPress={() => setHistoryTransactionsFor(null)}
+                />
+              </View>
+            </ScrollView>
+          </Card>
+        </View>
+      ) : null}
 
       {viewingPayments ? (
         <View style={styles.modalOverlay}>
@@ -874,6 +1029,45 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+  },
+  transactionsModalCard: {
+    maxHeight: "88%",
+  },
+  transactionsContent: {
+    padding: 16,
+  },
+  transactionsScroll: {
+    flexShrink: 1,
+  },
+  transactionItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  transactionInfo: {
+    flex: 1,
+  },
+  transactionSummary: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  transactionTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  transactionAmount: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  transactionReleaseAmount: {
+    color: colors.red,
   },
   modalTitle: {
     fontSize: 16,

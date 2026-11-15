@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { requireOwner } from "@/lib/require-owner";
 import { buildDocxReport } from "../_docx";
+import { buildPdfReport } from "../_pdf";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
   try {
     const pool = await getPool();
 
-    let landlordPayQuery = `SELECT p.id, p.created_at, r.room_no, p.payer_name, p.amount::text, p.method, p.status,
+    let landlordPayQuery = `SELECT p.id, p.created_at, r.room_no, p.payer_name, p.amount::text, p.method, p.status, p.entry_source,
               p.reference_no, p.proof_url, p.paid_on::text,
               pr.name AS property_name
        FROM public.landlord_payments p
@@ -86,16 +87,28 @@ export async function GET(req: Request) {
           return `Month 1 (${d.toLocaleDateString("en-US", { month: "long" })})`;
         })();
         return {
-          source: "manual" as const,
-          monthLabel,
+          source:
+            x.entry_source === "deposit_release"
+              ? "Security deposit release"
+              : "manual",
+          monthLabel:
+            x.entry_source === "deposit_release"
+              ? "Move-out deposit release"
+              : monthLabel,
           roomNo: x.room_no ?? "",
           payerName: x.payer_name,
-          amount: Number(x.amount) || 0,
+          amount:
+            x.entry_source === "deposit_release"
+              ? -(Number(x.amount) || 0)
+              : Number(x.amount) || 0,
           paidOn,
           createdAt: x.created_at.toISOString(),
           paymentId: x.id,
           dormName: x.property_name ?? "",
-          method: normalizeMethod(x.method),
+          method:
+            x.entry_source === "deposit_release"
+              ? "Security deposit release"
+              : normalizeMethod(x.method),
           status: x.status,
           referenceNo: x.reference_no ?? "",
           proofUrl: x.proof_url ?? "",
@@ -144,7 +157,7 @@ export async function GET(req: Request) {
       return true;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    const buf = await buildDocxReport({
+    const report = {
       title: "Payments Report",
       subtitle: reservationId
         ? "Filtered by selected tenant lease."
@@ -162,17 +175,22 @@ export async function GET(req: Request) {
         { key: "proofUrl", label: "Proof URL" },
       ],
       rows: data,
-    });
+    };
+    const asPdf = new URL(req.url).searchParams.get("format") === "pdf";
+    const buf = await (asPdf
+      ? buildPdfReport(report)
+      : buildDocxReport(report));
 
     const filename = reservationId
-      ? `payments-report-${reservationId}.docx`
-      : "payments-report.docx";
+      ? `payments-report-${reservationId}.${asPdf ? "pdf" : "docx"}`
+      : `payments-report.${asPdf ? "pdf" : "docx"}`;
 
     return new Response(buf, {
       status: 200,
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Type": asPdf
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
