@@ -137,6 +137,21 @@ async function main() {
     process.exit(1);
   }
 
+  const resetClient = new Client({
+    connectionString,
+    ssl: /supabase\.(co|com)/i.test(connectionString)
+      ? { rejectUnauthorized: false }
+      : undefined,
+  });
+
+  await resetClient.connect();
+  try {
+    console.log("Clearing application data…");
+    await truncateData(resetClient);
+  } finally {
+    await resetClient.end();
+  }
+
   console.log("Applying migrations…");
   for (const file of migrationFiles()) {
     applyMigration(path.join("db", "migrations", file));
@@ -149,11 +164,8 @@ async function main() {
       : undefined,
   });
 
+  await client.connect();
   try {
-    await client.connect();
-    console.log("Clearing application data…");
-    await truncateData(client);
-
     console.log("Seeding default users…");
     await seedUsers(client);
 

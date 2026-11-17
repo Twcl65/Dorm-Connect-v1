@@ -24,7 +24,6 @@ matched_student_landlord_payments AS (
                lower(trim(lp.payer_name)) = lower(trim(stu.full_name))
                OR lower(trim(lp.payer_name)) = lower(trim(sr.guest_name))
              )
-           )
         )
       )
     )
