@@ -32,6 +32,7 @@ import {
   Subtitle,
   colors,
 } from "@/components/ui";
+import { LandlordPropertyLocationPicker } from "@/components/landlord-property-location-picker";
 import { useAuth } from "@/context/AuthContext";
 
 const requiresFullPropertyInfo = (t: PropertyType) => t !== "Dormitory";
@@ -131,6 +132,17 @@ export default function AddPropertyScreen() {
     }
   };
 
+  const parsedLatitude = latitude.trim() ? Number(latitude) : null;
+  const parsedLongitude = longitude.trim() ? Number(longitude) : null;
+  const mapLatitude =
+    parsedLatitude != null && Number.isFinite(parsedLatitude)
+      ? parsedLatitude
+      : null;
+  const mapLongitude =
+    parsedLongitude != null && Number.isFinite(parsedLongitude)
+      ? parsedLongitude
+      : null;
+
   const submit = async () => {
     if (!token) return;
     if (!propertyLoaded) {
@@ -205,7 +217,7 @@ export default function AddPropertyScreen() {
     <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={undefined}
       >
         <ScrollView
           style={styles.formScroll}
@@ -216,8 +228,8 @@ export default function AddPropertyScreen() {
         >
           <Subtitle>{editing ? "Edit property" : "Add property"}</Subtitle>
           <Text style={styles.hint}>
-            Same as the website — set address and map coordinates so rooms appear
-            correctly for students.
+            Set the address and pin the building entrance on the map so students
+            can find your property.
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {loadingProperty ? (
@@ -229,8 +241,8 @@ export default function AddPropertyScreen() {
               <Text style={styles.requirementsTitle}>Property requirements</Text>
               <Text style={styles.requirementsText}>
                 Address, city, contact phone, description, current rooms, current capacity,
-                and map coordinates are required. Use coordinates from the website map
-                pin or GPS (e.g. 8.4542, 124.6319 near USTP).
+                and a map pin are required. Tap the map to place the pin at your
+                building entrance.
               </Text>
             </View>
           ) : null}
@@ -318,24 +330,24 @@ export default function AddPropertyScreen() {
         />
 
         <Text style={styles.label}>
-          Latitude{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
+          Pin location{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
         </Text>
-        <Input
-          value={latitude}
-          onChangeText={setLatitude}
-          keyboardType="decimal-pad"
-          placeholder="e.g. 8.4542"
-        />
-
-        <Text style={styles.label}>
-          Longitude{requiresFullPropertyInfo(propertyType) ? " *" : " (optional)"}
+        <Text style={styles.meta}>
+          Tap the map to place the pin at your building entrance.
         </Text>
-        <Input
-          value={longitude}
-          onChangeText={setLongitude}
-          keyboardType="decimal-pad"
-          placeholder="e.g. 124.6319"
+        <LandlordPropertyLocationPicker
+          latitude={mapLatitude}
+          longitude={mapLongitude}
+          onChange={(lat, lng) => {
+            setLatitude(String(lat));
+            setLongitude(String(lng));
+          }}
         />
+        <Text style={styles.meta}>
+          {mapLatitude != null && mapLongitude != null
+            ? `Lat: ${mapLatitude.toFixed(6)}  Lng: ${mapLongitude.toFixed(6)}`
+            : "No location selected."}
+        </Text>
 
         <Text style={styles.label}>Cover photo</Text>
         <Button label="Choose cover image" variant="outline" onPress={() => void pickCover()} />

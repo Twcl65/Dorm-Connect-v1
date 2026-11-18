@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { Ionicons } from "@expo/vector-icons";
 import { ImageGallery } from "@/components/image-gallery";
 import { InfoGrid } from "@/components/info-grid";

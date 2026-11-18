@@ -12,6 +12,7 @@ import { AuthScreenLayout } from "@/components/auth-screen-layout";
 import { checkApiReachable, formatSignInError } from "@/lib/api";
 import { authTheme } from "@/lib/auth-theme";
 import { describeApiBaseUrl } from "@/lib/config";
+import { withInputAboveKeyboard } from "@/components/keyboard-lift";
 import { Button, colors } from "@/components/ui";
 import { useAuth } from "@/context/AuthContext";
 import { homeHrefForRole } from "@/lib/auth-routes";
@@ -34,7 +35,7 @@ function FieldIconInput({
       />
       <TextInput
         placeholderTextColor={colors.muted}
-        {...props}
+        {...withInputAboveKeyboard(props)}
         style={[styles.input, props.style]}
       />
     </View>

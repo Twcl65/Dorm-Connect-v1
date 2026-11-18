@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClipboardCheck, Loader2 } from "lucide-react";
+import { ProofMedia } from "@/components/proof-media";
 import {
   OSA_INSPECTION_CHECKLIST,
   type OsaChecklistKey,
@@ -37,6 +38,7 @@ type ScheduleRow = {
   completedAt: string | null;
   checklist: Record<OsaChecklistKey, boolean>;
   landlordDeclaration: Record<string, boolean>;
+  followupDocuments: { fileName: string; url: string; mimeType: string }[];
   canRecordResult: boolean;
 };
 
@@ -451,7 +453,7 @@ export default function OsaInspectionsPage() {
                               Schedule
                             </Button>
                           )}
-                          {row.canRecordResult && (
+                          {row.canRecordResult ? (
                             <Button
                               size="sm"
                               className="h-7 px-2 text-[0.65rem] flex items-center gap-1"
@@ -460,8 +462,7 @@ export default function OsaInspectionsPage() {
                               <ClipboardCheck className="h-3 w-3" />
                               Inspect
                             </Button>
-                          )}
-                          {row.scheduleStatus === "completed" && (
+                          ) : (
                             <Button
                               variant="outline"
                               size="sm"
@@ -571,6 +572,29 @@ export default function OsaInspectionsPage() {
               </p>
             </CardHeader>
             <CardContent className="space-y-4 pt-4 text-xs text-slate-800 max-h-[min(80vh,720px)] overflow-y-auto">
+              {(selected.followupDocuments ?? []).length > 0 && (
+                <section className="space-y-2">
+                  <p className="text-[0.75rem] font-semibold text-slate-900">
+                    Documents added after the staff inspection hold
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(selected.followupDocuments ?? []).map((document) => (
+                      <div
+                        key={document.url}
+                        className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-2"
+                      >
+                        <p className="truncate text-[0.7rem] font-medium text-slate-800">
+                          {document.fileName}
+                        </p>
+                        <ProofMedia
+                          url={document.url}
+                          className="max-h-40 w-full rounded object-contain"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               <section className="space-y-3">
                 <p className="text-[0.75rem] font-semibold text-slate-900">
                   OSA on-site verification
@@ -590,10 +614,7 @@ export default function OsaInspectionsPage() {
                             type="checkbox"
                             className="mt-0.5"
                             checked={checklist[item.key]}
-                            disabled={
-                              selected.scheduleStatus === "completed" &&
-                              selected.result != null
-                            }
+                            disabled={!selected.canRecordResult}
                             onChange={(e) =>
                               setChecklist((prev) => ({
                                 ...prev,
@@ -630,10 +651,7 @@ export default function OsaInspectionsPage() {
                     <button
                       key={opt.value}
                       type="button"
-                      disabled={
-                        selected.scheduleStatus === "completed" &&
-                        selected.result != null
-                      }
+                      disabled={!selected.canRecordResult}
                       className={cn(
                         "rounded-lg border px-2 py-2 text-[0.7rem] font-medium transition-colors",
                         inspectionResult === opt.value
@@ -655,10 +673,7 @@ export default function OsaInspectionsPage() {
                     <textarea
                       className="w-full min-h-[64px] rounded-md border border-slate-300 px-2 py-1 text-xs"
                       value={holdReason}
-                      disabled={
-                        selected.scheduleStatus === "completed" &&
-                        selected.result != null
-                      }
+                      disabled={!selected.canRecordResult}
                       onChange={(e) => setHoldReason(e.target.value)}
                       placeholder="Specify what the landlord must correct or submit…"
                     />
@@ -673,10 +688,7 @@ export default function OsaInspectionsPage() {
                     <textarea
                       className="w-full min-h-[64px] rounded-md border border-slate-300 px-2 py-1 text-xs"
                       value={inspectionNotes}
-                      disabled={
-                        selected.scheduleStatus === "completed" &&
-                        selected.result != null
-                      }
+                      disabled={!selected.canRecordResult}
                       onChange={(e) => setInspectionNotes(e.target.value)}
                       placeholder="Why the application was rejected…"
                     />
@@ -693,10 +705,7 @@ export default function OsaInspectionsPage() {
                     <textarea
                       className="w-full min-h-[56px] rounded-md border border-slate-300 px-2 py-1 text-xs"
                       value={inspectionNotes}
-                      disabled={
-                        selected.scheduleStatus === "completed" &&
-                        selected.result != null
-                      }
+                      disabled={!selected.canRecordResult}
                       onChange={(e) => setInspectionNotes(e.target.value)}
                       placeholder="Optional inspection notes…"
                     />
@@ -715,9 +724,7 @@ export default function OsaInspectionsPage() {
                 >
                   Close
                 </Button>
-                {!(
-                  selected.scheduleStatus === "completed" && selected.result
-                ) && (
+                {selected.canRecordResult && (
                   <Button
                     type="button"
                     size="sm"

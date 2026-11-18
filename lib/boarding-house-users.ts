@@ -93,3 +93,16 @@ export function isBoardingStatus(v: string): v is BoardingStatus {
 export function isIctVerificationStatus(v: string): v is IctVerificationStatus {
   return (ICT_VERIFICATION_STATUSES as readonly string[]).includes(v);
 }
+
+/** Active landlords are ICT-approved even if the stored flag was left pending. */
+export function displayedIctVerificationStatus(
+  role: string,
+  accountStatus: string,
+  stored: string | null | undefined
+): string | null {
+  const value = stored?.trim() || null;
+  if (role === "Landlord" && accountStatus === "Active" && value !== "Rejected") {
+    return "Verified";
+  }
+  return value;
+}

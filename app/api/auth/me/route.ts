@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { displayedIctVerificationStatus } from "@/lib/boarding-house-users";
 import { getSession } from "@/lib/require-session";
 
 export const dynamic = "force-dynamic";
@@ -15,17 +16,24 @@ export async function GET() {
   try {
     const pool = await getPool();
     const { rows } = await pool.query<{
+      role: string;
+      status: string;
       profile_image_url: string | null;
       ict_verification_status: string | null;
     }>(
-      `SELECT profile_image_url, ict_verification_status
+      `SELECT role, status, profile_image_url, ict_verification_status
        FROM public.boarding_house_app_users WHERE id = $1::uuid`,
       [session.sub]
     );
     const u = rows[0]?.profile_image_url?.trim();
     profileImageUrl = u || null;
-    ictVerificationStatus =
-      rows[0]?.ict_verification_status?.trim() || null;
+    ictVerificationStatus = rows[0]
+      ? displayedIctVerificationStatus(
+          rows[0].role,
+          rows[0].status,
+          rows[0].ict_verification_status
+        )
+      : null;
   } catch {
     /* non-fatal */
   }

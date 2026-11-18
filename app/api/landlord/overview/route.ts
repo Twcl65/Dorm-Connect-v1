@@ -6,7 +6,6 @@ import {
   setCached,
 } from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
-import { ensureLandlordProperty } from "@/lib/landlord-db";
 import { requireOwner } from "@/lib/require-owner";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +25,6 @@ export async function GET() {
 
   try {
     const pool = await getPool();
-    await ensureLandlordProperty(pool, ownerId);
 
     const [{ rows: propRows }, { rows: roomStats }, { rows: resStats }, { rows: payMonth }, { rows: accStats }, { rows: activities }, { rows: roomsPreview }, { rows: tenantsPreview }] =
       await Promise.all([

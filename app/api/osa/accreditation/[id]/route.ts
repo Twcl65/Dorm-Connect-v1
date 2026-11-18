@@ -216,6 +216,7 @@ export async function PATCH(req: Request, context: Ctx) {
             inspection_schedule_proposal: {
               proposedDate,
               status: "pending",
+              proposedByUserId: session.sub,
             },
           }),
         ]

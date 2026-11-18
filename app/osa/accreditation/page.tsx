@@ -140,6 +140,7 @@ type OsaRequestRow = {
   isRenewal?: boolean;
   dateSubmitted: string;
   status: string;
+  inspectionResult?: string | null;
   documentsCount?: number;
   inspectionScheduledFor?: string | null;
   inspectionScheduleProposal?: {
@@ -627,7 +628,12 @@ export default function OsaAccreditationPage() {
       writeText(`Inspection date: ${selectedRequest.inspectionScheduledFor || "Not recorded"}`);
 
       writeSection("Inspection result");
-      writeText("Recommended for Approval", { bold: true, fontSize: 11, indent: 2 });
+      writeText(
+        selectedRequest.inspectionResult === "Hold"
+          ? "On Hold"
+          : selectedRequest.inspectionResult ?? "Unknown",
+        { bold: true, fontSize: 11, indent: 2 }
+      );
 
       writeSection("Completed checklist");
       for (const item of OSA_INSPECTION_CHECKLIST) {
@@ -1061,11 +1067,17 @@ export default function OsaAccreditationPage() {
                   </TableCell>
                   <TableCell className="pr-4">
                     <div className="flex justify-center gap-2">
-                      {req.status === "Recommended for Approval" && (
+                      {req.inspectionResult && (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-[0.7rem] flex items-center gap-1 border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+                          className={`h-7 px-2 text-[0.7rem] flex items-center gap-1 ${
+                            req.inspectionResult === "Hold"
+                              ? "border-amber-400 text-amber-700 hover:bg-amber-50"
+                              : req.inspectionResult === "Rejected"
+                                ? "border-red-400 text-red-700 hover:bg-red-50"
+                                : "border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+                          }`}
                           onClick={() => {
                             setSelectedRequest(req);
                             setRequestDetailFormData(null);
@@ -1496,19 +1508,6 @@ export default function OsaAccreditationPage() {
                   size="sm"
                   className="h-8 px-3 text-xs"
                   onClick={() => {
-                    setInspectionResult("Recommended for Approval");
-                    setInspectionNotes("");
-                    setShowInspectionResultDialog(true);
-                  }}
-                >
-                  Inspection result
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3 text-xs"
-                  onClick={() => {
                     setShowRequestDialog(false);
                     setNeedsDocsNote("");
                     setShowNeedsDocsDialog(true);
@@ -1577,10 +1576,39 @@ export default function OsaAccreditationPage() {
               </div>
             </CardHeader>
             <CardContent className="max-h-[75vh] space-y-4 overflow-y-auto pt-4 text-sm text-slate-800">
-              <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
-                <span className="text-xs font-semibold text-emerald-900">Staff inspection result</span>
-                <Badge className="bg-emerald-100 text-emerald-800" variant="outline">
-                  Recommended for Approval
+              <div
+                className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                  selectedRequest.inspectionResult === "Hold"
+                    ? "border-amber-200 bg-amber-50"
+                    : selectedRequest.inspectionResult === "Rejected"
+                      ? "border-red-200 bg-red-50"
+                      : "border-emerald-200 bg-emerald-50"
+                }`}
+              >
+                <span
+                  className={`text-xs font-semibold ${
+                    selectedRequest.inspectionResult === "Hold"
+                      ? "text-amber-900"
+                      : selectedRequest.inspectionResult === "Rejected"
+                        ? "text-red-900"
+                        : "text-emerald-900"
+                  }`}
+                >
+                  Staff inspection result
+                </span>
+                <Badge
+                  className={
+                    selectedRequest.inspectionResult === "Hold"
+                      ? "bg-amber-100 text-amber-800"
+                      : selectedRequest.inspectionResult === "Rejected"
+                        ? "bg-red-100 text-red-800"
+                        : "bg-emerald-100 text-emerald-800"
+                  }
+                  variant="outline"
+                >
+                  {selectedRequest.inspectionResult === "Hold"
+                    ? "On Hold"
+                    : selectedRequest.inspectionResult}
                 </Badge>
               </div>
 

@@ -149,7 +149,11 @@ export async function PATCH(req: Request, context: Ctx) {
           ? (request.form_data as Record<string, unknown>)
           : {};
       const proposal = formData.inspection_schedule_proposal as
-        | { proposedDate?: string; status?: string }
+        | {
+            proposedDate?: string;
+            status?: string;
+            proposedByUserId?: string;
+          }
         | undefined;
       if (!proposal || proposal.status !== "pending" || !proposal.proposedDate) {
         return NextResponse.json(
@@ -157,6 +161,11 @@ export async function PATCH(req: Request, context: Ctx) {
           { status: 409 }
         );
       }
+      const proposedByUserId =
+        typeof proposal.proposedByUserId === "string" &&
+        /^[0-9a-f-]{36}$/i.test(proposal.proposedByUserId)
+          ? proposal.proposedByUserId
+          : null;
 
       const confirmedDate =
         body.inspectionScheduleAction === "approve"
@@ -218,22 +227,54 @@ export async function PATCH(req: Request, context: Ctx) {
       if (body.inspectionScheduleAction === "change") {
         try {
           const landlordName = session.name?.trim() || "The landlord";
-          const { rows: osaAdmins } = await pool.query<{ id: string }>(
+          const { rows: osaStaff } = await pool.query<{ id: string }>(
             `SELECT id FROM public.boarding_house_app_users
-             WHERE status = 'Active' AND role = 'OSA/SAS Admin'`
+             WHERE status = 'Active'
+               AND (
+                 role IN ('Staff', 'OSA/SAS Admin')
+                 OR id = $1::uuid
+               )`,
+            [proposedByUserId]
           );
-          for (const admin of osaAdmins) {
+          for (const staff of osaStaff) {
             await insertNotification(
               pool,
-              admin.id,
-              "Landlord proposed an inspection date",
-              `${landlordName} selected ${confirmedDate} for the on-site inspection of "${request.dorm_name ?? "the dorm"}". Review the updated request.`,
+              staff.id,
+              "Inspection date changed",
+              `${landlordName} changed the inspection date for "${request.dorm_name}" to ${confirmedDate}.`,
               "accreditation"
             );
           }
         } catch (notifyErr) {
           console.error(
             "[landlord-accreditation] Failed to notify OSA about the landlord's inspection date:",
+            notifyErr
+          );
+        }
+      } else {
+        try {
+          const landlordName = session.name?.trim() || "The landlord";
+          const { rows: osaStaff } = await pool.query<{ id: string }>(
+            `SELECT id FROM public.boarding_house_app_users
+             WHERE status = 'Active'
+               AND (
+                 role IN ('Staff', 'OSA/SAS Admin')
+                 OR id = $1::uuid
+               )`,
+            [proposedByUserId]
+          );
+          for (const staff of osaStaff) {
+            await insertNotification(
+              pool,
+              staff.id,
+              "Inspection date confirmed",
+              `${landlordName} approved the proposed inspection for "${request.dorm_name}" on ${confirmedDate}.`,
+              "accreditation"
+            );
+          }
+        } catch (notifyErr) {
+          console.error(
+            "[landlord-accreditation] Failed to notify OSA staff about the confirmed inspection date:",
             notifyErr
           );
         }
@@ -425,66 +466,184 @@ export async function PATCH(req: Request, context: Ctx) {
       )
     );
 
-    const updatedFormData = {
+    const staffInspectionHold =
+      r.status === "Hold" &&
+      (currentFormData.inspection_hold_source === "staff" ||
+        currentFormData.inspection_prepared_by_role === "Staff");
+    const staffInspectorId =
+      typeof currentFormData.inspection_prepared_by_user_id === "string" &&
+      /^[0-9a-f-]{36}$/i.test(currentFormData.inspection_prepared_by_user_id)
+        ? currentFormData.inspection_prepared_by_user_id
+        : null;
+    const updatedFormData: Record<string, unknown> = {
       ...currentFormData,
       documents: updatedDocuments,
       additional_documents: additionalDocuments,
       landlord_document_revision_open: true,
       attachmentUrls,
     };
+    const inspectionReopened = r.status === "Hold";
+    if (staffInspectionHold) {
+      updatedFormData.inspection_hold_source = "staff";
+      updatedFormData.staff_inspection_followup_documents = documents.map(
+        (document) => ({
+          fileName: document.fileName,
+          mimeType: document.mimeType ?? "",
+          url: document.fileUrl!.trim(),
+        })
+      );
+    }
+    if (inspectionReopened) {
+      for (const key of [
+        "inspection_result",
+        "inspection_notes",
+        "inspection_checklist",
+        "inspection_prepared_by",
+        "inspection_prepared_by_role",
+        "inspection_prepared_by_user_id",
+        "inspection_hold_reason",
+      ]) {
+        delete updatedFormData[key];
+      }
+    }
+    const nextStatus = inspectionReopened
+      ? "Scheduled for Inspection"
+      : "Pending";
 
-    const updated = await pool.query(
-      `UPDATE public.landlord_accreditation_requests
-       SET form_data = $1::jsonb,
-           documents_count = $2,
-           status = 'Pending',
-           updated_at = now()
-       WHERE id = $3::uuid AND owner_user_id = $4::uuid
-         AND (
-           status = 'Hold'
-           OR (
-             status = 'Pending'
-             AND (
-               form_data->>'landlord_document_revision_open' = 'true'
-               OR jsonb_array_length(
-                 CASE
-                   WHEN jsonb_typeof(form_data->'additional_documents') = 'array'
-                     THEN form_data->'additional_documents'
-                   ELSE '[]'::jsonb
-                 END
-               ) > 0
+    const client = await pool.connect();
+    let inspectionScheduledFor: string | null = null;
+    try {
+      await client.query("BEGIN");
+      const updated = await client.query<{ inspection_scheduled_for: string | null }>(
+        `UPDATE public.landlord_accreditation_requests
+         SET form_data = $1::jsonb,
+             documents_count = $2,
+             status = $5,
+             inspection_scheduled_for = CASE
+               WHEN $5 = 'Scheduled for Inspection' THEN CURRENT_DATE
+               ELSE inspection_scheduled_for
+             END,
+             updated_at = now()
+         WHERE id = $3::uuid AND owner_user_id = $4::uuid
+           AND (
+             status = 'Hold'
+             OR (
+               status = 'Pending'
+               AND (
+                 form_data->>'landlord_document_revision_open' = 'true'
+                 OR jsonb_array_length(
+                   CASE
+                     WHEN jsonb_typeof(form_data->'additional_documents') = 'array'
+                       THEN form_data->'additional_documents'
+                     ELSE '[]'::jsonb
+                   END
+                 ) > 0
+               )
              )
            )
-         )
-       RETURNING id`,
-      [
-        JSON.stringify(updatedFormData),
-        attachmentUrls.length,
-        id,
-        ownerId,
-      ]
-    );
-    if (updated.rowCount === 0) {
-      return NextResponse.json(
-        { error: "This request is no longer eligible for document updates." },
-        { status: 409 }
+         RETURNING inspection_scheduled_for::text`,
+        [
+          JSON.stringify(updatedFormData),
+          attachmentUrls.length,
+          id,
+          ownerId,
+          nextStatus,
+        ]
       );
+      if (updated.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { error: "This request is no longer eligible for document updates." },
+          { status: 409 }
+        );
+      }
+      inspectionScheduledFor =
+        updated.rows[0]?.inspection_scheduled_for ?? null;
+
+      if (inspectionReopened) {
+        const reopened = await client.query(
+          `UPDATE public.os_accredit_inspections AS inspection
+           SET scheduled_for = CURRENT_DATE,
+               completed_at = NULL,
+               result = NULL,
+               checklist = '{}'::jsonb,
+               notes = '',
+               updated_at = now()
+           FROM (
+             SELECT id
+             FROM public.os_accredit_inspections
+             WHERE accreditation_request_id = $1::uuid
+             ORDER BY
+               CASE WHEN completed_at IS NOT NULL THEN 0 ELSE 1 END,
+               scheduled_for DESC,
+               created_at DESC
+             LIMIT 1
+           ) AS latest
+           WHERE inspection.id = latest.id`,
+          [id]
+        );
+        if (reopened.rowCount === 0) {
+          await client.query(
+            `INSERT INTO public.os_accredit_inspections
+               (accreditation_request_id, scheduled_for)
+             VALUES ($1::uuid, CURRENT_DATE)`,
+            [id]
+          );
+        }
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
     try {
       const landlordName = session.name?.trim() || "A landlord";
-      const { rows: osaAdmins } = await pool.query<{ id: string }>(
+      const { rows: osaReviewers } = await pool.query<{ id: string }>(
         `SELECT id FROM public.boarding_house_app_users
          WHERE status = 'Active' AND role = 'OSA/SAS Admin'`
       );
-      for (const admin of osaAdmins) {
+      for (const reviewer of osaReviewers) {
         await insertNotification(
           pool,
-          admin.id,
-          "Additional accreditation documents submitted",
-          `${landlordName} submitted additional documents for "${r.dorm_name}". Review the updated request.`,
-          "accreditation"
+          reviewer.id,
+          inspectionReopened
+            ? "Inspection scheduled again after documents submitted"
+            : "Additional accreditation documents submitted",
+          inspectionReopened
+            ? `${landlordName} submitted requested documents for "${r.dorm_name}". The inspection is scheduled again.`
+            : `${landlordName} submitted additional documents for "${r.dorm_name}". Review the updated request.`,
+          "inspection"
         );
+      }
+      if (inspectionReopened && staffInspectionHold) {
+        const revisitTitle = "Visit the dormitory again";
+        const revisitBody = `${landlordName} added documents for “${r.dorm_name}” after the staff inspection hold. Visit the dormitory again and review the new files.`;
+        if (staffInspectorId) {
+          await insertNotification(
+            pool,
+            staffInspectorId,
+            revisitTitle,
+            revisitBody,
+            "inspection"
+          );
+        } else {
+          const { rows: staffUsers } = await pool.query<{ id: string }>(
+            `SELECT id FROM public.boarding_house_app_users
+             WHERE status = 'Active' AND role = 'Staff'`
+          );
+          for (const staffUser of staffUsers) {
+            await insertNotification(
+              pool,
+              staffUser.id,
+              revisitTitle,
+              revisitBody,
+              "inspection"
+            );
+          }
+        }
       }
     } catch (notifyErr) {
       console.error(
@@ -495,7 +654,8 @@ export async function PATCH(req: Request, context: Ctx) {
 
     return NextResponse.json({
       id,
-      status: "Pending",
+      status: nextStatus,
+      inspectionScheduledFor,
       documentsCount: attachmentUrls.length,
       documents,
     });

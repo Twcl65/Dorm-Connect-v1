@@ -1,4 +1,5 @@
-import { Alert, Image, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import type { PaymentRow } from "@/lib/api";

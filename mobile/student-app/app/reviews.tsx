@@ -212,7 +212,7 @@ export default function ReviewsScreen() {
     <Screen style={styles.screen}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={undefined}
       >
         <ScrollView
           refreshControl={

@@ -120,7 +120,11 @@ export async function PATCH(
       vals.push(studentId);
       p++;
     }
-    if (body.ictVerificationStatus !== undefined) {
+    if (role === "Landlord" && status === "Active") {
+      parts.push(`ict_verification_status = $${p}`);
+      vals.push("Verified");
+      p++;
+    } else if (body.ictVerificationStatus !== undefined) {
       parts.push(`ict_verification_status = $${p}`);
       vals.push(body.ictVerificationStatus);
       p++;

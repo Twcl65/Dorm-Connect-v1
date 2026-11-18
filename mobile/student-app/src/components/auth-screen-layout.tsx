@@ -1,8 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import type { ReactNode } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,11 +30,7 @@ export function AuthScreenLayout({
       <View style={styles.glowPrimary} pointerEvents="none" />
       <View style={styles.glowSecondary} pointerEvents="none" />
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
-      >
+      <View style={styles.flex}>
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
@@ -66,7 +60,7 @@ export function AuthScreenLayout({
 
           {footer ? <View style={styles.footer}>{footer}</View> : null}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
     </View>
   );
 }

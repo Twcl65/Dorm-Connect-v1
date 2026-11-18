@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppHeader } from "@/components/app-header";
+import { KeyboardLift } from "@/components/keyboard-lift";
 import { AuthSplashLoader } from "@/components/auth-splash-loader";
 import { colors } from "@/components/ui";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -93,7 +94,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <StatusBar style="light" backgroundColor={colors.brand} />
-        <RootNavigator />
+        <KeyboardLift>
+          <RootNavigator />
+        </KeyboardLift>
       </AuthProvider>
     </SafeAreaProvider>
   );

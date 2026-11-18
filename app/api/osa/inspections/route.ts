@@ -18,6 +18,35 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+type FollowupDocument = {
+  fileName: string;
+  url: string;
+  mimeType: string;
+};
+
+function readStaffFollowupDocuments(formData: unknown): FollowupDocument[] {
+  if (!formData || typeof formData !== "object") return [];
+  const data = formData as Record<string, unknown>;
+  if (data.inspection_hold_source !== "staff") return [];
+  if (!Array.isArray(data.staff_inspection_followup_documents)) return [];
+  return data.staff_inspection_followup_documents.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const value = item as Record<string, unknown>;
+    const url = value.url ?? value.fileUrl;
+    if (typeof url !== "string" || !url.trim()) return [];
+    return [
+      {
+        fileName:
+          typeof value.fileName === "string" && value.fileName.trim()
+            ? value.fileName.trim()
+            : "Added document",
+        url: url.trim(),
+        mimeType: typeof value.mimeType === "string" ? value.mimeType : "",
+      },
+    ];
+  });
+}
+
 export async function GET() {
   const session = await requireOsaStaff();
   if (!session) {
@@ -63,7 +92,13 @@ export async function GET() {
          SELECT *
          FROM public.os_accredit_inspections
          WHERE accreditation_request_id = a.id
-         ORDER BY scheduled_for DESC, created_at DESC
+         ORDER BY
+           CASE
+             WHEN a.status = 'Scheduled for Inspection' AND completed_at IS NULL THEN 0
+             ELSE 1
+           END,
+           scheduled_for DESC,
+           created_at DESC
          LIMIT 1
        ) i ON true
        WHERE a.inspection_scheduled_for IS NOT NULL
@@ -81,9 +116,17 @@ export async function GET() {
 
     const today = todayStr();
     const schedules = rows.map((r) => {
-      const scheduledFor =
+      const storedScheduledFor =
         r.scheduled_for ?? r.inspection_scheduled_for ?? null;
-      const completed = r.completed_at != null;
+      const scheduledForDate = storedScheduledFor?.slice(0, 10) ?? null;
+      // A hold stays completed until the landlord sends the requested documents.
+      // Once that happens the application is scheduled again, even if an older
+      // completed inspection row is still the latest stored visit.
+      const reopenedAfterDocuments =
+        r.application_status === "Scheduled for Inspection" &&
+        r.completed_at != null;
+      const scheduledFor = reopenedAfterDocuments ? today : scheduledForDate;
+      const completed = r.completed_at != null && !reopenedAfterDocuments;
       let scheduleStatus: "upcoming" | "completed" | "overdue" = "upcoming";
       if (completed) {
         scheduleStatus = "completed";
@@ -101,15 +144,19 @@ export async function GET() {
         applicationStatus: r.application_status,
         scheduledFor,
         scheduleStatus,
-        result: r.result,
-        notes: r.notes ?? "",
-        completedAt: r.completed_at
-          ? new Date(r.completed_at).toISOString()
-          : null,
+        result: reopenedAfterDocuments ? null : r.result,
+        notes: reopenedAfterDocuments ? "" : (r.notes ?? ""),
+        completedAt:
+          completed && r.completed_at
+            ? new Date(r.completed_at).toISOString()
+            : null,
         checklist: mergeChecklist(
-          r.checklist as Record<string, boolean> | null
+          reopenedAfterDocuments
+            ? null
+            : (r.checklist as Record<string, boolean> | null)
         ),
         landlordDeclaration: parseLandlordSafetyDeclaration(r.form_data),
+        followupDocuments: readStaffFollowupDocuments(r.form_data),
         canRecordResult:
           !completed &&
           (r.application_status === "Scheduled for Inspection" ||
@@ -204,8 +251,9 @@ export async function POST(req: Request) {
     const { rows: acc } = await pool.query<{
       owner_user_id: string;
       dorm_name: string;
+      status: string;
     }>(
-      `SELECT owner_user_id, dorm_name FROM public.landlord_accreditation_requests WHERE id = $1::uuid`,
+      `SELECT owner_user_id, dorm_name, status FROM public.landlord_accreditation_requests WHERE id = $1::uuid`,
       [accId]
     );
     const a = acc[0];
@@ -213,20 +261,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Accreditation not found." }, { status: 404 });
     }
 
-    const { rows: insp } = await pool.query<{ id: string }>(
-      `SELECT id FROM public.os_accredit_inspections
-       WHERE accreditation_request_id = $1::uuid AND completed_at IS NULL
-       ORDER BY scheduled_for DESC
+    const { rows: insp } = await pool.query<{ id: string; completed_at: Date | null }>(
+      `SELECT id, completed_at
+       FROM public.os_accredit_inspections
+       WHERE accreditation_request_id = $1::uuid
+         AND (
+           completed_at IS NULL
+           OR $2::boolean
+         )
+       ORDER BY
+         CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END,
+         scheduled_for DESC,
+         created_at DESC
        LIMIT 1`,
-      [accId]
+      [accId, a.status === "Scheduled for Inspection"]
     );
     const inspId = insp[0]?.id;
     if (inspId) {
       await pool.query(
         `UPDATE public.os_accredit_inspections
-         SET completed_at = now(), result = $1, checklist = $2::jsonb, notes = $3, updated_at = now()
+         SET completed_at = now(),
+             result = $1,
+             checklist = $2::jsonb,
+             notes = $3,
+             scheduled_for = CASE
+               WHEN $5::boolean AND completed_at IS NOT NULL THEN CURRENT_DATE
+               ELSE scheduled_for
+             END,
+             updated_at = now()
          WHERE id = $4::uuid`,
-        [result, JSON.stringify(checklist), notes, inspId]
+        [
+          result,
+          JSON.stringify(checklist),
+          notes,
+          inspId,
+          a.status === "Scheduled for Inspection",
+        ]
       );
     } else {
       await pool.query(
@@ -252,32 +322,90 @@ export async function POST(req: Request) {
       [
         nextStatus,
         JSON.stringify({
+          inspection_result: result,
           inspection_notes: notes,
           inspection_checklist: checklist,
           inspection_prepared_by: session.name,
           inspection_prepared_by_role: session.role,
+          inspection_prepared_by_user_id: session.sub,
+          inspection_hold_source:
+            result === "Hold" && session.role === "Staff" ? "staff" : null,
+          staff_inspection_followup_documents: [],
           ...(result === "Hold" ? { inspection_hold_reason: holdReason } : {}),
         }),
         accId,
       ]
     );
 
-    const displayResult =
-      result === "Hold" ? "On Hold" : result;
+    const landlordNotification =
+      result === "Hold"
+        ? {
+            title: "Inspection placed on hold",
+            body: `The inspection for “${a.dorm_name}” is on hold. Reason: ${holdReason}`,
+          }
+        : result === "Rejected"
+          ? {
+              title: "Inspection rejected",
+              body: `The inspection for “${a.dorm_name}” was rejected. Reason: ${notes}`,
+            }
+          : {
+              title: "Inspection recommended for approval",
+              body: `The inspection for “${a.dorm_name}” was recommended for approval.`,
+            };
 
     await insertNotification(
       pool,
       a.owner_user_id,
-      "Inspection result",
-      `Inspection for “${a.dorm_name}”: ${displayResult}.${notes ? ` ${notes}` : ""}`,
-      "accreditation"
+      landlordNotification.title,
+      landlordNotification.body,
+      "inspection"
     );
 
-    if (session.role === "Staff" && result === "Recommended for Approval") {
+    if (
+      session.role === "Staff" &&
+      (result === "Hold" || result === "Rejected")
+    ) {
       const { rows: osaUsers } = await pool.query<{ id: string }>(
         `SELECT id
          FROM public.boarding_house_app_users
-         WHERE role = 'OSA/SAS Admin' AND status = 'Active'`
+         WHERE status = 'Active'
+           AND role = 'OSA/SAS Admin'
+           AND id <> $1::uuid`,
+        [session.sub]
+      );
+      const staffName = session.name?.trim() || "Staff";
+      for (const osaUser of osaUsers) {
+        await insertNotification(
+          pool,
+          osaUser.id,
+          result === "Hold"
+            ? "Inspection placed on hold"
+            : "Inspection rejected",
+          result === "Hold"
+            ? `${staffName} placed the inspection for “${a.dorm_name}” on hold. Reason: ${holdReason}`
+            : `${staffName} rejected the inspection for “${a.dorm_name}”. Reason: ${notes}`,
+          "inspection"
+        );
+      }
+      await insertNotification(
+        pool,
+        session.sub,
+        result === "Hold"
+          ? "Visit the dormitory again"
+          : "Inspection rejected",
+        result === "Hold"
+          ? `You placed the inspection for “${a.dorm_name}” on hold. Visit the dormitory again after the landlord submits the requested documents or pictures.`
+          : `You rejected the inspection for “${a.dorm_name}”. Reason: ${notes}`,
+        "inspection"
+      );
+    } else if (
+      session.role === "Staff" &&
+      result === "Recommended for Approval"
+    ) {
+      const { rows: osaUsers } = await pool.query<{ id: string }>(
+        `SELECT id
+         FROM public.boarding_house_app_users
+         WHERE status = 'Active' AND role = 'OSA/SAS Admin'`
       );
       for (const osaUser of osaUsers) {
         await insertNotification(
@@ -285,7 +413,7 @@ export async function POST(req: Request) {
           osaUser.id,
           "Inspection recommended for approval",
           `Staff recommended “${a.dorm_name}” for accreditation approval after inspection.`,
-          "accreditation"
+          "inspection"
         );
       }
     }

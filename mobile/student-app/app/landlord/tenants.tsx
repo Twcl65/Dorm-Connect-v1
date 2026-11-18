@@ -2,15 +2,14 @@ import { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
-  Modal,
   RefreshControl,
   StyleSheet,
   Text,
-  TextInput,
   View,
   Platform,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { useFocusEffect } from "expo-router";
 import { apiRequest, formatSignInError, type LandlordLease } from "@/lib/api";
 import {

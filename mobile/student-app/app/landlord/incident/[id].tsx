@@ -120,7 +120,7 @@ export default function IncidentDetailScreen() {
     <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={undefined}
       >
         <ScrollView keyboardShouldPersistTaps="handled">
           <View style={styles.top}>

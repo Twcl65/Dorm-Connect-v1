@@ -1,9 +1,9 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { useCallback, useMemo, useState } from "react";
 import {
   Image,
   Linking,
-  Modal,
   FlatList,
   Pressable,
   RefreshControl,

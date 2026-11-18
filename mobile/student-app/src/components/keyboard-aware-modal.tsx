@@ -1,8 +1,5 @@
 import { type ReactNode } from "react";
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +8,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppModal } from "@/components/keyboard-lift";
 import { bottomNavPad } from "@/lib/nav-inset";
 
 type KeyboardAwareModalProps = {
@@ -45,31 +43,26 @@ export function KeyboardAwareModal({
   );
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       animationType="slide"
       transparent
       onRequestClose={onRequestClose}
     >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <View
+        style={[styles.overlay, styles.flex, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}
       >
-        <View
-          style={[styles.overlay, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close dialog"
+          style={StyleSheet.absoluteFill}
+          onPress={onRequestClose}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close dialog"
-            style={StyleSheet.absoluteFill}
-            onPress={onRequestClose}
-          >
-            <View style={styles.backdrop} />
-          </Pressable>
-          <View style={[styles.sheet, sheetStyle]}>{content}</View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+          <View style={styles.backdrop} />
+        </Pressable>
+        <View style={[styles.sheet, sheetStyle]}>{content}</View>
+      </View>
+    </AppModal>
   );
 }
 
@@ -98,14 +91,9 @@ export function KeyboardAwareSheet({
   );
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <View style={[styles.overlay, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}>
-        <View style={[styles.sheet, sheetStyle]}>{content}</View>
-      </View>
-    </KeyboardAvoidingView>
+    <View style={[styles.overlay, styles.flex, { paddingBottom: bottomNavPad(insets.bottom, 16) }]}>
+      <View style={[styles.sheet, sheetStyle]}>{content}</View>
+    </View>
   );
 }
 

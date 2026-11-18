@@ -192,8 +192,10 @@ function LoginForm() {
               </Button>
 
               <p className="text-[0.7rem] sm:text-xs text-muted-foreground text-center">
-                Landlords and admins are created in ICT User Management. Inactive accounts cannot sign
-                in; students pending ICT verification can browse but cannot book until verified.
+                Landlords can register for an account but need ICT approval and
+                activation before signing in. Admins are created in ICT User
+                Management; students pending ICT verification can browse but
+                cannot book until verified.
               </p>
             </form>
           </CardContent>

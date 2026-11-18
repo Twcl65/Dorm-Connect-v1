@@ -397,6 +397,8 @@ export default function LandlordDocumentsPage() {
       );
       const result = (await res.json()) as {
         error?: string;
+        status?: string;
+        inspectionScheduledFor?: string | null;
         documentsCount?: number;
       };
       if (!res.ok) {
@@ -466,15 +468,30 @@ export default function LandlordDocumentsPage() {
       });
       const documentsCount =
         result.documentsCount ?? selectedRequest.documentsCount;
+      const status = result.status ?? "Pending";
       setSelectedRequest((request) =>
         request
-          ? { ...request, status: "Pending", documentsCount }
+          ? {
+              ...request,
+              status,
+              inspectionScheduledFor:
+                result.inspectionScheduledFor ??
+                request.inspectionScheduledFor,
+              documentsCount,
+            }
           : request
       );
       setRequests((currentRequests) =>
         currentRequests.map((request) =>
           request.id === selectedRequest.id
-            ? { ...request, status: "Pending", documentsCount }
+            ? {
+                ...request,
+                status,
+                inspectionScheduledFor:
+                  result.inspectionScheduledFor ??
+                  request.inspectionScheduledFor,
+                documentsCount,
+              }
             : request
         )
       );
@@ -2325,8 +2342,9 @@ export default function LandlordDocumentsPage() {
                           </div>
                           <p className="text-[0.65rem] text-muted-foreground">
                             Select replacements for existing files and any new
-                            proof, then save them together. The request returns
-                            to Pending for OSA review.
+                            proof, then save them together. Submitting documents
+                            for an on-hold request schedules the inspection again;
+                            other eligible requests return to Pending review.
                           </p>
                         </div>
                       )}

@@ -583,7 +583,7 @@ export function LandlordAccreditationApplication({
     <Screen>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={undefined}
       >
         <View style={styles.header}>
           <Button label="Cancel" variant="outline" onPress={onCancel} />

@@ -333,7 +333,9 @@ export default function AdminUsersPage() {
                         {user.role === "Student"
                           ? user.ictVerificationStatus
                           : user.role === "Landlord"
-                            ? "Accredited"
+                            ? user.status === "Active"
+                              ? "Verified"
+                              : user.ictVerificationStatus
                             : user.role === "ICT Admin"
                               ? "Admin"
                               : user.role === "OSA/SAS Admin"

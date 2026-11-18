@@ -160,9 +160,9 @@ export async function POST(req: Request) {
         await insertNotification(
           pool,
           osa.id,
-          "Landlord tenant report",
-          `${landlordName} reported tenant ${tenantName} (${reason}). Open Tenant Monitoring.`,
-          "tenant-report"
+          "New landlord tenant report",
+          `${landlordName} reported tenant ${tenantName} (${reason}).`,
+          "landlord-report"
         );
       }
     } catch {

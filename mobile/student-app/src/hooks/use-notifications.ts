@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { apiRequest, type NotificationItem } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { loadNotifications } from "@/lib/native-notifications";
@@ -55,7 +55,7 @@ async function registerForPushNotifications(): Promise<string | null> {
 }
 
 export function useNotifications() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const seenIds = useRef<Set<string>>(new Set());
@@ -133,9 +133,17 @@ export function useNotifications() {
 
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(), 120_000); // 2 minutes
-    return () => clearInterval(t);
-  }, [load]);
+    const intervalMs =
+      user?.role === "Staff" || user?.role === "Landlord" ? 30_000 : 120_000;
+    const t = setInterval(() => void load(), intervalMs);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void load();
+    });
+    return () => {
+      clearInterval(t);
+      subscription.remove();
+    };
+  }, [load, user?.role]);
 
   const unread = items.filter((n) => !n.read).length;
 

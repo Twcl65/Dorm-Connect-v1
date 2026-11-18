@@ -11,6 +11,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { withInputAboveKeyboard } from "@/components/keyboard-lift";
 
 /** Shared navy-blue brand colors for the mobile app UI. */
 export const colors = {
@@ -64,10 +65,11 @@ export function Card({
 }
 
 export function Input(props: TextInputProps) {
+  const lifted = withInputAboveKeyboard(props);
   return (
     <TextInput
       placeholderTextColor={colors.muted}
-      {...props}
+      {...lifted}
       style={[styles.input, props.style]}
     />
   );
@@ -81,6 +83,7 @@ export function PasswordInput({
 }: Omit<TextInputProps, "secureTextEntry">) {
   const [visible, setVisible] = useState(false);
 
+  const lifted = withInputAboveKeyboard(rest);
   return (
     <View style={styles.passwordWrap}>
       <TextInput
@@ -91,7 +94,7 @@ export function PasswordInput({
         autoCorrect={false}
         value={value}
         onChangeText={onChangeText}
-        {...rest}
+        {...lifted}
         style={[styles.input, styles.passwordField, rest.style]}
       />
       <Pressable

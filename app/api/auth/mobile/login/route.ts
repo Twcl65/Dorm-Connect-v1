@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { authenticateWithEmailPassword } from "@/lib/authenticate-credentials";
+import { displayedIctVerificationStatus } from "@/lib/boarding-house-users";
 import { getCorsHeaders } from "@/lib/cors";
 
 export const dynamic = "force-dynamic";
@@ -62,16 +63,23 @@ export async function POST(req: Request) {
     try {
       const pool = await getPool();
       const { rows } = await pool.query<{
+        role: string;
+        status: string;
         profile_image_url: string | null;
         ict_verification_status: string | null;
       }>(
-        `SELECT profile_image_url, ict_verification_status
+        `SELECT role, status, profile_image_url, ict_verification_status
          FROM public.boarding_house_app_users WHERE id = $1::uuid`,
         [result.user.id]
       );
       profileImageUrl = rows[0]?.profile_image_url?.trim() || null;
-      ictVerificationStatus =
-        rows[0]?.ict_verification_status?.trim() || null;
+      ictVerificationStatus = rows[0]
+        ? displayedIctVerificationStatus(
+            rows[0].role,
+            rows[0].status,
+            rows[0].ict_verification_status
+          )
+        : null;
     } catch {
       /* non-fatal */
     }

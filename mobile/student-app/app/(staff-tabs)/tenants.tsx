@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
-  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import {
   apiRequest,
   formatSignInError,

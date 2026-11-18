@@ -18,6 +18,7 @@ import { Loader2, UserPlus } from "lucide-react";
 export default function RegisterPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
+  const [role, setRole] = useState<"Student" | "Landlord">("Student");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -33,11 +34,13 @@ export default function RegisterPage() {
   const [profileFile, setProfileFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (!profileFile) {
+    setSuccess(null);
+    if (role === "Student" && !profileFile) {
       setError("Profile picture is required.");
       return;
     }
@@ -47,17 +50,20 @@ export default function RegisterPage() {
       form.set("fullName", fullName);
       form.set("email", email);
       form.set("password", password);
-      form.set("studentId", studentId);
-      form.set("course", course);
-      form.set("fatherName", fatherName);
-      form.set("motherName", motherName);
-      form.set("street", street.trim());
-      form.set("province", province.trim());
-      form.set("city", city.trim());
-      form.set("zipCode", zipCode.trim());
-      form.set("emergencyContactName", emergencyName);
-      form.set("emergencyContactPhone", emergencyPhone);
-      form.set("profileImage", profileFile);
+      form.set("role", role);
+      if (role === "Student") {
+        form.set("studentId", studentId);
+        form.set("course", course);
+        form.set("fatherName", fatherName);
+        form.set("motherName", motherName);
+        form.set("street", street.trim());
+        form.set("province", province.trim());
+        form.set("city", city.trim());
+        form.set("zipCode", zipCode.trim());
+        form.set("emergencyContactName", emergencyName);
+        form.set("emergencyContactPhone", emergencyPhone);
+        if (profileFile) form.set("profileImage", profileFile);
+      }
 
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -69,9 +75,17 @@ export default function RegisterPage() {
         redirect?: string;
         error?: string;
         message?: string;
+        pendingApproval?: boolean;
       };
       if (!res.ok) {
         setError(data.error ?? "Registration failed.");
+        return;
+      }
+      if (data.pendingApproval) {
+        setSuccess(
+          data.message ??
+            "Your landlord registration was submitted. You can sign in after ICT approves and activates your account."
+        );
         return;
       }
       if (data.redirect) {
@@ -93,22 +107,49 @@ export default function RegisterPage() {
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
               <UserPlus className="h-4 w-4" />
             </span>
-            Student / tenant registration
+            {role === "Student"
+              ? "Student / tenant registration"
+              : "Landlord registration"}
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            Create your DormConnect account. ICT will verify your details; you
-            can browse accredited listings while pending, but booking opens only
-            after verification.
+            {role === "Student"
+              ? "Create your DormConnect account. ICT will verify your details; you can browse accredited listings while pending, but booking opens only after verification."
+              : "Create a landlord account. ICT must approve and activate your account before you can sign in."}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
+            {success && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                {success}{" "}
+                <Link href="/login" className="font-medium underline">
+                  Sign in
+                </Link>
+              </div>
+            )}
             {error && (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
                 {error}
               </div>
             )}
             <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="role">Account type</Label>
+                <select
+                  id="role"
+                  value={role}
+                  onChange={(e) =>
+                    setRole(
+                      e.target.value === "Landlord" ? "Landlord" : "Student"
+                    )
+                  }
+                  disabled={loading}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="Student">Student / Tenant</option>
+                  <option value="Landlord">Landlord</option>
+                </select>
+              </div>
               <div className="space-y-1 sm:col-span-2">
                 <Label htmlFor="fullName">Full name</Label>
                 <Input
@@ -142,134 +183,138 @@ export default function RegisterPage() {
                   disabled={loading}
                 />
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="studentId">Student ID</Label>
-                <Input
-                  id="studentId"
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="course">Course</Label>
-                <Input
-                  id="course"
-                  value={course}
-                  onChange={(e) => setCourse(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="fatherName">Father name</Label>
-                <Input
-                  id="fatherName"
-                  value={fatherName}
-                  onChange={(e) => setFatherName(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="motherName">Mother name</Label>
-                <Input
-                  id="motherName"
-                  value={motherName}
-                  onChange={(e) => setMotherName(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <p className="text-sm font-medium">Home address</p>
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor="street">Street</Label>
-                <Input
-                  id="street"
-                  value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                  required
-                  disabled={loading}
-                  maxLength={120}
-                  autoComplete="address-line1"
-                  placeholder="House number and street"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="province">Province</Label>
-                <Input
-                  id="province"
-                  value={province}
-                  onChange={(e) => setProvince(e.target.value)}
-                  required
-                  disabled={loading}
-                  maxLength={80}
-                  autoComplete="address-level1"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  required
-                  disabled={loading}
-                  maxLength={80}
-                  autoComplete="address-level2"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="zipCode">ZIP Code</Label>
-                <Input
-                  id="zipCode"
-                  value={zipCode}
-                  onChange={(e) => setZipCode(e.target.value)}
-                  required
-                  disabled={loading}
-                  maxLength={4}
-                  inputMode="numeric"
-                  pattern="[0-9]{4}"
-                  autoComplete="postal-code"
-                  placeholder="e.g. 9000"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="ecName">Emergency contact name</Label>
-                <Input
-                  id="ecName"
-                  value={emergencyName}
-                  onChange={(e) => setEmergencyName(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="ecPhone">Emergency contact phone</Label>
-                <Input
-                  id="ecPhone"
-                  value={emergencyPhone}
-                  onChange={(e) => setEmergencyPhone(e.target.value)}
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label htmlFor="profile">Profile picture</Label>
-                <Input
-                  id="profile"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  onChange={(e) =>
-                    setProfileFile(e.target.files?.[0] ?? null)
-                  }
-                  disabled={loading}
-                  required
-                />
-              </div>
+              {role === "Student" && (
+                <>
+                  <div className="space-y-1">
+                    <Label htmlFor="studentId">Student ID</Label>
+                    <Input
+                      id="studentId"
+                      value={studentId}
+                      onChange={(e) => setStudentId(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="course">Course</Label>
+                    <Input
+                      id="course"
+                      value={course}
+                      onChange={(e) => setCourse(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="fatherName">Father name</Label>
+                    <Input
+                      id="fatherName"
+                      value={fatherName}
+                      onChange={(e) => setFatherName(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="motherName">Mother name</Label>
+                    <Input
+                      id="motherName"
+                      value={motherName}
+                      onChange={(e) => setMotherName(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <p className="text-sm font-medium">Home address</p>
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor="street">Street</Label>
+                    <Input
+                      id="street"
+                      value={street}
+                      onChange={(e) => setStreet(e.target.value)}
+                      required
+                      disabled={loading}
+                      maxLength={120}
+                      autoComplete="address-line1"
+                      placeholder="House number and street"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="province">Province</Label>
+                    <Input
+                      id="province"
+                      value={province}
+                      onChange={(e) => setProvince(e.target.value)}
+                      required
+                      disabled={loading}
+                      maxLength={80}
+                      autoComplete="address-level1"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      required
+                      disabled={loading}
+                      maxLength={80}
+                      autoComplete="address-level2"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="zipCode">ZIP Code</Label>
+                    <Input
+                      id="zipCode"
+                      value={zipCode}
+                      onChange={(e) => setZipCode(e.target.value)}
+                      required
+                      disabled={loading}
+                      maxLength={4}
+                      inputMode="numeric"
+                      pattern="[0-9]{4}"
+                      autoComplete="postal-code"
+                      placeholder="e.g. 9000"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="ecName">Emergency contact name</Label>
+                    <Input
+                      id="ecName"
+                      value={emergencyName}
+                      onChange={(e) => setEmergencyName(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="ecPhone">Emergency contact phone</Label>
+                    <Input
+                      id="ecPhone"
+                      value={emergencyPhone}
+                      onChange={(e) => setEmergencyPhone(e.target.value)}
+                      required
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor="profile">Profile picture</Label>
+                    <Input
+                      id="profile"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={(e) =>
+                        setProfileFile(e.target.files?.[0] ?? null)
+                      }
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (

@@ -13,12 +13,16 @@ export function hrefForNotification(
     if (c.includes("incident")) return "/(landlord-tabs)/incidents";
     if (c.includes("announce")) return "/(landlord-tabs)/announcements";
     if (c.includes("review")) return "/landlord/reviews";
-    if (c.includes("accreditation")) return "/landlord/documents";
+    if (c.includes("accreditation") || c.includes("inspection")) {
+      return "/landlord/documents";
+    }
     if (c.includes("tenant-report")) return "/landlord/tenant-reports";
     return "/(landlord-tabs)";
   }
   if (role === "Staff") {
-    if (c.includes("accreditation")) return "/(staff-tabs)/inspections";
+    if (c.includes("accreditation") || c.includes("inspection")) {
+      return "/(staff-tabs)/inspections";
+    }
     if (c.includes("tenant-report") || c.includes("reservation")) {
       return "/(staff-tabs)/tenants";
     }

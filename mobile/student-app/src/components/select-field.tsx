@@ -2,13 +2,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMemo, useState } from "react";
 import {
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { colors } from "@/components/ui";
 
 export type SelectOption = {

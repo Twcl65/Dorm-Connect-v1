@@ -66,14 +66,14 @@ export default function SettingsScreen() {
       void (async () => {
         setLoading(true);
         try {
-          await load();
+          await Promise.all([load(), refreshUser()]);
         } catch (e) {
           setError(formatSignInError(e));
         } finally {
           setLoading(false);
         }
       })();
-    }, [load])
+    }, [load, refreshUser])
   );
 
   const save = async () => {

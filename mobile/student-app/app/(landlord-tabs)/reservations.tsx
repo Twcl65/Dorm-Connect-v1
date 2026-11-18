@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { scheduleInputAboveKeyboard } from "@/components/keyboard-lift";
 import {
   Alert,
   FlatList,
@@ -571,6 +572,7 @@ export default function LandlordReservationsScreen() {
                   <TextInput
                     value={rejectRemarks}
                     onChangeText={setRejectRemarks}
+                    onFocus={scheduleInputAboveKeyboard}
                     placeholder="Room already reserved, no longer available, or another reason"
                     multiline
                     textAlignVertical="top"

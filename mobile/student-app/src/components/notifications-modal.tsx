@@ -1,13 +1,13 @@
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useState } from "react";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { Ionicons } from "@expo/vector-icons";
 import type { NotificationItem } from "@/lib/api";
 import { formatNotificationSentAt } from "@/lib/format-notification-time";

@@ -59,19 +59,22 @@ export async function POST(req: Request) {
 
     try {
       const { rows: admins } = await pool.query<{ id: string }>(
-        `SELECT id FROM public.boarding_house_app_users WHERE role = 'osa_admin'`
+        `SELECT id FROM public.boarding_house_app_users
+         WHERE status = 'Active' AND role = 'OSA/SAS Admin'`
       );
+      const landlordName = session.name?.trim() || "A landlord";
+      const propertyLabel = propertyName ? ` at ${propertyName}` : "";
       for (const admin of admins) {
         await insertNotification(
           pool,
           admin.id,
-          "New Tenant Report",
-          `A landlord submitted a report against tenant ${tenantName}.`,
-          "report"
+          "New landlord tenant report",
+          `${landlordName} reported tenant ${tenantName}${propertyLabel}. Reason: ${title}.`,
+          "landlord-report"
         );
       }
-    } catch {
-      /* non-fatal */
+    } catch (notifyErr) {
+      console.error("[landlord-osa-report] Failed to notify OSA:", notifyErr);
     }
 
     return NextResponse.json({ id: rows[0]?.id }, { status: 201 });

@@ -62,6 +62,20 @@ export async function GET() {
           rawProposal && typeof rawProposal === "object"
             ? (rawProposal as Record<string, unknown>)
             : null;
+        const hasInspectionChecklist =
+          formData.inspection_checklist &&
+          typeof formData.inspection_checklist === "object";
+        const inspectionResult =
+          typeof formData.inspection_result === "string"
+            ? formData.inspection_result
+            : hasInspectionChecklist &&
+                [
+                  "Recommended for Approval",
+                  "Hold",
+                  "Rejected",
+                ].includes(r.status)
+              ? r.status
+              : null;
         return {
           id: r.id,
           dormName: r.dorm_name,
@@ -72,6 +86,7 @@ export async function GET() {
           propertyName: r.property_name,
           dateSubmitted: formatDate(new Date(r.submitted_at)),
           status: r.status,
+          inspectionResult,
           documentsCount: r.documents_count,
           inspectionScheduledFor: r.inspection_scheduled_for,
           inspectionScheduleProposal:

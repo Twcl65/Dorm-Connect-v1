@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { Ionicons } from "@expo/vector-icons";
 import { Button, Input, colors } from "@/components/ui";
 import { SelectField } from "@/components/select-field";

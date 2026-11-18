@@ -5,6 +5,7 @@ import { savePublicUpload } from "@/lib/save-upload";
 import { DB_ROLE_TO_ROUTE, SESSION_COOKIE } from "@/lib/auth-config";
 import { signSessionToken } from "@/lib/session-token";
 import { getFormField, getFormString } from "@/lib/request-form-data";
+import { insertNotification } from "@/lib/notify-user";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -193,6 +194,29 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Registration failed." },
         { status: 500 }
+      );
+    }
+
+    try {
+      const { rows: ictAdmins } = await pool.query<{ id: string }>(
+        `SELECT id
+         FROM public.boarding_house_app_users
+         WHERE role = 'ICT Admin' AND status = 'Active'`
+      );
+      const accountType = role === "Landlord" ? "landlord" : "student/tenant";
+      for (const admin of ictAdmins) {
+        await insertNotification(
+          pool,
+          admin.id,
+          `New ${accountType} registration`,
+          `${fullName} (${email}) registered a new ${accountType} account.`,
+          "registration"
+        );
+      }
+    } catch (notifyErr) {
+      console.error(
+        "[auth-register] Failed to notify ICT admins:",
+        notifyErr
       );
     }
 

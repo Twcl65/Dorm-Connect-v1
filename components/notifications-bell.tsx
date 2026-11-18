@@ -34,9 +34,17 @@ function hrefForNotification(pathname: string, category: string): string {
   }
   if (pathname.startsWith("/osa")) {
     if (c.includes("accredit")) return "/osa/accreditation";
+    if (c.includes("landlord-report")) return "/osa/landlord-reports";
     if (c.includes("tenant") || c.includes("report")) return "/osa/tenants";
     if (c.includes("inspect")) return "/osa/inspections";
     return "/osa";
+  }
+  if (pathname.startsWith("/staff")) {
+    if (c.includes("accredit") || c.includes("inspect")) {
+      return "/staff/inspections";
+    }
+    if (c.includes("tenant") || c.includes("report")) return "/staff/tenants";
+    return "/staff";
   }
   if (c.includes("payment")) return "/student/payments";
   if (c.includes("reservation")) return "/student/reservations";

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Image,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { formatSignInError, type LandlordPublicProfile } from "@/lib/api";
 import { fetchLandlordProfile } from "@/lib/landlord-profile";
 import {

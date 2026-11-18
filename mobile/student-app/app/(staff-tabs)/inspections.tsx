@@ -2,7 +2,8 @@ import { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
-  Modal,
+  Image,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { AppModal as Modal, scheduleInputAboveKeyboard } from "@/components/keyboard-lift";
 import { SelectField } from "@/components/select-field";
 import {
   apiRequest,
@@ -44,6 +46,7 @@ type Inspection = {
   notes: string;
   completedAt: string | null;
   checklist: Record<string, boolean>;
+  followupDocuments?: { fileName: string; url: string; mimeType: string }[];
   canRecordResult: boolean;
 };
 type InspectionResponse = {
@@ -257,6 +260,37 @@ export default function StaffInspectionsScreen() {
                 </>
               ) : null}
 
+              {(selected?.followupDocuments ?? []).length > 0 ? (
+                <View style={styles.followupSection}>
+                  <Text style={styles.fieldLabel}>
+                    Documents added after the staff inspection hold
+                  </Text>
+                  {(selected?.followupDocuments ?? []).map((document) => {
+                    const file = document.url.split("?")[0]?.toLowerCase() ?? "";
+                    const isImage =
+                      document.mimeType.startsWith("image/") ||
+                      /\.(jpg|jpeg|png|webp|gif)$/.test(file);
+                    return (
+                      <View key={document.url} style={styles.followupCard}>
+                        <Text style={styles.checklistLabel}>{document.fileName}</Text>
+                        {isImage ? (
+                          <Image
+                            source={{ uri: document.url }}
+                            style={styles.followupImage}
+                            resizeMode="contain"
+                            accessibilityLabel={document.fileName}
+                          />
+                        ) : (
+                          <Pressable onPress={() => void Linking.openURL(document.url)}>
+                            <Text style={styles.link}>Open document</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
+
               {checklistTemplate.map((item) => (
                 <Pressable
                   key={item.key}
@@ -304,6 +338,7 @@ export default function StaffInspectionsScreen() {
                       <TextInput
                         value={holdReason}
                         onChangeText={setHoldReason}
+                        onFocus={scheduleInputAboveKeyboard}
                         placeholder="Explain what needs to be addressed"
                         multiline
                         style={styles.textArea}
@@ -314,6 +349,7 @@ export default function StaffInspectionsScreen() {
                   <TextInput
                     value={notes}
                     onChangeText={setNotes}
+                    onFocus={scheduleInputAboveKeyboard}
                     placeholder="Add inspection notes"
                     multiline
                     style={styles.textArea}
@@ -402,6 +438,21 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: colors.emerald, borderColor: colors.emerald },
   checkmark: { color: colors.white, fontSize: 15, fontWeight: "700" },
   checklistLabel: { color: colors.text, fontSize: 13, fontWeight: "500" },
+  followupSection: { marginTop: 12 },
+  followupCard: {
+    borderColor: colors.border,
+    borderRadius: 9,
+    borderWidth: 1,
+    marginTop: 8,
+    padding: 8,
+  },
+  followupImage: {
+    backgroundColor: colors.white,
+    height: 160,
+    marginTop: 8,
+    width: "100%",
+  },
+  link: { color: colors.sky, fontSize: 13, fontWeight: "600", marginTop: 6 },
   fieldLabel: {
     color: colors.text,
     fontSize: 13,

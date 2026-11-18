@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { AppModal as Modal } from "@/components/keyboard-lift";
 import { resolveMediaUrl } from "@/lib/config";
 import { colors } from "@/components/ui";
 

@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import {
   Alert,
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { AppModal as Modal, scheduleInputAboveKeyboard } from "@/components/keyboard-lift";
 import { apiRequest, formatSignInError, type LandlordReservation } from "@/lib/api";
 import {
   Badge,
@@ -236,6 +236,7 @@ export default function LandlordTenantReportsScreen() {
               placeholder="e.g. Unpaid Rent, Destructive Behavior..."
               value={reportTitle}
               onChangeText={setReportTitle}
+              onFocus={scheduleInputAboveKeyboard}
             />
           </View>
 
@@ -248,6 +249,7 @@ export default function LandlordTenantReportsScreen() {
               textAlignVertical="top"
               value={reportDescription}
               onChangeText={setReportDescription}
+              onFocus={scheduleInputAboveKeyboard}
             />
           </View>
 
