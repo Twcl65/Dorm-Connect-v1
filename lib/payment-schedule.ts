@@ -506,7 +506,7 @@ async function fetchCreditPaymentsForTarget(
   return credits;
 }
 
-/** Keep advance/deposit buckets aligned with move-in seeding minus applied credits. */
+/** Keep advance/deposit buckets aligned with move-in seeding minus usage and withdrawals. */
 async function syncAdvanceDepositFromLedger(
   pool: Pool,
   reservationId: string,
@@ -534,14 +534,50 @@ async function syncAdvanceDepositFromLedger(
     .filter((c) => c.fundSource === "deposit")
     .reduce((s, c) => s + c.amount, 0);
 
+  const { rows: withdrawalRows } = await pool.query<{
+    advance_withdrawn: string;
+    deposit_withdrawn: string;
+  }>(
+    `SELECT
+       COALESCE(SUM(lp.amount) FILTER (
+         WHERE lp.entry_source = 'advance_withdrawal'
+       ), 0)::text AS advance_withdrawn,
+       COALESCE(SUM(lp.amount) FILTER (
+         WHERE lp.entry_source = 'deposit_withdrawal'
+       ), 0)::text AS deposit_withdrawn
+     FROM public.landlord_payments lp
+     LEFT JOIN public.landlord_tenant_leases ltl
+       ON ltl.id = lp.tenant_lease_id
+     JOIN public.student_dorm_reservations s
+       ON s.id = $1::uuid
+     LEFT JOIN public.boarding_house_app_users u
+       ON u.id = s.student_user_id
+     WHERE lp.room_id = s.room_id
+       AND lp.status = 'Paid'
+       AND lp.entry_source IN ('advance_withdrawal', 'deposit_withdrawal')
+       AND (
+         ltl.student_reservation_id = s.id
+         OR (
+           ltl.id IS NULL
+           AND (
+             lower(trim(lp.payer_name)) = lower(trim(s.guest_name))
+             OR lower(trim(lp.payer_name)) = lower(trim(COALESCE(u.full_name, '')))
+           )
+         )
+       )`,
+    [reservationId]
+  );
+  const advanceWithdrawn = Number(withdrawalRows[0]?.advance_withdrawn) || 0;
+  const depositWithdrawn = Number(withdrawalRows[0]?.deposit_withdrawn) || 0;
+
   const baseline = monthlyRent;
   const newAdvance = Math.max(
     0,
-    Math.round((baseline - advanceUsed) * 100) / 100
+    Math.round((baseline - advanceUsed - advanceWithdrawn) * 100) / 100
   );
   const newDeposit = Math.max(
     0,
-    Math.round((baseline - depositUsed) * 100) / 100
+    Math.round((baseline - depositUsed - depositWithdrawn) * 100) / 100
   );
 
   await pool.query(
