@@ -27,7 +27,9 @@ type PaymentMethod =
   | "Bank Transfer"
   | "Advance"
   | "Security deposit"
-  | "Security deposit release";
+  | "Security deposit release"
+  | "Advance withdrawal"
+  | "Security deposit withdrawal";
 
 const ROWS_PER_PAGE = 5;
 
@@ -36,13 +38,17 @@ type PaymentSource =
   | "student"
   | "advance"
   | "deposit"
-  | "deposit_release";
+  | "deposit_release"
+  | "advance_withdrawal"
+  | "deposit_withdrawal";
 
 function formatPaymentSourceLabel(source?: PaymentSource): string {
   if (source === "student") return "Student app";
   if (source === "advance") return "Advance payment";
   if (source === "deposit") return "Security deposit";
   if (source === "deposit_release") return "Security deposit release";
+  if (source === "advance_withdrawal") return "Advance withdrawal";
+  if (source === "deposit_withdrawal") return "Security deposit withdrawal";
   return "Manual";
 }
 
@@ -641,7 +647,9 @@ export function LandlordPaymentsPanel({
                   <TableCell className="pr-4">
                     <div className="flex justify-center gap-2">
                       {p.status === "Paid" &&
-                        p.source !== "deposit_release" && (
+                        p.source !== "deposit_release" &&
+                        p.source !== "advance_withdrawal" &&
+                        p.source !== "deposit_withdrawal" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -1111,6 +1119,11 @@ export function LandlordPaymentsPanel({
                 <p className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
                   This security deposit release is a final move-out transaction.
                 </p>
+              ) : selectedPayment.source === "advance_withdrawal" ||
+                selectedPayment.source === "deposit_withdrawal" ? (
+                <p className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                  This balance withdrawal is a recorded outflow and cannot be edited.
+                </p>
               ) : (
                 <div className="space-y-1">
                   <label className="text-[0.75rem] font-semibold text-slate-900">
@@ -1140,7 +1153,9 @@ export function LandlordPaymentsPanel({
                 >
                   Close
                 </Button>
-                {selectedPayment.source !== "deposit_release" ? (
+                {selectedPayment.source !== "deposit_release" &&
+                selectedPayment.source !== "advance_withdrawal" &&
+                selectedPayment.source !== "deposit_withdrawal" ? (
                   <Button
                     type="button"
                     size="sm"
@@ -1447,7 +1462,9 @@ export function LandlordPaymentsPanel({
                           </TableCell>
                           <TableCell className="pr-4">
                             <div className="flex justify-center gap-2">
-                              {p.source !== "deposit_release" ? (
+                              {p.source !== "deposit_release" &&
+                              p.source !== "advance_withdrawal" &&
+                              p.source !== "deposit_withdrawal" ? (
                                 <Button
                                   variant="outline"
                                   size="sm"

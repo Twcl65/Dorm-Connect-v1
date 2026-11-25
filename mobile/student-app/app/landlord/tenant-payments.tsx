@@ -189,7 +189,9 @@ export default function TenantPaymentsScreen() {
                   <Text style={styles.confirmBtnText}>Confirm Payment</Text>
                 </Pressable>
               ) : null}
-              {item.source !== "deposit_release" ? (
+              {item.source !== "deposit_release" &&
+              item.source !== "advance_withdrawal" &&
+              item.source !== "deposit_withdrawal" ? (
                 <Pressable
                   style={styles.receiptBtn}
                   onPress={() =>

@@ -527,7 +527,9 @@ export type LandlordPayment = {
     | "student"
     | "advance"
     | "deposit"
-    | "deposit_release";
+    | "deposit_release"
+    | "advance_withdrawal"
+    | "deposit_withdrawal";
   roomNo: string;
   propertyName?: string;
   name: string;

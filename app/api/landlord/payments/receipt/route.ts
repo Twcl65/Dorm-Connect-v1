@@ -169,6 +169,15 @@ export async function GET(req: Request) {
       if (!x) {
         return NextResponse.json({ error: "Payment not found." }, { status: 404 });
       }
+      if (
+        x.entry_source === "advance_withdrawal" ||
+        x.entry_source === "deposit_withdrawal"
+      ) {
+        return NextResponse.json(
+          { error: "Balance withdrawals do not have payment receipts." },
+          { status: 409 }
+        );
+      }
       const amountNum = Number(x.amount);
       const monthlyRent = x.monthly_rent ? Number(x.monthly_rent) : 0;
       const methodLabel =

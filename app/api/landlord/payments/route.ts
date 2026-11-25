@@ -86,9 +86,14 @@ export async function GET() {
        LEFT JOIN LATERAL (
          SELECT res.id AS reservation_id, res.student_user_id, res.lease_start
          FROM public.student_dorm_reservations res
+         LEFT JOIN public.boarding_house_app_users res_student
+           ON res_student.id = res.student_user_id
          WHERE res.room_id = p.room_id
            AND res.status = 'Confirmed'
-         ORDER BY res.created_at DESC
+         ORDER BY (
+           lower(trim(COALESCE(NULLIF(res_student.full_name, ''), res.guest_name)))
+           = lower(trim(p.payer_name))
+         ) DESC, res.created_at DESC
          LIMIT 1
        ) room_res ON true
        WHERE p.owner_user_id = $1::uuid`,
@@ -127,12 +132,24 @@ export async function GET() {
 
     function mapLandlordSource(
       entrySource: string | null
-    ): "landlord" | "advance" | "deposit" | "deposit_release" {
+    ):
+      | "landlord"
+      | "advance"
+      | "deposit"
+      | "deposit_release"
+      | "advance_withdrawal"
+      | "deposit_withdrawal" {
       if (entrySource === "advance") return "advance";
       if (entrySource === "deposit") return "deposit";
       if (entrySource === "deposit_release") return "deposit_release";
+      if (entrySource === "advance_withdrawal") return "advance_withdrawal";
+      if (entrySource === "deposit_withdrawal") return "deposit_withdrawal";
       return "landlord";
     }
+
+    const isWithdrawal = (entrySource: string | null) =>
+      entrySource === "advance_withdrawal" ||
+      entrySource === "deposit_withdrawal";
 
     const landlordRows = own.map((x) => ({
       id: x.id,
@@ -141,11 +158,11 @@ export async function GET() {
       propertyName: x.property_name ?? undefined,
       name: x.payer_name,
       amount:
-        x.entry_source === "deposit_release"
+        x.entry_source === "deposit_release" || isWithdrawal(x.entry_source)
           ? `-${formatPhp(Number(x.amount))}`
           : formatPhp(Number(x.amount)),
       amountValue:
-        x.entry_source === "deposit_release"
+        x.entry_source === "deposit_release" || isWithdrawal(x.entry_source)
           ? -Number(x.amount)
           : Number(x.amount),
       method:
@@ -155,6 +172,10 @@ export async function GET() {
             ? "Security deposit"
             : x.entry_source === "deposit_release"
               ? "Security deposit release"
+              : x.entry_source === "advance_withdrawal"
+                ? "Advance withdrawal"
+                : x.entry_source === "deposit_withdrawal"
+                  ? "Security deposit withdrawal"
               : x.method,
       status: x.status as "Paid" | "Pending" | "Overdue",
       referenceNo: x.reference_no ?? undefined,
@@ -163,6 +184,10 @@ export async function GET() {
       periodLabel:
         x.entry_source === "deposit_release"
           ? "Move-out deposit release"
+          : isWithdrawal(x.entry_source)
+            ? x.entry_source === "advance_withdrawal"
+              ? "Advance withdrawal"
+              : "Security deposit withdrawal"
           : getScheduleMonthLabel(x.lease_start, x.schedule_month_number) ??
             monthYearLabel(x.paid_on, x.created_at),
       createdAt: x.created_at.toISOString(),

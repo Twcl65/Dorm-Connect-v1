@@ -777,7 +777,9 @@ export default function LandlordReservationsScreen() {
                     <Text
                       style={[
                         styles.transactionAmount,
-                        payment.source === "deposit_release" &&
+                        (payment.source === "deposit_release" ||
+                          payment.source === "advance_withdrawal" ||
+                          payment.source === "deposit_withdrawal") &&
                           styles.transactionReleaseAmount,
                       ]}
                     >

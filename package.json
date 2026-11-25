@@ -22,6 +22,7 @@
     "storage:setup": "node scripts/setup-supabase-storage.cjs",
     "storage:fix": "node scripts/fix-supabase-storage-bucket.cjs",
     "db:migrate:payment-monitoring": "node scripts/apply-sql-migration.cjs db/migrations/014_payment_due_dates_lease_link.sql",
+    "db:migrate:balance-withdrawals": "node scripts/apply-sql-migration.cjs db/migrations/040_landlord_balance_withdrawal_sources.sql",
     "db:migrate:incident-reply": "node scripts/apply-sql-migration.cjs db/migrations/019_incident_landlord_reply.sql",
     "db:migrate:osa-tenant-reports-reply": "node scripts/apply-sql-migration.cjs db/migrations/023_osa_tenant_reports_reply.sql",
     "db:migrate:osa-tenant-report-acknowledged": "node scripts/apply-sql-migration.cjs db/migrations/039_osa_tenant_report_acknowledged.sql",

@@ -142,32 +142,28 @@ export default function LandlordPaymentsTab() {
               <Text style={styles.meta}>{item.dueLabel}</Text>
             ) : null}
 
-            {((item.remainingBalance ?? 0) > 0 ||
-              (item.advancePayments ?? 0) > 0 ||
-              (item.deposits ?? 0) > 0) ? (
-              <View style={styles.balancesContainer}>
-                <View style={styles.balancesRow}>
-                  <View style={styles.balanceCol}>
-                    <Text style={styles.balanceLabel}>Remaining Balance</Text>
-                    <Text style={styles.balanceVal}>
-                      ₱{(item.remainingBalance ?? 0).toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={styles.balanceCol}>
-                    <Text style={styles.balanceLabel}>Advance Payment</Text>
-                    <Text style={styles.balanceVal}>
-                      ₱{(item.advancePayments ?? 0).toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={styles.balanceCol}>
-                    <Text style={styles.balanceLabel}>Security Deposit</Text>
-                    <Text style={styles.balanceVal}>
-                      ₱{(item.deposits ?? 0).toLocaleString()}
-                    </Text>
-                  </View>
+            <View style={styles.balancesContainer}>
+              <View style={styles.balancesRow}>
+                <View style={styles.balanceCol}>
+                  <Text style={styles.balanceLabel}>Remaining Balance</Text>
+                  <Text style={styles.balanceVal}>
+                    ₱{(item.remainingBalance ?? 0).toLocaleString()}
+                  </Text>
+                </View>
+                <View style={styles.balanceCol}>
+                  <Text style={styles.balanceLabel}>Advance Payment</Text>
+                  <Text style={styles.balanceVal}>
+                    ₱{(item.advancePayments ?? 0).toLocaleString()}
+                  </Text>
+                </View>
+                <View style={styles.balanceCol}>
+                  <Text style={styles.balanceLabel}>Security Deposit</Text>
+                  <Text style={styles.balanceVal}>
+                    ₱{(item.deposits ?? 0).toLocaleString()}
+                  </Text>
                 </View>
               </View>
-            ) : null}
+            </View>
 
             <Pressable
               style={styles.txBtn}

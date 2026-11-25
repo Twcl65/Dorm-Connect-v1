@@ -9,6 +9,7 @@ import {
   countLeaseMonths,
   deriveTenantPaymentStatusFromSchedule,
   ensurePaymentDueDatesForLease,
+  ensurePaymentDueDatesForReservation,
   fetchMonthlySchedule,
   isRentDueAttention,
   isRentDueCritical,
@@ -40,17 +41,43 @@ export async function GET() {
       email: string | null;
       phone: string | null;
       property_name: string;
+      student_reservation_id: string | null;
     }>(
       `SELECT l.id, r.room_no, l.tenant_name,
               l.lease_start::text, l.lease_end::text, l.payment_status,
-              l.email, l.phone, p.name AS property_name
+              l.email, l.phone, p.name AS property_name,
+              active_reservation.id AS student_reservation_id
        FROM public.landlord_tenant_leases l
        JOIN public.landlord_rooms r ON r.id = l.room_id
        JOIN public.landlord_properties p ON p.id = l.property_id
-       LEFT JOIN public.student_dorm_reservations s ON s.id = l.student_reservation_id
+       LEFT JOIN public.student_dorm_reservations linked_reservation
+         ON linked_reservation.id = l.student_reservation_id
+       LEFT JOIN LATERAL (
+         SELECT s.id
+         FROM public.student_dorm_reservations s
+         LEFT JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
+         WHERE s.room_id = l.room_id
+           AND s.status <> 'MoveOut'
+           AND (
+             s.id = l.student_reservation_id
+             OR (
+               l.student_reservation_id IS NOT NULL
+               AND s.status IN ('Pending', 'Confirmed')
+               AND (
+                 s.student_user_id = linked_reservation.student_user_id
+                 OR (l.email IS NOT NULL AND lower(trim(u.email)) = lower(trim(l.email)))
+                 OR lower(trim(s.guest_name)) = lower(trim(l.tenant_name))
+                 OR lower(trim(u.full_name)) = lower(trim(l.tenant_name))
+               )
+             )
+           )
+         ORDER BY (s.status = 'Confirmed') DESC, s.created_at DESC,
+                  (s.id = l.student_reservation_id) DESC
+         LIMIT 1
+       ) active_reservation ON true
        WHERE l.owner_user_id = $1::uuid
          AND l.payment_status <> 'Completed'
-         AND COALESCE(s.status, '') <> 'MoveOut'
+         AND (l.student_reservation_id IS NULL OR active_reservation.id IS NOT NULL)
        ORDER BY r.room_no`,
       [ownerId]
     );
@@ -81,21 +108,19 @@ export async function GET() {
 
     const leases = await Promise.all(
       rows.map(async (r) => {
-        await ensurePaymentDueDatesForLease(pool, r.id);
-        await reconcileScheduleWithPaidPayments(pool, { leaseId: r.id });
-        let monthlySchedule = await fetchMonthlySchedule(pool, { leaseId: r.id });
-        if (monthlySchedule.length === 0 && r.id) {
-          const { rows: sr } = await pool.query<{ student_reservation_id: string | null }>(
-            `SELECT student_reservation_id FROM public.landlord_tenant_leases WHERE id = $1::uuid`,
-            [r.id]
-          );
-          const rid = sr[0]?.student_reservation_id;
-          if (rid) {
-            monthlySchedule = await fetchMonthlySchedule(pool, {
-              reservationId: rid,
-            });
-          }
+        const linkedResId = r.student_reservation_id;
+        if (linkedResId) {
+          await ensurePaymentDueDatesForReservation(pool, linkedResId);
+          await reconcileScheduleWithPaidPayments(pool, {
+            reservationId: linkedResId,
+          });
+        } else {
+          await ensurePaymentDueDatesForLease(pool, r.id);
+          await reconcileScheduleWithPaidPayments(pool, { leaseId: r.id });
         }
+        const monthlySchedule = linkedResId
+          ? await fetchMonthlySchedule(pool, { reservationId: linkedResId })
+          : await fetchMonthlySchedule(pool, { leaseId: r.id });
         const paidMonths = monthlySchedule.filter((m) => m.status === "Paid").length;
         const totalMonths = monthlySchedule.length;
         const paymentStatus = deriveTenantPaymentStatusFromSchedule(
@@ -110,11 +135,6 @@ export async function GET() {
         let remainingBalance = 0;
         let leaseExtension = null;
         
-        const { rows: sr2 } = await pool.query<{ student_reservation_id: string | null }>(
-          `SELECT student_reservation_id FROM public.landlord_tenant_leases WHERE id = $1::uuid`,
-          [r.id]
-        );
-        const linkedResId = sr2[0]?.student_reservation_id;
         if (linkedResId) {
           const { rows: resData } = await pool.query<{
             advance_amount: string;
@@ -200,7 +220,7 @@ export async function GET() {
         ).length,
         upcomingCount: upcomingDue.length,
       },
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to load leases";
     return NextResponse.json({ error: msg }, { status: 500 });

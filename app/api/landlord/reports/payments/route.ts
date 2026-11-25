@@ -90,15 +90,25 @@ export async function GET(req: Request) {
           source:
             x.entry_source === "deposit_release"
               ? "Security deposit release"
-              : "manual",
+              : x.entry_source === "advance_withdrawal"
+                ? "Advance withdrawal"
+                : x.entry_source === "deposit_withdrawal"
+                  ? "Security deposit withdrawal"
+                  : "manual",
           monthLabel:
             x.entry_source === "deposit_release"
               ? "Move-out deposit release"
-              : monthLabel,
+              : x.entry_source === "advance_withdrawal"
+                ? "Advance withdrawal"
+                : x.entry_source === "deposit_withdrawal"
+                  ? "Security deposit withdrawal"
+                  : monthLabel,
           roomNo: x.room_no ?? "",
           payerName: x.payer_name,
           amount:
-            x.entry_source === "deposit_release"
+            x.entry_source === "deposit_release" ||
+            x.entry_source === "advance_withdrawal" ||
+            x.entry_source === "deposit_withdrawal"
               ? -(Number(x.amount) || 0)
               : Number(x.amount) || 0,
           paidOn,
@@ -108,7 +118,11 @@ export async function GET(req: Request) {
           method:
             x.entry_source === "deposit_release"
               ? "Security deposit release"
-              : normalizeMethod(x.method),
+              : x.entry_source === "advance_withdrawal"
+                ? "Advance withdrawal"
+                : x.entry_source === "deposit_withdrawal"
+                  ? "Security deposit withdrawal"
+                  : normalizeMethod(x.method),
           status: x.status,
           referenceNo: x.reference_no ?? "",
           proofUrl: x.proof_url ?? "",

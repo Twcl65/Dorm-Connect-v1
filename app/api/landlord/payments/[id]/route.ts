@@ -58,9 +58,13 @@ export async function PATCH(req: Request, context: Ctx) {
     if (cur[0]) {
       // --- Landlord payment update ---
       const c = cur[0];
-      if (c.entry_source === "deposit_release") {
+      if (
+        c.entry_source === "deposit_release" ||
+        c.entry_source === "advance_withdrawal" ||
+        c.entry_source === "deposit_withdrawal"
+      ) {
         return NextResponse.json(
-          { error: "Security deposit release transactions cannot be edited." },
+          { error: "Balance release and withdrawal transactions cannot be edited." },
           { status: 409 }
         );
       }

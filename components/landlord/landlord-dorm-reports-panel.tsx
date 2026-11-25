@@ -23,7 +23,9 @@ type PaymentMethod =
   | "Bank Transfer"
   | "Advance"
   | "Security deposit"
-  | "Security deposit release";
+  | "Security deposit release"
+  | "Advance withdrawal"
+  | "Security deposit withdrawal";
 
 type Payment = {
   id: string;
@@ -32,7 +34,9 @@ type Payment = {
     | "student"
     | "advance"
     | "deposit"
-    | "deposit_release";
+    | "deposit_release"
+    | "advance_withdrawal"
+    | "deposit_withdrawal";
   roomNo: string;
   name: string;
   amount: string;
@@ -153,6 +157,10 @@ export function LandlordDormReportsPanel({
           ? "student app"
           : p.source === "deposit_release"
             ? "security deposit release"
+            : p.source === "advance_withdrawal"
+              ? "advance withdrawal"
+              : p.source === "deposit_withdrawal"
+                ? "security deposit withdrawal"
             : p.source === "deposit"
               ? "security deposit"
               : p.source === "advance"
@@ -387,6 +395,10 @@ export function LandlordDormReportsPanel({
                               ? "Student app"
                               : p.source === "deposit_release"
                                 ? "Security deposit release"
+                                : p.source === "advance_withdrawal"
+                                  ? "Advance withdrawal"
+                                  : p.source === "deposit_withdrawal"
+                                    ? "Security deposit withdrawal"
                                 : p.source === "deposit"
                                   ? "Security deposit"
                                   : p.source === "advance"

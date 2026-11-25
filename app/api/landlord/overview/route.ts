@@ -74,7 +74,9 @@ export async function GET() {
           `SELECT COALESCE(SUM(amount), 0)::text AS s
            FROM public.landlord_payments
            WHERE owner_user_id = $1::uuid AND status = 'Paid'
-             AND COALESCE(entry_source, 'manual') <> 'deposit_release'
+             AND COALESCE(entry_source, 'manual') NOT IN (
+               'deposit_release', 'advance_withdrawal', 'deposit_withdrawal'
+             )
              AND paid_on IS NOT NULL
              AND date_trunc('month', paid_on AT TIME ZONE 'UTC') = date_trunc('month', CURRENT_DATE AT TIME ZONE 'UTC')`,
           [ownerId]

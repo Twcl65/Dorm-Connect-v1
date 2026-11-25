@@ -55,17 +55,24 @@ export async function POST(req: Request, context: Ctx) {
     await client.query("BEGIN");
     const { rows } = await client.query<{
       student_user_id: string;
-      guest_name: string;
+      payer_name: string;
+      room_id: string;
+      tenant_lease_id: string | null;
       property_name: string;
       room_no: string;
       status: string;
       current_balance: string;
     }>(
-      `SELECT s.student_user_id, s.guest_name, s.status, p.name AS property_name,
+      `SELECT s.student_user_id,
+              COALESCE(NULLIF(trim(u.full_name), ''), s.guest_name) AS payer_name,
+              s.room_id, l.id AS tenant_lease_id, s.status, p.name AS property_name,
               r.room_no, s.${balanceColumn}::text AS current_balance
        FROM public.student_dorm_reservations s
        JOIN public.landlord_rooms r ON r.id = s.room_id
        JOIN public.landlord_properties p ON p.id = r.property_id
+       JOIN public.boarding_house_app_users u ON u.id = s.student_user_id
+       LEFT JOIN public.landlord_tenant_leases l
+         ON l.student_reservation_id = s.id AND l.owner_user_id = $2::uuid
        WHERE s.id = $1::uuid AND r.owner_user_id = $2::uuid
        FOR UPDATE OF s`,
       [id, session.sub]
@@ -102,11 +109,27 @@ export async function POST(req: Request, context: Ctx) {
       [nextBalance, id]
     );
     await client.query(
+      `INSERT INTO public.landlord_payments
+        (owner_user_id, room_id, tenant_lease_id, payer_name, amount,
+         method, status, reference_no, paid_on, entry_source)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 'Cash', 'Paid',
+               $6, CURRENT_DATE, $7)`,
+      [
+        session.sub,
+        reservation.room_id,
+        reservation.tenant_lease_id,
+        reservation.payer_name,
+        amount,
+        `${balanceLabel} withdrawal`,
+        body.type === "advance" ? "advance_withdrawal" : "deposit_withdrawal",
+      ]
+    );
+    await client.query(
       `INSERT INTO public.landlord_activity_log (owner_user_id, description)
        VALUES ($1::uuid, $2)`,
       [
         session.sub,
-        `Withdrew ₱${amount.toLocaleString()} from ${balanceLabel} for ${reservation.guest_name} · ${reservation.property_name} · Room ${reservation.room_no}`,
+        `Withdrew ₱${amount.toLocaleString()} from ${balanceLabel} for ${reservation.payer_name} · ${reservation.property_name} · Room ${reservation.room_no}`,
       ]
     );
     await client.query("COMMIT");

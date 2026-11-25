@@ -365,7 +365,9 @@ export async function GET(req: Request) {
       if (
         row.entry_source === "advance" ||
         row.entry_source === "deposit" ||
-        row.entry_source === "deposit_release"
+        row.entry_source === "deposit_release" ||
+        row.entry_source === "advance_withdrawal" ||
+        row.entry_source === "deposit_withdrawal"
       ) {
         continue;
       }

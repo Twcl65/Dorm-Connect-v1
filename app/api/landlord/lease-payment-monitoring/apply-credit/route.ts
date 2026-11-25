@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidateLandlordUser, invalidateStudentUser } from "@/lib/api-cache";
 import { getPool } from "@/lib/db";
 import { applyScheduleCreditForMonth } from "@/lib/payment-schedule";
 import { requireOwner } from "@/lib/require-owner";
@@ -44,10 +45,11 @@ export async function POST(req: Request) {
 
     const pool = await getPool();
     const ownerId = session.sub;
+    let studentUserId: string | null = null;
 
     if (reservationId) {
-      const { rows } = await pool.query<{ id: string }>(
-        `SELECT s.id
+      const { rows } = await pool.query<{ id: string; student_user_id: string }>(
+        `SELECT s.id, s.student_user_id
          FROM public.student_dorm_reservations s
          JOIN public.landlord_rooms r ON r.id = s.room_id
          WHERE s.id = $1::uuid AND r.owner_user_id = $2::uuid`,
@@ -56,15 +58,20 @@ export async function POST(req: Request) {
       if (!rows[0]) {
         return NextResponse.json({ error: "Not found." }, { status: 404 });
       }
+      studentUserId = rows[0].student_user_id;
     } else if (leaseId) {
-      const { rows } = await pool.query<{ id: string }>(
-        `SELECT id FROM public.landlord_tenant_leases
-         WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+      const { rows } = await pool.query<{ id: string; student_user_id: string | null }>(
+        `SELECT l.id, s.student_user_id
+         FROM public.landlord_tenant_leases l
+         LEFT JOIN public.student_dorm_reservations s
+           ON s.id = l.student_reservation_id
+         WHERE l.id = $1::uuid AND l.owner_user_id = $2::uuid`,
         [leaseId, ownerId]
       );
       if (!rows[0]) {
         return NextResponse.json({ error: "Not found." }, { status: 404 });
       }
+      studentUserId = rows[0].student_user_id;
     }
 
     const balances = await applyScheduleCreditForMonth(pool, {
@@ -74,6 +81,9 @@ export async function POST(req: Request) {
       fundSource,
       paidOn: body.paidOn ?? null,
     });
+
+    invalidateLandlordUser(ownerId);
+    if (studentUserId) invalidateStudentUser(studentUserId);
 
     return NextResponse.json({ ok: true, ...balances });
   } catch (e) {
